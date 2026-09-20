@@ -66,7 +66,16 @@ public sealed partial class SelectionPanel : PanelContainer
     {
         if (entity is null)
         {
-            Visible = false;
+            if (!Visible)
+                return;
+
+            var tween = CreateTween();
+            tween.TweenProperty(this, "modulate", new Color(1, 1, 1, 0), 0.12);
+            tween.TweenCallback(Callable.From(() =>
+            {
+                Visible = false;
+                Modulate = Colors.White;
+            }));
             return;
         }
 

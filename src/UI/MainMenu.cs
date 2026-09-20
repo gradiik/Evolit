@@ -124,7 +124,7 @@ public sealed partial class MainMenu : Control
         AddChild(accent);
 
         var rightNote = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        rightNote.AnchorLeft = 0.68f;
+        rightNote.AnchorLeft = 0.63f;
         rightNote.AnchorRight = 0.79f;
         rightNote.AnchorTop = 0.17f;
         rightNote.AnchorBottom = 0.39f;

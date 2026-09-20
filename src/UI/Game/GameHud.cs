@@ -283,8 +283,15 @@ public sealed partial class GameHud : Control
                 $"Подвидов: {stats.SubspeciesCount}",
                 $"FPS: {stats.Fps:0}",
                 $"TPS: {stats.Tps:0}",
-                $"Tick: {stats.Tick}"
+                $"Tick: {stats.Tick}",
+                $"Playtime: {FormatPlaytime(stats.PlaytimeSeconds)}"
             ]);
+    }
+
+    private static string FormatPlaytime(double seconds)
+    {
+        var time = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return $"{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}";
     }
 
     private void ShowLineage()

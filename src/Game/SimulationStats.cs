@@ -14,6 +14,7 @@ public readonly struct SimulationStatsSnapshot
     public double Fps { get; init; }
     public double Tps { get; init; }
     public long Tick { get; init; }
+    public double PlaytimeSeconds { get; init; }
 }
 
 public interface ISimulationStatsProvider
@@ -44,7 +45,8 @@ public sealed class DemoSimulationStatsProvider : ISimulationStatsProvider
             SubspeciesCount = _world.SubspeciesCount,
             Fps = Engine.GetFramesPerSecond(),
             Tps = 0,
-            Tick = 0
+            Tick = 0,
+            PlaytimeSeconds = _session.PlaytimeSeconds
         };
     }
 }
