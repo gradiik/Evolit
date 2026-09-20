@@ -1,0 +1,67 @@
+name: Evolit UI smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/ui/icons/**'
+      - 'src/UI/**'
+      - 'Evolit.csproj'
+      - 'project.godot'
+      - 'Main.tscn'
+      - '.github/workflows/ui-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Validate SVG icon library
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          icons = sorted(Path("assets/ui/icons").rglob("*.svg"))
+          assert len(icons) >= 100, len(icons)
+          for icon in icons:
+              data = icon.read_text(encoding="utf-8")
+              root = ET.fromstring(data)
+              assert root.tag.endswith("svg"), icon
+              assert root.attrib.get("viewBox") == "0 0 24 24", icon
+              low = data.lower()
+              for token in ("<filter", "<image", "<mask", "<text"):
+                  assert token not in low, (icon, token)
+          print(f"Validated {len(icons)} SVG icons")
+          PY
+
+      - name: Restore
+        run: dotnet restore Evolit.csproj
+
+      - name: Build
+        run: dotnet build Evolit.csproj --configuration Debug --no-restore
+
+      - name: Install Godot 4.4.1 .NET
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot"
+          curl -L --fail --retry 3 -o "$RUNNER_TEMP/godot/godot.zip" "https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_mono_linux_x86_64.zip"
+          unzip -q "$RUNNER_TEMP/godot/godot.zip" -d "$RUNNER_TEMP/godot"
+          GODOT_BIN="$(find "$RUNNER_TEMP/godot" -type f -name 'Godot_v4.4.1-stable_mono_linux.x86_64' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Import project
+        run: '"$GODOT_BIN" --headless --editor --path . --quit'
+
+      - name: Headless startup smoke
+        run: '"$GODOT_BIN" --headless --path . --quit-after 2'

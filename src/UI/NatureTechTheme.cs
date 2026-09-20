@@ -18,6 +18,12 @@ public static class NatureTechTheme
         theme.SetColor("font_hover_color", "OptionButton", EvolitPalette.MistWhite);
         theme.SetColor("font_color", "LineEdit", EvolitPalette.MistWhite);
 
+        theme.SetColor("icon_normal_color", "Button", EvolitPalette.MistWhite);
+        theme.SetColor("icon_hover_color", "Button", EvolitPalette.EvolutionCyan);
+        theme.SetColor("icon_pressed_color", "Button", EvolitPalette.DeepNavyTeal);
+        theme.SetColor("icon_focus_color", "Button", EvolitPalette.EvolutionCyan);
+        theme.SetColor("icon_disabled_color", "Button", EvolitPalette.Disabled);
+
         theme.SetFontSize("font_size", "Label", 17);
         theme.SetFontSize("font_size", "Button", 17);
         theme.SetFontSize("font_size", "CheckButton", 16);

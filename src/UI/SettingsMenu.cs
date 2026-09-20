@@ -11,6 +11,15 @@ public sealed partial class SettingsMenu : Control
     private readonly string[] _categories = ["Графика", "Звук", "Интерфейс", "Геймплей", "Управление"];
     private readonly Dictionary<string, Button> _categoryButtons = new();
 
+    private static readonly Dictionary<string, string> CategoryIcons = new()
+    {
+        ["Графика"] = "settings/graphics.svg",
+        ["Звук"] = "settings/sound.svg",
+        ["Интерфейс"] = "settings/interface.svg",
+        ["Геймплей"] = "settings/gameplay.svg",
+        ["Управление"] = "settings/controls.svg"
+    };
+
     private VBoxContainer? _content;
     private Label? _sectionTitle;
     private Label? _status;
@@ -81,6 +90,7 @@ public sealed partial class SettingsMenu : Control
             Text = "Назад",
             CustomMinimumSize = new Vector2(118f, 44f)
         };
+        SetIcon(close, "actions/back.svg");
         close.Pressed += () => BackRequested?.Invoke();
         headingRow.AddChild(close);
 
@@ -119,6 +129,7 @@ public sealed partial class SettingsMenu : Control
                 CustomMinimumSize = new Vector2(0f, 46f)
             };
 
+            SetIcon(button, CategoryIcons[category]);
             var captured = category;
             button.Pressed += () => ShowCategory(captured);
             _categoryButtons[category] = button;
@@ -176,16 +187,25 @@ public sealed partial class SettingsMenu : Control
         footer.AddChild(_status);
 
         var reset = new Button { Text = "Сбросить", CustomMinimumSize = new Vector2(120f, 44f) };
+        SetIcon(reset, "actions/reset.svg");
         reset.Pressed += ResetSettings;
         footer.AddChild(reset);
 
         var apply = new Button { Text = "Применить", CustomMinimumSize = new Vector2(130f, 44f) };
+        SetIcon(apply, "actions/apply.svg");
         apply.Pressed += ApplySettings;
         footer.AddChild(apply);
 
         var back = new Button { Text = "Назад", CustomMinimumSize = new Vector2(110f, 44f) };
+        SetIcon(back, "actions/back.svg");
         back.Pressed += () => BackRequested?.Invoke();
         footer.AddChild(back);
+    }
+
+    private static void SetIcon(Button button, string relativePath, int size = 20)
+    {
+        button.Icon = EvolitIcons.Load(relativePath);
+        button.IconMaxWidth = size;
     }
 
     private void ShowCategory(string category)

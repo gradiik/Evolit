@@ -97,24 +97,24 @@ public sealed partial class MainMenu : Control
         var spacer = new Control { CustomMinimumSize = new Vector2(0f, 26f) };
         column.AddChild(spacer);
 
-        var continueButton = MenuButton("▶   Продолжить");
+        var continueButton = MenuButton("Продолжить", "menu/continue.svg");
         continueButton.Disabled = true;
         continueButton.TooltipText = "Сохранений пока нет";
         column.AddChild(continueButton);
 
-        var newGame = MenuButton("✦   Новая игра");
+        var newGame = MenuButton("Новая игра", "menu/new_game.svg");
         newGame.Pressed += () => ShowStatus("Создание мира будет добавлено на следующем этапе.");
         column.AddChild(newGame);
 
-        var settings = MenuButton("⚙   Настройки");
+        var settings = MenuButton("Настройки", "menu/settings.svg");
         settings.Pressed += ShowSettings;
         column.AddChild(settings);
 
-        var encyclopedia = MenuButton("▤   Энциклопедия");
+        var encyclopedia = MenuButton("Энциклопедия", "menu/encyclopedia.svg");
         encyclopedia.Pressed += () => ShowStatus("Энциклопедия появится позже.");
         column.AddChild(encyclopedia);
 
-        var exit = MenuButton("⏻   Выход");
+        var exit = MenuButton("Выход", "menu/exit.svg");
         exit.Pressed += () => GetTree().Quit();
         column.AddChild(exit);
 
@@ -158,7 +158,7 @@ public sealed partial class MainMenu : Control
         rightNote.AddChild(note);
     }
 
-    private Button MenuButton(string text)
+    private Button MenuButton(string text, string iconPath)
     {
         var button = new Button
         {
@@ -167,6 +167,9 @@ public sealed partial class MainMenu : Control
             CustomMinimumSize = new Vector2(0f, 56f),
             FocusMode = FocusModeEnum.All
         };
+
+        button.Icon = EvolitIcons.Load(iconPath);
+        button.IconMaxWidth = 24;
 
         button.MouseEntered += () =>
         {
