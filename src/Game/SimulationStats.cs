@@ -26,26 +26,28 @@ public sealed class DemoSimulationStatsProvider : ISimulationStatsProvider
 {
     private readonly GameSession _session;
     private readonly DemoWorldDataProvider _world;
+    private readonly GameTimeController _time;
 
-    public DemoSimulationStatsProvider(GameSession session, DemoWorldDataProvider world)
+    public DemoSimulationStatsProvider(GameSession session, DemoWorldDataProvider world, GameTimeController time)
     {
         _session = session;
         _world = world;
+        _time = time;
     }
 
     public SimulationStatsSnapshot GetSnapshot()
     {
         return new SimulationStatsSnapshot
         {
-            Day = 1,
-            GameTime = "00:00",
+            Day = _time.Day,
+            GameTime = _time.FormattedTime,
             CreatureCount = _world.CreatureCount,
             PlantCount = _world.PlantCount,
             SpeciesCount = _world.SpeciesCount,
             SubspeciesCount = _world.SubspeciesCount,
             Fps = Engine.GetFramesPerSecond(),
-            Tps = 0,
-            Tick = 0,
+            Tps = _time.Tps,
+            Tick = _time.TickCount,
             PlaytimeSeconds = _session.PlaytimeSeconds
         };
     }

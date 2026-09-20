@@ -30,6 +30,7 @@ public sealed partial class GameHud : Control
     private Button? _speed4;
     private SelectionPanel? _selectionPanel;
     private Control? _activeTool;
+    private DemoEntity? _selectedEntity;
     private double _refreshTimer;
 
     public void Configure(ISimulationStatsProvider statsProvider, DemoWorldDataProvider world, SimulationSpeedState speed)
@@ -48,15 +49,25 @@ public sealed partial class GameHud : Control
 
         if (_speed is not null)
             _speed.Changed += RefreshSpeedButtons;
+        if (_world is not null)
+            _world.DataChanged += RefreshSelection;
 
         RefreshStats();
         RefreshSpeedButtons();
     }
 
+    public override void _ExitTree()
+    {
+        if (_speed is not null)
+            _speed.Changed -= RefreshSpeedButtons;
+        if (_world is not null)
+            _world.DataChanged -= RefreshSelection;
+    }
+
     public override void _Process(double delta)
     {
         _refreshTimer += delta;
-        if (_refreshTimer < 0.25)
+        if (_refreshTimer < 0.20)
             return;
 
         _refreshTimer = 0;
@@ -65,55 +76,80 @@ public sealed partial class GameHud : Control
 
     public void SetSelectedEntity(DemoEntity? entity)
     {
+        _selectedEntity = entity;
         _selectionPanel?.SetEntity(entity);
+
+        if (entity is not null && _world is not null)
+        {
+            var stats = _statsProvider?.GetSnapshot() ?? default;
+            _world.AddEvent(
+                stats.Day,
+                stats.GameTime,
+                DemoEventCategory.World,
+                $"Выбран объект: {entity.Name}",
+                entity.Kind == DemoEntityKind.Creature ? "Открыта карточка существа." : "Открыта карточка растения.",
+                entity.Kind == DemoEntityKind.Creature ? "biology/creature.svg" : "biology/plant.svg");
+        }
     }
 
     public void SetSpeedFromAction(int multiplier)
     {
-        _speed?.SetMultiplier(multiplier);
+        SetSimulationSpeed(multiplier);
     }
 
     private void BuildTopBar()
     {
-        var top = new PanelContainer
-        {
-            MouseFilter = MouseFilterEnum.Stop
-        };
+        var top = new PanelContainer { MouseFilter = MouseFilterEnum.Stop };
         top.AnchorLeft = 0.02f;
         top.AnchorRight = 0.98f;
-        top.AnchorTop = 0.018f;
-        top.AnchorBottom = 0.098f;
-        top.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.90f));
+        top.AnchorTop = 0.016f;
+        top.AnchorBottom = 0.084f;
+        top.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.92f));
         AddChild(top);
 
         var margin = new MarginContainer();
         margin.AddThemeConstantOverride("margin_left", 14);
-        margin.AddThemeConstantOverride("margin_right", 14);
-        margin.AddThemeConstantOverride("margin_top", 8);
-        margin.AddThemeConstantOverride("margin_bottom", 8);
+        margin.AddThemeConstantOverride("margin_right", 10);
+        margin.AddThemeConstantOverride("margin_top", 6);
+        margin.AddThemeConstantOverride("margin_bottom", 6);
         top.AddChild(margin);
 
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 14);
+        row.AddThemeConstantOverride("separation", 13);
         margin.AddChild(row);
 
-        _day = AddStat(row, "День", "1");
-        _time = AddStat(row, "Время", "00:00");
-        _creatures = AddStat(row, "Существ", "0");
-        _plants = AddStat(row, "Растений", "0");
-        _species = AddStat(row, "Видов", "0");
-        _subspecies = AddStat(row, "Подвидов", "0");
+        _day = AddStat(row, "ДЕНЬ", "1");
+        _time = AddStat(row, "ВРЕМЯ", "00:00");
+        _creatures = AddStat(row, "СУЩЕСТВА", "0");
+        _plants = AddStat(row, "РАСТЕНИЯ", "0");
+        _species = AddStat(row, "ВИДЫ", "0");
+        _subspecies = AddStat(row, "ПОДВИДЫ", "0");
 
         row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
-        _fps = AddStat(row, "FPS", "0");
-        _tps = AddStat(row, "TPS", "0");
-        _tick = AddStat(row, "Tick", "0");
+        var tech = new PanelContainer();
+        tech.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
+        row.AddChild(tech);
 
-        _pauseSpeed = SpeedButton("Ⅱ", "Пауза", () => _speed?.TogglePause());
-        _speed1 = SpeedButton("1×", "Скорость 1×", () => _speed?.SetMultiplier(1));
-        _speed2 = SpeedButton("2×", "Скорость 2×", () => _speed?.SetMultiplier(2));
-        _speed4 = SpeedButton("4×", "Скорость 4×", () => _speed?.SetMultiplier(4));
+        var techMargin = new MarginContainer();
+        techMargin.AddThemeConstantOverride("margin_left", 9);
+        techMargin.AddThemeConstantOverride("margin_right", 9);
+        techMargin.AddThemeConstantOverride("margin_top", 4);
+        techMargin.AddThemeConstantOverride("margin_bottom", 4);
+        tech.AddChild(techMargin);
+
+        var techRow = new HBoxContainer();
+        techRow.AddThemeConstantOverride("separation", 10);
+        techMargin.AddChild(techRow);
+
+        _fps = AddTechStat(techRow, "FPS");
+        _tps = AddTechStat(techRow, "TPS");
+        _tick = AddTechStat(techRow, "TICK");
+
+        _pauseSpeed = SpeedButton("", "Остановить игровое время", ToggleSimulationPause, "simulation/pause.svg");
+        _speed1 = SpeedButton("1×", "Скорость времени 1×", () => SetSimulationSpeed(1));
+        _speed2 = SpeedButton("2×", "Скорость времени 2×", () => SetSimulationSpeed(2));
+        _speed4 = SpeedButton("4×", "Скорость времени 4×", () => SetSimulationSpeed(4));
 
         row.AddChild(_pauseSpeed);
         row.AddChild(_speed1);
@@ -123,66 +159,75 @@ public sealed partial class GameHud : Control
 
     private void BuildToolBar()
     {
-        var toolbar = new PanelContainer
-        {
-            MouseFilter = MouseFilterEnum.Stop
-        };
+        var toolbar = new PanelContainer { MouseFilter = MouseFilterEnum.Stop };
         toolbar.AnchorLeft = 0.02f;
-        toolbar.AnchorRight = 0.79f;
-        toolbar.AnchorTop = 0.90f;
-        toolbar.AnchorBottom = 0.98f;
-        toolbar.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.92f));
+        toolbar.AnchorRight = 0.98f;
+        toolbar.AnchorTop = 0.915f;
+        toolbar.AnchorBottom = 0.979f;
+        toolbar.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.94f));
         AddChild(toolbar);
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 10);
-        margin.AddThemeConstantOverride("margin_right", 10);
-        margin.AddThemeConstantOverride("margin_top", 8);
-        margin.AddThemeConstantOverride("margin_bottom", 8);
+        margin.AddThemeConstantOverride("margin_left", 9);
+        margin.AddThemeConstantOverride("margin_right", 9);
+        margin.AddThemeConstantOverride("margin_top", 6);
+        margin.AddThemeConstantOverride("margin_bottom", 6);
         toolbar.AddChild(margin);
 
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 7);
+        row.AddThemeConstantOverride("separation", 6);
         margin.AddChild(row);
 
-        row.AddChild(ToolButton("Эволюция", "biology/evolution.svg", ShowEvolution));
-        row.AddChild(ToolButton("Древо", "biology/lineage.svg", ShowLineage));
-        row.AddChild(ToolButton("Летопись", "simulation/history.svg", ShowChronicle));
-        row.AddChild(ToolButton("События", "simulation/event.svg", ShowEvents));
-        row.AddChild(ToolButton("Статистика", "settings/performance.svg", ShowWorldStats));
+        var gameTools = new HBoxContainer();
+        gameTools.AddThemeConstantOverride("separation", 5);
+        row.AddChild(gameTools);
+
+        gameTools.AddChild(ToolButton("Эволюция", "biology/evolution.svg", ShowEvolution));
+        gameTools.AddChild(ToolButton("Древо", "biology/lineage.svg", ShowLineage));
+        gameTools.AddChild(ToolButton("Летопись", "simulation/history.svg", ShowChronicle));
+        gameTools.AddChild(ToolButton("События", "simulation/event.svg", ShowEvents));
+        gameTools.AddChild(ToolButton("Статистика", "settings/performance.svg", ShowWorldStats));
+
+        row.AddChild(new ColorRect
+        {
+            Color = new Color(EvolitPalette.FogBlue, 0.16f),
+            CustomMinimumSize = new Vector2(1, 28),
+            MouseFilter = MouseFilterEnum.Ignore
+        });
 
         row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
-        row.AddChild(ToolButton("Сохранить", "actions/apply.svg", () => SaveRequested?.Invoke()));
-        row.AddChild(ToolButton("Настройки", "menu/settings.svg", () => SettingsRequested?.Invoke()));
-        row.AddChild(ToolButton("Пауза", "simulation/pause.svg", () => PauseRequested?.Invoke()));
+        var systemTools = new HBoxContainer();
+        systemTools.AddThemeConstantOverride("separation", 5);
+        row.AddChild(systemTools);
+
+        systemTools.AddChild(ToolButton("Сохранить", "actions/apply.svg", () => SaveRequested?.Invoke()));
+        systemTools.AddChild(ToolButton("Настройки", "menu/settings.svg", () => SettingsRequested?.Invoke()));
+        systemTools.AddChild(ToolButton("Меню", "actions/more.svg", () => PauseRequested?.Invoke()));
     }
 
     private void BuildSelectionPanel()
     {
-        _selectionPanel = new SelectionPanel
-        {
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        _selectionPanel.AnchorLeft = 0.795f;
+        _selectionPanel = new SelectionPanel { MouseFilter = MouseFilterEnum.Stop };
+        _selectionPanel.AnchorLeft = 0.79f;
         _selectionPanel.AnchorRight = 0.98f;
-        _selectionPanel.AnchorTop = 0.12f;
-        _selectionPanel.AnchorBottom = 0.88f;
+        _selectionPanel.AnchorTop = 0.105f;
+        _selectionPanel.AnchorBottom = 0.895f;
         AddChild(_selectionPanel);
     }
 
-    private Label AddStat(Container parent, string caption, string value)
+    private static Label AddStat(Container parent, string caption, string value)
     {
-        var box = new VBoxContainer();
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(64, 0) };
         box.AddThemeConstantOverride("separation", 0);
 
         var name = new Label { Text = caption };
-        name.AddThemeFontSizeOverride("font_size", 10);
-        name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        name.AddThemeFontSizeOverride("font_size", 9);
+        name.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.86f));
         box.AddChild(name);
 
         var data = new Label { Text = value };
-        data.AddThemeFontSizeOverride("font_size", 15);
+        data.AddThemeFontSizeOverride("font_size", 16);
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         box.AddChild(data);
 
@@ -190,11 +235,31 @@ public sealed partial class GameHud : Control
         return data;
     }
 
-    private static Button SpeedButton(string text, string tooltip, Action callback)
+    private static Label AddTechStat(Container parent, string caption)
+    {
+        var box = new VBoxContainer { CustomMinimumSize = new Vector2(43, 0) };
+        box.AddThemeConstantOverride("separation", 0);
+
+        var name = new Label { Text = caption, HorizontalAlignment = HorizontalAlignment.Center };
+        name.AddThemeFontSizeOverride("font_size", 8);
+        name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        box.AddChild(name);
+
+        var value = new Label { Text = "0", HorizontalAlignment = HorizontalAlignment.Center };
+        value.AddThemeFontSizeOverride("font_size", 13);
+        value.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
+        box.AddChild(value);
+
+        parent.AddChild(box);
+        return value;
+    }
+
+    private static Button SpeedButton(string text, string tooltip, Action callback, string? iconPath = null)
     {
         var button = new Button
         {
             Text = text,
+            Icon = iconPath is null ? null : EvolitIcons.Load(iconPath),
             TooltipText = tooltip,
             ToggleMode = true,
             CustomMinimumSize = new Vector2(48, 38)
@@ -210,7 +275,7 @@ public sealed partial class GameHud : Control
             Text = text,
             Icon = EvolitIcons.Load(icon),
             TooltipText = text,
-            CustomMinimumSize = new Vector2(0, 38)
+            CustomMinimumSize = new Vector2(0, 36)
         };
         button.Pressed += callback;
         return button;
@@ -233,6 +298,33 @@ public sealed partial class GameHud : Control
         if (_tick is not null) _tick.Text = stats.Tick.ToString();
     }
 
+    private void ToggleSimulationPause()
+    {
+        if (_speed is null)
+            return;
+
+        _speed.TogglePause();
+        RecordSpeedEvent(_speed.Paused ? "Игровое время приостановлено" : $"Игровое время продолжено на {_speed.Multiplier}×");
+    }
+
+    private void SetSimulationSpeed(int multiplier)
+    {
+        if (_speed is null)
+            return;
+
+        _speed.SetMultiplier(multiplier);
+        RecordSpeedEvent($"Скорость времени: {_speed.Multiplier}×");
+    }
+
+    private void RecordSpeedEvent(string title)
+    {
+        if (_world is null)
+            return;
+
+        var stats = _statsProvider?.GetSnapshot() ?? default;
+        _world.AddEvent(stats.Day, stats.GameTime, DemoEventCategory.System, title, "Изменено управление временем.", "simulation/timeline.svg");
+    }
+
     private void RefreshSpeedButtons()
     {
         if (_speed is null)
@@ -244,73 +336,76 @@ public sealed partial class GameHud : Control
         if (_speed4 is not null) _speed4.ButtonPressed = !_speed.Paused && _speed.Multiplier == 4;
     }
 
+    private void RefreshSelection()
+    {
+        if (_selectedEntity is not null)
+            _selectionPanel?.RefreshCurrent();
+    }
+
     private void ShowEvolution()
     {
-        ShowGenericTool(
-            "Эволюция",
-            "UI-точка входа готова. Биологическая система намеренно ещё не подключена.",
-            ["Система эволюции будет подключена после создания симуляции.", "Здесь позже появятся управляемые параметры наблюдения и вмешательства."]);
-    }
+        if (_world is null || _statsProvider is null)
+            return;
 
-    private void ShowChronicle()
-    {
-        ShowGenericTool(
-            "Летопись мира",
-            "Постоянная история важных событий мира.",
-            _world?.Chronicle ?? Array.Empty<string>());
-    }
-
-    private void ShowEvents()
-    {
-        ShowGenericTool(
-            "События",
-            "Недавние системные события текущей сессии.",
-            _world?.Events ?? Array.Empty<string>());
-    }
-
-    private void ShowWorldStats()
-    {
-        var stats = _statsProvider?.GetSnapshot() ?? default;
-        ShowGenericTool(
-            "Статистика мира",
-            "Пока реальные только FPS и системный playtime вне этой панели; simulation-показатели остаются нулевыми.",
-            [
-                $"День: {stats.Day}",
-                $"Игровое время: {stats.GameTime}",
-                $"Существ: {stats.CreatureCount}",
-                $"Растений: {stats.PlantCount}",
-                $"Видов: {stats.SpeciesCount}",
-                $"Подвидов: {stats.SubspeciesCount}",
-                $"FPS: {stats.Fps:0}",
-                $"TPS: {stats.Tps:0}",
-                $"Tick: {stats.Tick}",
-                $"Playtime: {FormatPlaytime(stats.PlaytimeSeconds)}"
-            ]);
-    }
-
-    private static string FormatPlaytime(double seconds)
-    {
-        var time = TimeSpan.FromSeconds(Math.Max(0, seconds));
-        return $"{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}";
-    }
-
-    private void ShowLineage()
-    {
         CloseActiveTool();
-
-        var panel = new LineagePanel();
+        var panel = new EvolutionPanel();
+        panel.Configure(_world, _statsProvider);
         panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         panel.CloseRequested += CloseActiveTool;
         AddChild(panel);
         _activeTool = panel;
     }
 
-    private void ShowGenericTool(string title, string subtitle, System.Collections.Generic.IReadOnlyList<string> lines)
+    private void ShowLineage()
     {
-        CloseActiveTool();
+        if (_world is null)
+            return;
 
-        var panel = new GameToolPanel();
-        panel.Configure(title, subtitle, lines);
+        CloseActiveTool();
+        var panel = new LineagePanel();
+        panel.Configure(_world);
+        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        panel.CloseRequested += CloseActiveTool;
+        AddChild(panel);
+        _activeTool = panel;
+    }
+
+    private void ShowChronicle()
+    {
+        if (_world is null)
+            return;
+
+        CloseActiveTool();
+        var panel = new ChroniclePanel();
+        panel.Configure(_world);
+        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        panel.CloseRequested += CloseActiveTool;
+        AddChild(panel);
+        _activeTool = panel;
+    }
+
+    private void ShowEvents()
+    {
+        if (_world is null)
+            return;
+
+        CloseActiveTool();
+        var panel = new EventsPanel();
+        panel.Configure(_world);
+        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        panel.CloseRequested += CloseActiveTool;
+        AddChild(panel);
+        _activeTool = panel;
+    }
+
+    private void ShowWorldStats()
+    {
+        if (_world is null || _statsProvider is null)
+            return;
+
+        CloseActiveTool();
+        var panel = new WorldStatisticsPanel();
+        panel.Configure(_world, _statsProvider);
         panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         panel.CloseRequested += CloseActiveTool;
         AddChild(panel);

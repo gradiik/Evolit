@@ -5,65 +5,92 @@ namespace Evolit.UI.Game;
 
 public sealed partial class SelectionPanel : PanelContainer
 {
+    private DemoEntity? _entity;
     private Label? _title;
     private Label? _kind;
     private VBoxContainer? _details;
     private PopulationGraph? _graph;
-    private Label? _genetics;
 
     public override void _Ready()
     {
         Visible = false;
-        AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.94f));
+        AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 18);
-        margin.AddThemeConstantOverride("margin_right", 18);
-        margin.AddThemeConstantOverride("margin_top", 16);
-        margin.AddThemeConstantOverride("margin_bottom", 16);
+        margin.AddThemeConstantOverride("margin_left", 16);
+        margin.AddThemeConstantOverride("margin_right", 16);
+        margin.AddThemeConstantOverride("margin_top", 14);
+        margin.AddThemeConstantOverride("margin_bottom", 14);
         AddChild(margin);
 
         var root = new VBoxContainer();
+        root.AddThemeConstantOverride("separation", 8);
         margin.AddChild(root);
 
-        _kind = new Label { Text = "ОБЪЕКТ" };
-        _kind.AddThemeFontSizeOverride("font_size", 11);
+        var header = new HBoxContainer();
+        root.AddChild(header);
+
+        _kind = new Label { Text = "ОБЪЕКТ", SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _kind.AddThemeFontSizeOverride("font_size", 10);
         _kind.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
-        root.AddChild(_kind);
+        header.AddChild(_kind);
+
+        var liveBadge = new Label { Text = "LIVE" };
+        liveBadge.AddThemeFontSizeOverride("font_size", 9);
+        liveBadge.AddThemeColorOverride("font_color", EvolitPalette.YoungLeaf);
+        header.AddChild(liveBadge);
 
         _title = new Label();
-        _title.AddThemeFontSizeOverride("font_size", 22);
+        _title.AddThemeFontSizeOverride("font_size", 21);
         root.AddChild(_title);
 
         root.AddChild(new HSeparator());
 
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        root.AddChild(scroll);
+
+        var content = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        content.AddThemeConstantOverride("separation", 9);
+        scroll.AddChild(content);
+
+        content.AddChild(SectionTitle("Основное"));
+
         _details = new VBoxContainer();
-        _details.AddThemeConstantOverride("separation", 7);
-        root.AddChild(_details);
+        _details.AddThemeConstantOverride("separation", 5);
+        content.AddChild(_details);
 
-        var graphTitle = new Label { Text = "Популяция" };
-        graphTitle.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
-        root.AddChild(graphTitle);
+        content.AddChild(SectionTitle("Популяция"));
 
-        _graph = new PopulationGraph();
-        root.AddChild(_graph);
+        _graph = new PopulationGraph { CustomMinimumSize = new Vector2(0, 112) };
+        content.AddChild(_graph);
 
-        var geneticsTitle = new Label { Text = "Генетика" };
-        geneticsTitle.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
-        root.AddChild(geneticsTitle);
+        content.AddChild(SectionTitle("Генетика"));
 
-        _genetics = new Label
+        var genetics = new PanelContainer();
+        genetics.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
+        content.AddChild(genetics);
+
+        var geneticsMargin = new MarginContainer();
+        geneticsMargin.AddThemeConstantOverride("margin_left", 10);
+        geneticsMargin.AddThemeConstantOverride("margin_right", 10);
+        geneticsMargin.AddThemeConstantOverride("margin_top", 8);
+        geneticsMargin.AddThemeConstantOverride("margin_bottom", 8);
+        genetics.AddChild(geneticsMargin);
+
+        var geneticsText = new Label
         {
-            Text = "Генетические данные появятся после подключения симуляции.",
+            Text = "Геном появится после подключения настоящей симуляции. Сейчас отображается только связанный demo-вид.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        _genetics.AddThemeFontSizeOverride("font_size", 12);
-        _genetics.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        root.AddChild(_genetics);
+        geneticsText.AddThemeFontSizeOverride("font_size", 11);
+        geneticsText.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        geneticsMargin.AddChild(geneticsText);
     }
 
     public void SetEntity(DemoEntity? entity)
     {
+        _entity = entity;
+
         if (entity is null)
         {
             if (!Visible)
@@ -79,11 +106,25 @@ public sealed partial class SelectionPanel : PanelContainer
             return;
         }
 
-        if (_title is null || _kind is null || _details is null || _graph is null)
+        RefreshCurrent();
+
+        if (Visible)
             return;
 
+        Visible = true;
+        Modulate = new Color(1, 1, 1, 0);
+        CreateTween().TweenProperty(this, "modulate", Colors.White, 0.16);
+    }
+
+    public void RefreshCurrent()
+    {
+        if (_entity is null || _title is null || _kind is null || _details is null || _graph is null)
+            return;
+
+        var entity = _entity;
         _title.Text = entity.Name;
         _kind.Text = entity.Kind == DemoEntityKind.Creature ? "СУЩЕСТВО" : "РАСТЕНИЕ";
+        _kind.AddThemeColorOverride("font_color", entity.Kind == DemoEntityKind.Creature ? EvolitPalette.SoftAqua : EvolitPalette.YoungLeaf);
 
         foreach (var child in _details.GetChildren())
         {
@@ -91,6 +132,7 @@ public sealed partial class SelectionPanel : PanelContainer
             child.QueueFree();
         }
 
+        AddBadgeRow(entity);
         AddDetail("ID", entity.Id);
         AddDetail("Вид", entity.Species);
         AddDetail("Подвид", entity.Subspecies);
@@ -99,24 +141,65 @@ public sealed partial class SelectionPanel : PanelContainer
 
         if (entity.Kind == DemoEntityKind.Creature)
         {
-            AddProgress("Здоровье", entity.Health);
-            AddProgress("Энергия", entity.Energy);
+            AddProgress("Здоровье", entity.Health, EvolitPalette.YoungLeaf);
+            AddProgress("Энергия", entity.Energy, EvolitPalette.WarmSand);
             AddDetail("Скорость", $"{entity.Speed:0.0}");
             AddDetail("Питание", entity.Diet);
         }
         else
         {
-            AddProgress("Состояние", entity.Health);
-            AddDetail("Тип", entity.PlantType);
+            AddProgress("Состояние", entity.Health, EvolitPalette.YoungLeaf);
+            AddDetail("Тип растения", entity.PlantType);
             AddDetail("Статус", entity.State);
         }
 
-        AddDetail("Популяция вида", entity.Population.ToString());
+        AddDetail("Популяция", entity.Population.ToString());
         _graph.SetValues(entity.PopulationHistory);
+    }
 
-        Visible = true;
-        Modulate = new Color(1, 1, 1, 0);
-        CreateTween().TweenProperty(this, "modulate", Colors.White, 0.16);
+    private void AddBadgeRow(DemoEntity entity)
+    {
+        if (_details is null)
+            return;
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 6);
+
+        row.AddChild(Badge(entity.Kind == DemoEntityKind.Creature ? "ПОДВИЖНАЯ ФОРМА" : "РАСТИТЕЛЬНАЯ ФОРМА",
+            entity.Kind == DemoEntityKind.Creature ? EvolitPalette.SoftAqua : EvolitPalette.YoungLeaf));
+        row.AddChild(Badge("DEMO", EvolitPalette.EvolutionCyan));
+        _details.AddChild(row);
+    }
+
+    private static Control Badge(string text, Color color)
+    {
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(color, 0.10f),
+            BorderColor = new Color(color, 0.42f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8
+        });
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 7);
+        margin.AddThemeConstantOverride("margin_right", 7);
+        margin.AddThemeConstantOverride("margin_top", 3);
+        margin.AddThemeConstantOverride("margin_bottom", 3);
+        panel.AddChild(margin);
+
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeColorOverride("font_color", color);
+        margin.AddChild(label);
+        return panel;
     }
 
     private void AddDetail(string name, string value)
@@ -124,31 +207,39 @@ public sealed partial class SelectionPanel : PanelContainer
         if (_details is null)
             return;
 
-        var row = new HBoxContainer();
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 27) };
         var label = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        label.AddThemeFontSizeOverride("font_size", 12);
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(label);
 
         var data = new Label { Text = value };
+        data.AddThemeFontSizeOverride("font_size", 12);
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         row.AddChild(data);
         _details.AddChild(row);
     }
 
-    private void AddProgress(string name, float value)
+    private void AddProgress(string name, float value, Color accent)
     {
         if (_details is null)
             return;
 
         var block = new VBoxContainer();
+        block.AddThemeConstantOverride("separation", 3);
+
         var row = new HBoxContainer();
+        block.AddChild(row);
+
         var label = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        label.AddThemeFontSizeOverride("font_size", 12);
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(label);
 
         var percent = new Label { Text = $"{value * 100f:0}%" };
+        percent.AddThemeFontSizeOverride("font_size", 12);
+        percent.AddThemeColorOverride("font_color", accent);
         row.AddChild(percent);
-        block.AddChild(row);
 
         var bar = new ProgressBar
         {
@@ -160,5 +251,13 @@ public sealed partial class SelectionPanel : PanelContainer
         };
         block.AddChild(bar);
         _details.AddChild(block);
+    }
+
+    private static Label SectionTitle(string text)
+    {
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 13);
+        label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
+        return label;
     }
 }

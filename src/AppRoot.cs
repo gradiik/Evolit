@@ -1,6 +1,6 @@
 using System;
-using System.Linq;
 using Evolit.Flow;
+using Evolit.Game;
 using Evolit.Input;
 using Evolit.Save;
 using Evolit.Session;
@@ -20,7 +20,12 @@ public sealed partial class AppRoot : Control
     private ToastHost? _toasts;
     private EvolitConfirmDialog? _confirm;
     private DebugOverlay? _debug;
+
     private GameSession? _session;
+    private SimulationSpeedState? _simulationSpeed;
+    private GameTimeController? _gameTime;
+    private DemoWorldDataProvider? _demoWorld;
+
     private GameFlowState _returnFromSettings = GameFlowState.MainMenu;
     private GameFlowState _returnFromSaves = GameFlowState.MainMenu;
     private int _cachedSaveCount;
@@ -127,6 +132,7 @@ public sealed partial class AppRoot : Control
             _toasts?.ShowToast("Первый autosave не создан, manual save сохранён.", ToastKind.Warning);
 
         _session = session;
+        PrepareGameRuntime();
         RefreshSaveCount();
         ShowLoading("Создание сессии", ShowGame);
     }
@@ -181,6 +187,7 @@ public sealed partial class AppRoot : Control
             if (result.Success)
             {
                 RefreshSaveCount();
+                RecordSystemEvent("Сохранение перезаписано", "Обновлена ручная точка сохранения.", "actions/apply.svg");
                 _toasts?.ShowToast("Сохранение перезаписано", ToastKind.Success);
                 screen.Refresh();
             }
@@ -210,6 +217,7 @@ public sealed partial class AppRoot : Control
         }
 
         _session = GameSession.FromSave(document);
+        PrepareGameRuntime();
         RefreshSaveCount();
 
         if (recovered)
@@ -238,8 +246,14 @@ public sealed partial class AppRoot : Control
             return;
         }
 
+        if (_simulationSpeed is null || _gameTime is null || _demoWorld is null)
+            PrepareGameRuntime();
+
+        if (_simulationSpeed is null || _gameTime is null || _demoWorld is null)
+            return;
+
         var game = new GameScreen();
-        game.Configure(_session, _settings.Load());
+        game.Configure(_session, _settings.Load(), _simulationSpeed, _gameTime, _demoWorld);
         game.SaveRequested += SaveCurrentManual;
         game.SettingsRequested += () => ShowSettings(GameFlowState.Game);
         game.PauseRequested += ShowPause;
@@ -270,6 +284,7 @@ public sealed partial class AppRoot : Control
         if (result.Success)
         {
             RefreshSaveCount();
+            RecordSystemEvent("Игра сохранена", "Создана или обновлена ручная точка сохранения.", "actions/apply.svg");
             _toasts?.ShowToast("Игра сохранена", ToastKind.Success);
         }
         else
@@ -309,6 +324,7 @@ public sealed partial class AppRoot : Control
             {
                 TryAutosaveCurrent();
                 _session = null;
+                ClearGameRuntime();
                 ShowMainMenu();
             });
     }
@@ -332,10 +348,43 @@ public sealed partial class AppRoot : Control
             return;
 
         var result = _saves.CreateAutosave(_session);
-        if (!result.Success)
+        if (result.Success)
+            RecordSystemEvent("Автосохранение создано", "Текущее состояние сессии записано в кольцевой autosave.", "simulation/history.svg");
+        else
             _toasts?.ShowToast($"Autosave не создан: {result.Error}", ToastKind.Error);
 
         RefreshSaveCount();
+    }
+
+    private void PrepareGameRuntime()
+    {
+        if (_session is null)
+            return;
+
+        _simulationSpeed = new SimulationSpeedState();
+        _gameTime = new GameTimeController(_simulationSpeed);
+        _demoWorld = new DemoWorldDataProvider(_session);
+    }
+
+    private void ClearGameRuntime()
+    {
+        _simulationSpeed = null;
+        _gameTime = null;
+        _demoWorld = null;
+    }
+
+    private void RecordSystemEvent(string title, string description, string icon)
+    {
+        if (_demoWorld is null || _gameTime is null)
+            return;
+
+        _demoWorld.AddEvent(
+            _gameTime.Day,
+            _gameTime.FormattedTime,
+            DemoEventCategory.System,
+            title,
+            description,
+            icon);
     }
 
     private void SwitchScreen(Control screen, GameFlowState state)
@@ -367,11 +416,14 @@ public sealed partial class AppRoot : Control
 
         var session = _session;
         var playtime = session is null ? "—" : FormatPlaytime(session.PlaytimeSeconds);
+        var worldTime = _gameTime is null ? "—" : $"День {_gameTime.Day} · {_gameTime.FormattedTime}";
 
         _debug.SetData(
             $"EVOLIT DEBUG\n" +
             $"FPS: {Engine.GetFramesPerSecond():0}\n" +
             $"State: {_flow.Current}\n" +
+            $"World time: {worldTime}\n" +
+            $"TPS: {(_gameTime?.Tps ?? 0):0} · Tick: {_gameTime?.TickCount ?? 0}\n" +
             $"Save ID: {session?.SaveId ?? "—"}\n" +
             $"World: {session?.WorldName ?? "—"}\n" +
             $"Seed: {session?.Seed ?? "—"}\n" +

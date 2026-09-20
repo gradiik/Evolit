@@ -30,7 +30,17 @@ public sealed partial class DemoWorldView : Control
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.None;
         Resized += QueueRedraw;
+
+        if (_world is not null)
+            _world.DataChanged += QueueRedraw;
+
         QueueRedraw();
+    }
+
+    public override void _ExitTree()
+    {
+        if (_world is not null)
+            _world.DataChanged -= QueueRedraw;
     }
 
     public override void _Process(double delta)
@@ -83,14 +93,13 @@ public sealed partial class DemoWorldView : Control
             return;
 
         var worldPoint = ScreenToWorld(mouse.Position);
-        var hit = HitTest(worldPoint);
-        SetSelected(hit);
+        SetSelected(HitTest(worldPoint));
         AcceptEvent();
     }
 
     public override void _Draw()
     {
-        DrawRect(new Rect2(Vector2.Zero, Size), new Color(0.018f, 0.060f, 0.070f), true);
+        DrawRect(new Rect2(Vector2.Zero, Size), new Color(0.014f, 0.052f, 0.060f), true);
 
         var landTopLeft = WorldToScreen(LandBounds.Position);
         var landSize = LandBounds.Size * _zoom;
@@ -99,16 +108,34 @@ public sealed partial class DemoWorldView : Control
         DrawRect(landScreen, new Color(0.235f, 0.355f, 0.205f), true);
         DrawRect(landScreen, new Color(EvolitPalette.YoungLeaf, 0.20f), false, 2f);
 
-        // Cheap, fixed terrain variation. This is deliberately not a terrain generator.
-        DrawCircle(WorldToScreen(new Vector2(-390, -190)), 180f * _zoom, new Color(0.29f, 0.41f, 0.24f, 0.28f));
-        DrawCircle(WorldToScreen(new Vector2(360, 210)), 230f * _zoom, new Color(0.18f, 0.31f, 0.19f, 0.22f));
-        DrawCircle(WorldToScreen(new Vector2(30, 120)), 150f * _zoom, new Color(0.38f, 0.46f, 0.24f, 0.13f));
+        DrawOrganicPatch(new Vector2(-390, -190), 205f, 0.22f, new Color(0.29f, 0.41f, 0.24f, 0.24f));
+        DrawOrganicPatch(new Vector2(360, 210), 250f, 1.90f, new Color(0.18f, 0.31f, 0.19f, 0.19f));
+        DrawOrganicPatch(new Vector2(30, 120), 165f, 3.40f, new Color(0.38f, 0.46f, 0.24f, 0.11f));
+        DrawOrganicPatch(new Vector2(420, -240), 120f, 5.10f, new Color(0.31f, 0.39f, 0.22f, 0.10f));
 
         if (_world is null)
             return;
 
         foreach (var entity in _world.Entities)
             DrawEntity(entity);
+    }
+
+    private void DrawOrganicPatch(Vector2 center, float radius, float phase, Color color)
+    {
+        const int pointCount = 22;
+        var points = new Vector2[pointCount];
+
+        for (var i = 0; i < pointCount; i++)
+        {
+            var angle = Mathf.Tau * i / pointCount;
+            var wobble = 0.82f
+                + 0.10f * Mathf.Sin(angle * 3f + phase)
+                + 0.06f * Mathf.Sin(angle * 5f - phase * 0.7f);
+            var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            points[i] = WorldToScreen(center + direction * radius * wobble);
+        }
+
+        DrawColoredPolygon(points, color);
     }
 
     private void DrawEntity(DemoEntity entity)
@@ -118,30 +145,34 @@ public sealed partial class DemoWorldView : Control
 
         if (selected)
         {
-            DrawCircle(center, 27f * _zoom, new Color(EvolitPalette.EvolutionCyan, 0.10f));
-            DrawArc(center, 24f * _zoom, 0, Mathf.Tau, 48, EvolitPalette.EvolutionCyan, 2f, true);
+            DrawCircle(center, 42f * _zoom, new Color(EvolitPalette.EvolutionCyan, 0.11f));
+            DrawArc(center, 35f * _zoom, 0, Mathf.Tau, 56, EvolitPalette.EvolutionCyan, 2.5f, true);
+            DrawCircle(center, 29f * _zoom, new Color(EvolitPalette.EvolutionCyan, 0.035f));
         }
 
         if (entity.Kind == DemoEntityKind.Creature)
         {
             var body = new[]
             {
-                center + new Vector2(-18, 0) * _zoom,
-                center + new Vector2(-8, -11) * _zoom,
-                center + new Vector2(12, -9) * _zoom,
-                center + new Vector2(21, 0) * _zoom,
-                center + new Vector2(12, 9) * _zoom,
-                center + new Vector2(-8, 11) * _zoom
+                center + new Vector2(-28, 0) * _zoom,
+                center + new Vector2(-13, -16) * _zoom,
+                center + new Vector2(16, -13) * _zoom,
+                center + new Vector2(31, 0) * _zoom,
+                center + new Vector2(16, 13) * _zoom,
+                center + new Vector2(-13, 16) * _zoom
             };
             DrawColoredPolygon(body, new Color(0.48f, 0.74f, 0.67f));
-            DrawCircle(center + new Vector2(12, -2) * _zoom, Math.Max(1.8f, 2.5f * _zoom), EvolitPalette.DeepNavyTeal);
+            DrawLine(center + new Vector2(-24, -4) * _zoom, center + new Vector2(-35, -10) * _zoom, new Color(0.40f, 0.64f, 0.59f), Math.Max(2f, 3f * _zoom), true);
+            DrawLine(center + new Vector2(-24, 4) * _zoom, center + new Vector2(-35, 10) * _zoom, new Color(0.40f, 0.64f, 0.59f), Math.Max(2f, 3f * _zoom), true);
+            DrawCircle(center + new Vector2(17, -3) * _zoom, Math.Max(2.2f, 3.2f * _zoom), EvolitPalette.DeepNavyTeal);
         }
         else
         {
             var stemColor = new Color(0.32f, 0.53f, 0.28f);
-            DrawLine(center + new Vector2(0, 15) * _zoom, center + new Vector2(0, -12) * _zoom, stemColor, Math.Max(2f, 3f * _zoom), true);
-            DrawCircle(center + new Vector2(-7, -8) * _zoom, 8f * _zoom, new Color(0.49f, 0.65f, 0.34f));
-            DrawCircle(center + new Vector2(7, -13) * _zoom, 7f * _zoom, new Color(0.40f, 0.59f, 0.30f));
+            DrawLine(center + new Vector2(0, 23) * _zoom, center + new Vector2(0, -18) * _zoom, stemColor, Math.Max(2.5f, 4f * _zoom), true);
+            DrawCircle(center + new Vector2(-12, -10) * _zoom, 12f * _zoom, new Color(0.53f, 0.67f, 0.32f));
+            DrawCircle(center + new Vector2(12, -17) * _zoom, 11f * _zoom, new Color(0.43f, 0.61f, 0.29f));
+            DrawCircle(center + new Vector2(3, -25) * _zoom, 8f * _zoom, new Color(0.59f, 0.70f, 0.36f));
         }
     }
 
@@ -156,7 +187,7 @@ public sealed partial class DemoWorldView : Control
         foreach (var entity in _world.Entities)
         {
             var distance = worldPoint.DistanceTo(entity.WorldPosition);
-            if (distance <= 32f && distance < bestDistance)
+            if (distance <= 48f && distance < bestDistance)
             {
                 best = entity;
                 bestDistance = distance;

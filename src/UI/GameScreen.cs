@@ -16,37 +16,53 @@ public sealed partial class GameScreen : Control
     private GameSession? _session;
     private AppSettings _settings = AppSettings.Default();
     private SimulationSpeedState? _speed;
+    private GameTimeController? _time;
+    private DemoWorldDataProvider? _world;
+    private DemoSimulationController? _demoSimulation;
     private GameHud? _hud;
 
-    public void Configure(GameSession session, AppSettings settings)
+    public void Configure(
+        GameSession session,
+        AppSettings settings,
+        SimulationSpeedState speed,
+        GameTimeController time,
+        DemoWorldDataProvider world)
     {
         _session = session;
         _settings = settings.Clone();
+        _speed = speed;
+        _time = time;
+        _world = world;
     }
 
     public override void _Ready()
     {
-        if (_session is null)
+        if (_session is null || _speed is null || _time is null || _world is null)
             return;
 
-        var demoWorld = new DemoWorldDataProvider(_session);
-        _speed = new SimulationSpeedState();
-        var stats = new DemoSimulationStatsProvider(_session, demoWorld);
+        _demoSimulation = new DemoSimulationController(_world, _time);
+        var stats = new DemoSimulationStatsProvider(_session, _world, _time);
 
         var worldView = new DemoWorldView();
         worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        worldView.Configure(demoWorld, _settings.CameraSpeed, _settings.SmoothZoom);
+        worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom);
         AddChild(worldView);
 
         _hud = new GameHud();
         _hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _hud.Configure(stats, demoWorld, _speed);
+        _hud.Configure(stats, _world, _speed);
         _hud.SaveRequested += () => SaveRequested?.Invoke();
         _hud.SettingsRequested += () => SettingsRequested?.Invoke();
         _hud.PauseRequested += () => PauseRequested?.Invoke();
         AddChild(_hud);
 
         worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+    }
+
+    public override void _Process(double delta)
+    {
+        _time?.Advance(delta);
+        _demoSimulation?.Tick();
     }
 
     public override void _UnhandledInput(InputEvent @event)

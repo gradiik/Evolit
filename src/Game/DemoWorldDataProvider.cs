@@ -20,35 +20,48 @@ public sealed class DemoEntity
     public string Species { get; init; } = string.Empty;
     public string Subspecies { get; init; } = string.Empty;
     public Vector2 WorldPosition { get; init; }
-    public int AgeDays { get; init; }
-    public float Health { get; init; }
-    public float Energy { get; init; }
+    public int AgeDays { get; set; }
+    public float Health { get; set; }
+    public float Energy { get; set; }
     public float Size { get; init; }
     public float Speed { get; init; }
     public string Diet { get; init; } = string.Empty;
-    public string State { get; init; } = string.Empty;
+    public string State { get; set; } = string.Empty;
     public string PlantType { get; init; } = string.Empty;
-    public int Population { get; init; }
-    public IReadOnlyList<float> PopulationHistory { get; init; } = Array.Empty<float>();
+    public int Population { get; set; }
+    public List<float> PopulationHistory { get; init; } = new();
 }
 
 public sealed class DemoWorldDataProvider
 {
     private readonly List<DemoEntity> _entities;
-    private readonly List<string> _chronicle = new();
-    private readonly List<string> _events = new();
+    private readonly List<DemoSpeciesRecord> _species;
+    private readonly List<DemoChronicleEntry> _chronicle;
+    private readonly List<DemoEventEntry> _events;
+    private readonly List<float> _creaturePopulationHistory = [22, 27, 31, 35, 38, 42, 46, 49, 52, 54];
+    private readonly List<float> _plantPopulationHistory = [35, 39, 44, 48, 53, 57, 61, 65, 68, 71];
+    private readonly List<float> _speciesHistory = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2];
+    private readonly List<float> _subspeciesHistory = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4];
+
+    public event Action? DataChanged;
+
+    public int LastSimulatedDay { get; private set; } = 1;
 
     public DemoWorldDataProvider(GameSession session)
     {
+        _species = SpeciesDemoData.CreateSpecies();
+        _chronicle = SpeciesDemoData.CreateChronicle();
+        _events = SpeciesDemoData.CreateEvents(session.WorldName);
+
         _entities =
         [
             new DemoEntity
             {
                 Id = "demo-creature-01",
                 Kind = DemoEntityKind.Creature,
-                Name = "Тестовое существо",
-                Species = "Forma prima",
-                Subspecies = "Aqua minor",
+                Name = "Motilis Minor",
+                Species = "Motilis",
+                Subspecies = "Motilis Minor",
                 WorldPosition = new Vector2(-170, 40),
                 AgeDays = 3,
                 Health = 0.86f,
@@ -56,16 +69,17 @@ public sealed class DemoWorldDataProvider
                 Size = 1.2f,
                 Speed = 2.4f,
                 Diet = "Всеядный",
-                Population = 24,
-                PopulationHistory = [9, 11, 12, 15, 14, 18, 21, 20, 23, 24]
+                State = "Стабильное",
+                Population = 54,
+                PopulationHistory = [17, 21, 25, 28, 32, 36, 41, 46, 50, 54]
             },
             new DemoEntity
             {
                 Id = "demo-plant-01",
                 Kind = DemoEntityKind.Plant,
-                Name = "Тестовое растение",
-                Species = "Viridia prima",
-                Subspecies = "Moss form",
+                Name = "Viridia Minor",
+                Species = "Viridia",
+                Subspecies = "Viridia Minor",
                 WorldPosition = new Vector2(210, -90),
                 AgeDays = 8,
                 Health = 0.94f,
@@ -74,22 +88,123 @@ public sealed class DemoWorldDataProvider
                 Speed = 0,
                 State = "Стабильное",
                 PlantType = "Наземное",
-                Population = 61,
-                PopulationHistory = [30, 34, 39, 37, 43, 49, 52, 55, 58, 61]
+                Population = 71,
+                PopulationHistory = [25, 31, 36, 40, 48, 53, 59, 64, 68, 71]
             }
         ];
-
-        _chronicle.Add("День 0 — Мир создан");
-        _events.Add($"Сессия «{session.WorldName}» готова");
-        _events.Add("Демо-объекты загружены только для проверки интерфейса");
     }
 
     public IReadOnlyList<DemoEntity> Entities => _entities;
-    public IReadOnlyList<string> Chronicle => _chronicle;
-    public IReadOnlyList<string> Events => _events;
+    public IReadOnlyList<DemoSpeciesRecord> Species => _species;
+    public IReadOnlyList<DemoChronicleEntry> Chronicle => _chronicle;
+    public IReadOnlyList<DemoEventEntry> Events => _events;
 
-    public int CreatureCount => _entities.Count(entity => entity.Kind == DemoEntityKind.Creature);
-    public int PlantCount => _entities.Count(entity => entity.Kind == DemoEntityKind.Plant);
-    public int SpeciesCount => _entities.Select(entity => entity.Species).Distinct().Count();
-    public int SubspeciesCount => _entities.Select(entity => entity.Subspecies).Distinct().Count();
+    public IReadOnlyList<float> CreaturePopulationHistory => _creaturePopulationHistory;
+    public IReadOnlyList<float> PlantPopulationHistory => _plantPopulationHistory;
+    public IReadOnlyList<float> SpeciesHistory => _speciesHistory;
+    public IReadOnlyList<float> SubspeciesHistory => _subspeciesHistory;
+
+    public int CreatureCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Creature).Sum(entity => entity.Population);
+    public int PlantCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Plant).Sum(entity => entity.Population);
+    public int SpeciesCount => _species.Count(species => species.ParentId == "origin" && species.Status == DemoSpeciesStatus.Active);
+    public int SubspeciesCount => _species.Count(species => species.ParentId != "origin" && species.ParentId.Length > 0 && species.Status == DemoSpeciesStatus.Active);
+
+    public double AverageAdaptability => _species
+        .Where(species => species.Kind != DemoSpeciesKind.Origin && species.Status == DemoSpeciesStatus.Active)
+        .Select(species => (double)species.Adaptability)
+        .DefaultIfEmpty(0)
+        .Average();
+
+    public void AdvanceDemoDay(int day)
+    {
+        if (day <= LastSimulatedDay)
+            return;
+
+        for (var current = LastSimulatedDay + 1; current <= day; current++)
+            AdvanceSingleDay(current);
+
+        LastSimulatedDay = day;
+        DataChanged?.Invoke();
+    }
+
+    public void AddEvent(int day, string time, DemoEventCategory category, string title, string description, string iconPath)
+    {
+        _events.Insert(0, new DemoEventEntry
+        {
+            Day = day,
+            Time = time,
+            Category = category,
+            Title = title,
+            Description = description,
+            IconPath = iconPath
+        });
+
+        if (_events.Count > 40)
+            _events.RemoveRange(40, _events.Count - 40);
+
+        DataChanged?.Invoke();
+    }
+
+    private void AdvanceSingleDay(int day)
+    {
+        var creature = _entities.First(entity => entity.Kind == DemoEntityKind.Creature);
+        var plant = _entities.First(entity => entity.Kind == DemoEntityKind.Plant);
+
+        var creatureDelta = 1 + day % 3;
+        var plantDelta = 2 + (day + 1) % 3;
+
+        creature.Population = Math.Max(1, creature.Population + creatureDelta);
+        plant.Population = Math.Max(1, plant.Population + plantDelta);
+        creature.AgeDays++;
+        plant.AgeDays++;
+
+        creature.Health = Mathf.Clamp(creature.Health + (day % 2 == 0 ? 0.015f : -0.008f), 0.55f, 0.98f);
+        creature.Energy = Mathf.Clamp(creature.Energy + (day % 3 == 0 ? -0.025f : 0.018f), 0.40f, 0.95f);
+        plant.Health = Mathf.Clamp(plant.Health + (day % 4 == 0 ? -0.012f : 0.010f), 0.65f, 0.99f);
+
+        Append(creature.PopulationHistory, creature.Population);
+        Append(plant.PopulationHistory, plant.Population);
+        Append(_creaturePopulationHistory, CreatureCount);
+        Append(_plantPopulationHistory, PlantCount);
+        Append(_speciesHistory, SpeciesCount);
+        Append(_subspeciesHistory, SubspeciesCount);
+
+        var motilisMinor = _species.First(species => species.Id == "motilis_minor");
+        var viridiaMinor = _species.First(species => species.Id == "viridia_minor");
+        motilisMinor.Population = creature.Population;
+        viridiaMinor.Population = plant.Population;
+        motilisMinor.Adaptability = Mathf.Clamp(motilisMinor.Adaptability + 0.004f, 0.1f, 0.98f);
+        viridiaMinor.Adaptability = Mathf.Clamp(viridiaMinor.Adaptability + 0.003f, 0.1f, 0.98f);
+        Append(motilisMinor.PopulationHistory, motilisMinor.Population);
+        Append(viridiaMinor.PopulationHistory, viridiaMinor.Population);
+
+        if (day > 4)
+        {
+            _chronicle.Add(new DemoChronicleEntry
+            {
+                Day = day,
+                Category = DemoEventCategory.World,
+                Title = "Наблюдение обновлено",
+                Description = "Демо-runtime добавил новую точку статистики без запуска биологической симуляции.",
+                IconPath = "simulation/history.svg"
+            });
+        }
+
+        _events.Insert(0, new DemoEventEntry
+        {
+            Day = day,
+            Time = "00:00",
+            Category = DemoEventCategory.World,
+            Title = $"Начался день {day}",
+            Description = "Демо-популяции получили новую точку истории.",
+            IconPath = "simulation/event.svg"
+        });
+    }
+
+    private static void Append(List<float> values, float value)
+    {
+        values.Add(value);
+        while (values.Count > 24)
+            values.RemoveAt(0);
+    }
 }
