@@ -46,7 +46,7 @@ public sealed partial class DemoWorldView : Control
 
         if (_smoothZoom)
         {
-            var next = Mathf.Lerp(_zoom, _targetZoom, 1f - Mathf.Exp(-10f * (float)delta));
+            var next = Mathf.Lerp(_zoom, _targetZoom, 1f - MathF.Exp(-10f * (float)delta));
             if (Math.Abs(next - _zoom) > 0.0005f)
             {
                 _zoom = next;

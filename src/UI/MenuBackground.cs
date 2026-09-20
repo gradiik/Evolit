@@ -31,7 +31,7 @@ public sealed partial class MenuBackground : Control
                 mouse.Y / viewportSize.Y - 0.5f);
 
             _parallaxTarget = normalized * 18f * MotionScale;
-            _parallax = _parallax.Lerp(_parallaxTarget, 1f - Mathf.Exp(-3.2f * (float)delta));
+            _parallax = _parallax.Lerp(_parallaxTarget, 1f - MathF.Exp(-3.2f * (float)delta));
         }
 
         QueueRedraw();

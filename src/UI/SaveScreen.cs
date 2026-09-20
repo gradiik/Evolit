@@ -182,7 +182,6 @@ public sealed partial class SaveScreen : Control
             var error = new Label
             {
                 Text = $"   ·   {slot.Error}",
-                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
                 SizeFlagsHorizontal = SizeFlags.ExpandFill
             };
             error.AddThemeFontSizeOverride("font_size", 12);
