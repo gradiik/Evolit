@@ -149,7 +149,7 @@ public sealed partial class AppRoot : Control
         _returnFromSaves = returnState;
 
         var screen = new SaveScreen();
-        screen.Configure(_saves, _session, SaveScreenMode.Load);
+        screen.Configure(_saves, _session, returnState == GameFlowState.MainMenu ? SaveScreenMode.Manage : SaveScreenMode.Load);
         screen.BackRequested += ReturnFromSaves;
         screen.LoadRequested += LoadSlot;
         screen.DeleteRequested += slot =>
