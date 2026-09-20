@@ -169,7 +169,6 @@ public sealed partial class MainMenu : Control
         };
 
         button.Icon = EvolitIcons.Load(iconPath);
-        button.IconMaxWidth = 24;
 
         button.MouseEntered += () =>
         {

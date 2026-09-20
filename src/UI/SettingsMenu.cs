@@ -205,7 +205,6 @@ public sealed partial class SettingsMenu : Control
     private static void SetIcon(Button button, string relativePath, int size = 20)
     {
         button.Icon = EvolitIcons.Load(relativePath);
-        button.IconMaxWidth = size;
     }
 
     private void ShowCategory(string category)
