@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Evolit.Input;
+using Evolit.Settings;
 using Godot;
 
 namespace Evolit.UI;
@@ -7,10 +9,10 @@ namespace Evolit.UI;
 public sealed partial class SettingsMenu : Control
 {
     public event Action? BackRequested;
+    public event Action<string, ToastKind>? NotificationRequested;
 
     private readonly string[] _categories = ["Графика", "Звук", "Интерфейс", "Геймплей", "Управление"];
     private readonly Dictionary<string, Button> _categoryButtons = new();
-
     private static readonly Dictionary<string, string> CategoryIcons = new()
     {
         ["Графика"] = "settings/graphics.svg",
@@ -20,11 +22,18 @@ public sealed partial class SettingsMenu : Control
         ["Управление"] = "settings/controls.svg"
     };
 
+    private SettingsStore? _store;
+    private AppSettings _state = AppSettings.Default();
     private VBoxContainer? _content;
     private Label? _sectionTitle;
     private Label? _status;
     private string _currentCategory = "Графика";
-    private SettingsState _state = SettingsState.Default();
+
+    public void Configure(SettingsStore store)
+    {
+        _store = store;
+        _state = store.Load().Clone();
+    }
 
     public override void _Ready()
     {
@@ -32,17 +41,11 @@ public sealed partial class SettingsMenu : Control
         ShowCategory(_currentCategory);
     }
 
-    public void RefreshCurrentCategory()
-    {
-        if (_content is null) return;
-        ShowCategory(_currentCategory);
-    }
-
     private void Build()
     {
         var dim = new ColorRect
         {
-            Color = new Color(0.012f, 0.052f, 0.064f, 0.52f),
+            Color = new Color(0.012f, 0.052f, 0.064f, 0.74f),
             MouseFilter = MouseFilterEnum.Stop
         };
         dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -52,69 +55,58 @@ public sealed partial class SettingsMenu : Control
         outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         outer.AddThemeConstantOverride("margin_left", 64);
         outer.AddThemeConstantOverride("margin_right", 64);
-        outer.AddThemeConstantOverride("margin_top", 54);
-        outer.AddThemeConstantOverride("margin_bottom", 54);
+        outer.AddThemeConstantOverride("margin_top", 48);
+        outer.AddThemeConstantOverride("margin_bottom", 48);
         AddChild(outer);
 
         var card = new PanelContainer();
-        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.95f));
+        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
         outer.AddChild(card);
 
         var cardMargin = new MarginContainer();
-        cardMargin.AddThemeConstantOverride("margin_left", 32);
-        cardMargin.AddThemeConstantOverride("margin_right", 32);
-        cardMargin.AddThemeConstantOverride("margin_top", 26);
-        cardMargin.AddThemeConstantOverride("margin_bottom", 24);
+        cardMargin.AddThemeConstantOverride("margin_left", 30);
+        cardMargin.AddThemeConstantOverride("margin_right", 30);
+        cardMargin.AddThemeConstantOverride("margin_top", 24);
+        cardMargin.AddThemeConstantOverride("margin_bottom", 22);
         card.AddChild(cardMargin);
 
         var root = new VBoxContainer();
         cardMargin.AddChild(root);
 
-        var headingRow = new HBoxContainer();
-        root.AddChild(headingRow);
+        var heading = new HBoxContainer();
+        root.AddChild(heading);
 
-        var titleBox = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        headingRow.AddChild(titleBox);
+        var titles = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        heading.AddChild(titles);
 
         var title = new Label { Text = "Настройки" };
         title.AddThemeFontSizeOverride("font_size", 34);
-        titleBox.AddChild(title);
+        titles.AddChild(title);
 
-        var subtitle = new Label { Text = "Базовый интерфейс · значения пока не сохраняются на диск" };
+        var subtitle = new Label { Text = "Хранятся отдельно от игровых миров в user://settings" };
         subtitle.AddThemeFontSizeOverride("font_size", 13);
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        titleBox.AddChild(subtitle);
+        titles.AddChild(subtitle);
 
-        var close = new Button
-        {
-            Text = "Назад",
-            CustomMinimumSize = new Vector2(118f, 44f)
-        };
-        SetIcon(close, "actions/back.svg");
-        close.Pressed += () => BackRequested?.Invoke();
-        headingRow.AddChild(close);
+        var topBack = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(118, 44) };
+        topBack.Pressed += () => BackRequested?.Invoke();
+        heading.AddChild(topBack);
 
         root.AddChild(new HSeparator());
 
-        var body = new HBoxContainer
-        {
-            SizeFlagsVertical = SizeFlags.ExpandFill
-        };
+        var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         root.AddChild(body);
 
-        var navigationPanel = new PanelContainer
-        {
-            CustomMinimumSize = new Vector2(220f, 0f)
-        };
-        navigationPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
-        body.AddChild(navigationPanel);
+        var navPanel = new PanelContainer { CustomMinimumSize = new Vector2(220, 0) };
+        navPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
+        body.AddChild(navPanel);
 
         var navMargin = new MarginContainer();
         navMargin.AddThemeConstantOverride("margin_left", 12);
         navMargin.AddThemeConstantOverride("margin_right", 12);
         navMargin.AddThemeConstantOverride("margin_top", 12);
         navMargin.AddThemeConstantOverride("margin_bottom", 12);
-        navigationPanel.AddChild(navMargin);
+        navPanel.AddChild(navMargin);
 
         var nav = new VBoxContainer();
         navMargin.AddChild(nav);
@@ -124,12 +116,12 @@ public sealed partial class SettingsMenu : Control
             var button = new Button
             {
                 Text = category,
+                Icon = EvolitIcons.Load(CategoryIcons[category]),
                 Alignment = HorizontalAlignment.Left,
                 ToggleMode = true,
-                CustomMinimumSize = new Vector2(0f, 46f)
+                CustomMinimumSize = new Vector2(0, 46)
             };
 
-            SetIcon(button, CategoryIcons[category]);
             var captured = category;
             button.Pressed += () => ShowCategory(captured);
             _categoryButtons[category] = button;
@@ -159,16 +151,10 @@ public sealed partial class SettingsMenu : Control
         _sectionTitle.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         contentRoot.AddChild(_sectionTitle);
 
-        var scroll = new ScrollContainer
-        {
-            SizeFlagsVertical = SizeFlags.ExpandFill
-        };
+        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         contentRoot.AddChild(scroll);
 
-        _content = new VBoxContainer
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill
-        };
+        _content = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         _content.AddThemeConstantOverride("separation", 13);
         scroll.AddChild(_content);
 
@@ -179,45 +165,37 @@ public sealed partial class SettingsMenu : Control
 
         _status = new Label
         {
-            Text = "Изменения применяются только к текущему UI-сеансу.",
+            Text = "Изменения записываются только по кнопке «Применить».",
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         _status.AddThemeFontSizeOverride("font_size", 13);
         _status.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         footer.AddChild(_status);
 
-        var reset = new Button { Text = "Сбросить", CustomMinimumSize = new Vector2(120f, 44f) };
-        SetIcon(reset, "actions/reset.svg");
+        var reset = new Button { Text = "Сбросить", Icon = EvolitIcons.Load("actions/reset.svg"), CustomMinimumSize = new Vector2(120, 44) };
         reset.Pressed += ResetSettings;
         footer.AddChild(reset);
 
-        var apply = new Button { Text = "Применить", CustomMinimumSize = new Vector2(130f, 44f) };
-        SetIcon(apply, "actions/apply.svg");
+        var apply = new Button { Text = "Применить", Icon = EvolitIcons.Load("actions/apply.svg"), CustomMinimumSize = new Vector2(130, 44) };
         apply.Pressed += ApplySettings;
         footer.AddChild(apply);
 
-        var back = new Button { Text = "Назад", CustomMinimumSize = new Vector2(110f, 44f) };
-        SetIcon(back, "actions/back.svg");
+        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(110, 44) };
         back.Pressed += () => BackRequested?.Invoke();
         footer.AddChild(back);
-    }
-
-    private static void SetIcon(Button button, string relativePath, int size = 20)
-    {
-        button.Icon = EvolitIcons.Load(relativePath);
     }
 
     private void ShowCategory(string category)
     {
         _currentCategory = category;
-
         foreach (var pair in _categoryButtons)
             pair.Value.ButtonPressed = pair.Key == category;
 
         if (_sectionTitle is not null)
             _sectionTitle.Text = category;
 
-        if (_content is null) return;
+        if (_content is null)
+            return;
 
         foreach (var child in _content.GetChildren())
         {
@@ -227,28 +205,17 @@ public sealed partial class SettingsMenu : Control
 
         switch (category)
         {
-            case "Графика":
-                BuildGraphics();
-                break;
-            case "Звук":
-                BuildSound();
-                break;
-            case "Интерфейс":
-                BuildInterface();
-                break;
-            case "Геймплей":
-                BuildGameplay();
-                break;
-            case "Управление":
-                BuildControls();
-                break;
+            case "Графика": BuildGraphics(); break;
+            case "Звук": BuildSound(); break;
+            case "Интерфейс": BuildInterface(); break;
+            case "Геймплей": BuildGameplay(); break;
+            case "Управление": BuildControls(); break;
         }
     }
 
     private void BuildGraphics()
     {
         if (_content is null) return;
-
         _content.AddChild(OptionRow("Режим экрана", ["Оконный", "Без рамки", "Полноэкранный"], _state.DisplayMode, value => _state.DisplayMode = value));
         _content.AddChild(OptionRow("Разрешение", ["1280×720", "1920×1080", "2560×1440"], _state.Resolution, value => _state.Resolution = value));
         _content.AddChild(ToggleRow("Вертикальная синхронизация", _state.VSync, value => _state.VSync = value));
@@ -256,25 +223,22 @@ public sealed partial class SettingsMenu : Control
         _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value));
         _content.AddChild(OptionRow("Качество теней", ["Выкл.", "Низкое", "Среднее", "Высокое"], _state.ShadowQuality, value => _state.ShadowQuality = value));
         _content.AddChild(OptionRow("Эффекты", ["Низкие", "Средние", "Высокие"], _state.EffectsQuality, value => _state.EffectsQuality = value));
-        _content.AddChild(Hint("Графические параметры пока служат UI-болванкой и не меняют renderer."));
+        _content.AddChild(Hint("Часть графических значений пока сохраняется как конфигурация и не меняет renderer."));
     }
 
     private void BuildSound()
     {
         if (_content is null) return;
-
         _content.AddChild(SliderRow("Общая громкость", _state.MasterVolume, 0, 100, value => _state.MasterVolume = value, "%"));
         _content.AddChild(SliderRow("Музыка", _state.MusicVolume, 0, 100, value => _state.MusicVolume = value, "%"));
         _content.AddChild(SliderRow("Эффекты", _state.EffectsVolume, 0, 100, value => _state.EffectsVolume = value, "%"));
         _content.AddChild(SliderRow("Интерфейс", _state.UiVolume, 0, 100, value => _state.UiVolume = value, "%"));
         _content.AddChild(ToggleRow("Без звука", _state.Mute, value => _state.Mute = value));
-        _content.AddChild(Hint("Полноценная аудиосистема намеренно не создаётся на этом этапе."));
     }
 
     private void BuildInterface()
     {
         if (_content is null) return;
-
         _content.AddChild(OptionRow("Масштаб интерфейса", ["75%", "100%", "125%", "150%"], _state.UiScale, value => _state.UiScale = value));
         _content.AddChild(OptionRow("Размер текста", ["Маленький", "Обычный", "Большой"], _state.TextSize, value => _state.TextSize = value));
         _content.AddChild(ToggleRow("Подсказки", _state.Tooltips, value => _state.Tooltips = value));
@@ -285,71 +249,57 @@ public sealed partial class SettingsMenu : Control
     private void BuildGameplay()
     {
         if (_content is null) return;
-
         _content.AddChild(ToggleRow("Автопауза при открытии меню", _state.AutoPause, value => _state.AutoPause = value));
         _content.AddChild(SliderRow("Скорость камеры", _state.CameraSpeed, 1, 10, value => _state.CameraSpeed = value, "×"));
         _content.AddChild(ToggleRow("Плавное приближение камеры", _state.SmoothZoom, value => _state.SmoothZoom = value));
-        _content.AddChild(Hint("Баланс, эволюция, мутации и скорость симуляции здесь специально отсутствуют."));
+        _content.AddChild(Hint("Баланс, эволюция и параметры симуляции намеренно отсутствуют."));
     }
 
     private void BuildControls()
     {
         if (_content is null) return;
-
-        _content.AddChild(KeyRow("Перемещение камеры", "WASD / стрелки"));
-        _content.AddChild(KeyRow("Приближение", "Колесо мыши"));
-        _content.AddChild(KeyRow("Пауза", "Space"));
-        _content.AddChild(KeyRow("Ускорение времени", "1 / 2 / 3"));
-        _content.AddChild(KeyRow("Выбор объекта", "ЛКМ"));
-        _content.AddChild(KeyRow("Отмена", "Esc"));
-        _content.AddChild(Hint("Переназначение клавиш будет добавлено позже."));
+        _content.AddChild(KeyRow("Перемещение камеры", $"{InputBindings.Describe("camera_up")} / {InputBindings.Describe("camera_left")} / {InputBindings.Describe("camera_down")} / {InputBindings.Describe("camera_right")}"));
+        _content.AddChild(KeyRow("Приближение", $"{InputBindings.Describe("camera_zoom_in")} / {InputBindings.Describe("camera_zoom_out")}"));
+        _content.AddChild(KeyRow("Пауза", InputBindings.Describe("game_pause")));
+        _content.AddChild(KeyRow("Скорость времени", $"{InputBindings.Describe("simulation_speed_1")} / {InputBindings.Describe("simulation_speed_2")} / {InputBindings.Describe("simulation_speed_3")}"));
+        _content.AddChild(KeyRow("Выбор объекта", InputBindings.Describe("select")));
+        _content.AddChild(KeyRow("Отмена", InputBindings.Describe("cancel")));
+        _content.AddChild(Hint("Переназначение клавиш будет добавлено позже. Отображаются реальные default Input Actions."));
     }
 
-    private Control OptionRow(string labelText, string[] items, int selected, Action<int> setter)
+    private Control OptionRow(string text, string[] items, int selected, Action<int> setter)
     {
-        var row = Row(labelText);
-        var option = new OptionButton
-        {
-            CustomMinimumSize = new Vector2(230f, 42f)
-        };
-
+        var row = Row(text);
+        var option = new OptionButton { CustomMinimumSize = new Vector2(230, 42) };
         foreach (var item in items) option.AddItem(item);
         option.Select(Math.Clamp(selected, 0, items.Length - 1));
         option.ItemSelected += index => setter((int)index);
-
         row.AddChild(option);
         return row;
     }
 
-    private Control ToggleRow(string labelText, bool value, Action<bool> setter)
+    private Control ToggleRow(string text, bool value, Action<bool> setter)
     {
-        var row = Row(labelText);
+        var row = Row(text);
         var toggle = new CheckButton
         {
             Text = value ? "Вкл." : "Выкл.",
             ButtonPressed = value,
-            CustomMinimumSize = new Vector2(118f, 42f)
+            CustomMinimumSize = new Vector2(118, 42)
         };
-
         toggle.Toggled += pressed =>
         {
             toggle.Text = pressed ? "Вкл." : "Выкл.";
             setter(pressed);
         };
-
         row.AddChild(toggle);
         return row;
     }
 
-    private Control SliderRow(string labelText, double value, double min, double max, Action<double> setter, string suffix)
+    private Control SliderRow(string text, double value, double min, double max, Action<double> setter, string suffix)
     {
-        var row = Row(labelText);
-
-        var controls = new HBoxContainer
-        {
-            CustomMinimumSize = new Vector2(330f, 42f)
-        };
-
+        var row = Row(text);
+        var controls = new HBoxContainer { CustomMinimumSize = new Vector2(330, 42) };
         var slider = new HSlider
         {
             MinValue = min,
@@ -357,14 +307,14 @@ public sealed partial class SettingsMenu : Control
             Step = 1,
             Value = value,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(220f, 0f)
+            CustomMinimumSize = new Vector2(220, 0)
         };
         slider.Modulate = EvolitPalette.SoftAqua;
 
         var valueLabel = new Label
         {
             Text = $"{value:0}{suffix}",
-            CustomMinimumSize = new Vector2(62f, 0f),
+            CustomMinimumSize = new Vector2(62, 0),
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
@@ -383,42 +333,28 @@ public sealed partial class SettingsMenu : Control
     private Control KeyRow(string action, string key)
     {
         var row = Row(action);
-        var button = new Button
-        {
-            Text = key,
-            CustomMinimumSize = new Vector2(230f, 42f)
-        };
-        button.Pressed += () => SetStatus("Переназначение клавиш будет добавлено позже.");
+        var button = new Button { Text = key, CustomMinimumSize = new Vector2(230, 42) };
+        button.Pressed += () => SetStatus("Переназначение клавиш пока не реализовано.");
         row.AddChild(button);
         return row;
     }
 
-    private HBoxContainer Row(string labelText)
+    private static HBoxContainer Row(string text)
     {
-        var row = new HBoxContainer
-        {
-            CustomMinimumSize = new Vector2(0f, 48f)
-        };
-
-        var label = new Label
-        {
-            Text = labelText,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        label.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
-        row.AddChild(label);
-
-        return row;
-    }
-
-    private Label Hint(string text)
-    {
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 48) };
         var label = new Label
         {
             Text = text,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center
         };
+        row.AddChild(label);
+        return row;
+    }
+
+    private static Label Hint(string text)
+    {
+        var label = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
         label.AddThemeFontSizeOverride("font_size", 13);
         label.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.78f));
         return label;
@@ -426,77 +362,34 @@ public sealed partial class SettingsMenu : Control
 
     private void ResetSettings()
     {
-        _state = SettingsState.Default();
+        _state = AppSettings.Default();
         ShowCategory(_currentCategory);
-        SetStatus("Настройки сброшены к значениям по умолчанию.");
+        SetStatus("Возвращены значения по умолчанию. Нажмите «Применить», чтобы сохранить.");
     }
 
     private void ApplySettings()
     {
-        SetStatus("Настройки применены к текущему UI-сеансу.");
+        if (_store is null)
+        {
+            SetStatus("SettingsStore не инициализирован.");
+            return;
+        }
+
+        if (_store.Save(_state, out var error))
+        {
+            SetStatus("Настройки сохранены.");
+            NotificationRequested?.Invoke("Настройки сохранены", ToastKind.Success);
+        }
+        else
+        {
+            SetStatus($"Ошибка: {error}");
+            NotificationRequested?.Invoke("Не удалось сохранить настройки", ToastKind.Error);
+        }
     }
 
     private void SetStatus(string text)
     {
-        if (_status is null) return;
-        _status.Text = text;
-        _status.Modulate = Colors.White;
-    }
-
-    private sealed class SettingsState
-    {
-        public int DisplayMode;
-        public int Resolution;
-        public bool VSync;
-        public int DetailLevel;
-        public int WaterQuality;
-        public int ShadowQuality;
-        public int EffectsQuality;
-
-        public double MasterVolume;
-        public double MusicVolume;
-        public double EffectsVolume;
-        public double UiVolume;
-        public bool Mute;
-
-        public int UiScale;
-        public int TextSize;
-        public bool Tooltips;
-        public bool ShowFps;
-        public bool ShowPerformance;
-
-        public bool AutoPause;
-        public double CameraSpeed;
-        public bool SmoothZoom;
-
-        public static SettingsState Default()
-        {
-            return new SettingsState
-            {
-                DisplayMode = 0,
-                Resolution = 1,
-                VSync = true,
-                DetailLevel = 1,
-                WaterQuality = 1,
-                ShadowQuality = 2,
-                EffectsQuality = 1,
-
-                MasterVolume = 80,
-                MusicVolume = 65,
-                EffectsVolume = 80,
-                UiVolume = 75,
-                Mute = false,
-
-                UiScale = 1,
-                TextSize = 1,
-                Tooltips = true,
-                ShowFps = false,
-                ShowPerformance = false,
-
-                AutoPause = true,
-                CameraSpeed = 5,
-                SmoothZoom = true
-            };
-        }
+        if (_status is not null)
+            _status.Text = text;
     }
 }
