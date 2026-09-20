@@ -33,26 +33,22 @@ public sealed partial class SaveScreen : Control
 
     public override void _Ready()
     {
-        var background = new MenuBackground();
+        var background = new MenuBackground { MotionScale = 0.28f };
         background.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(background);
 
-        var outer = new MarginContainer();
-        outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        outer.AddThemeConstantOverride("margin_left", 72);
-        outer.AddThemeConstantOverride("margin_right", 72);
-        outer.AddThemeConstantOverride("margin_top", 50);
-        outer.AddThemeConstantOverride("margin_bottom", 50);
-        AddChild(outer);
+        var center = new CenterContainer();
+        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(center);
 
-        var card = new PanelContainer();
-        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
-        outer.AddChild(card);
+        var card = new PanelContainer { CustomMinimumSize = new Vector2(1120, 620) };
+        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.97f));
+        center.AddChild(card);
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 30);
-        margin.AddThemeConstantOverride("margin_right", 30);
-        margin.AddThemeConstantOverride("margin_top", 26);
+        margin.AddThemeConstantOverride("margin_left", 28);
+        margin.AddThemeConstantOverride("margin_right", 28);
+        margin.AddThemeConstantOverride("margin_top", 24);
         margin.AddThemeConstantOverride("margin_bottom", 24);
         card.AddChild(margin);
 
@@ -67,17 +63,14 @@ public sealed partial class SaveScreen : Control
             Text = _mode == SaveScreenMode.Load ? "Загрузить сохранение" : "Сохранения",
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
-        title.AddThemeFontSizeOverride("font_size", 34);
+        title.AddThemeFontSizeOverride("font_size", 32);
         heading.AddChild(title);
 
-        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(120, 44) };
+        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(118, 42) };
         back.Pressed += () => BackRequested?.Invoke();
         heading.AddChild(back);
 
-        var subtitle = new Label
-        {
-            Text = "Manual и autosave · повреждённые файлы не ломают список"
-        };
+        var subtitle = new Label { Text = "Manual и autosave · повреждённые файлы остаются безопасно изолированы" };
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         root.AddChild(subtitle);
 
@@ -87,7 +80,7 @@ public sealed partial class SaveScreen : Control
         root.AddChild(scroll);
 
         _list = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _list.AddThemeConstantOverride("separation", 12);
+        _list.AddThemeConstantOverride("separation", 9);
         scroll.AddChild(_list);
 
         Refresh();
@@ -107,10 +100,11 @@ public sealed partial class SaveScreen : Control
         var slots = _saveManager.ListSaves();
         if (slots.Count == 0)
         {
-            var empty = new PanelContainer { CustomMinimumSize = new Vector2(0, 180) };
+            var empty = new PanelContainer { CustomMinimumSize = new Vector2(0, 150) };
             empty.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
             var center = new CenterContainer();
             empty.AddChild(center);
+
             var label = new Label
             {
                 Text = "Сохранений пока нет\nСоздайте новый мир — первое сохранение появится автоматически.",
@@ -128,71 +122,81 @@ public sealed partial class SaveScreen : Control
 
     private Control BuildSlot(SaveSlot slot)
     {
-        var panel = new PanelContainer();
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 92) };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 18);
-        margin.AddThemeConstantOverride("margin_right", 18);
-        margin.AddThemeConstantOverride("margin_top", 14);
-        margin.AddThemeConstantOverride("margin_bottom", 14);
+        margin.AddThemeConstantOverride("margin_left", 16);
+        margin.AddThemeConstantOverride("margin_right", 14);
+        margin.AddThemeConstantOverride("margin_top", 11);
+        margin.AddThemeConstantOverride("margin_bottom", 11);
         panel.AddChild(margin);
 
         var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 12);
         margin.AddChild(row);
 
         var info = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        info.AddThemeConstantOverride("separation", 3);
         row.AddChild(info);
 
         var document = slot.Document;
         var name = document?.WorldName ?? $"Повреждённый файл · {Path.GetFileName(slot.Path)}";
         var title = new Label { Text = name };
-        title.AddThemeFontSizeOverride("font_size", 20);
+        title.AddThemeFontSizeOverride("font_size", 18);
         info.AddChild(title);
 
-        string status;
-        if (slot.Status == SaveSlotStatus.Invalid)
-            status = "Повреждено · загрузка недоступна";
-        else if (slot.Status == SaveSlotStatus.Recoverable)
-            status = "Основной файл повреждён · доступен backup";
-        else
-            status = document?.SaveType == SaveManager.AutosaveType
-                ? $"Автосохранение #{document.AutosaveIndex}"
-                : "Ручное сохранение";
+        var statusRow = new HBoxContainer();
+        info.AddChild(statusRow);
+
+        var status = slot.Status switch
+        {
+            SaveSlotStatus.Invalid => "Повреждено",
+            SaveSlotStatus.Recoverable => "Доступен backup",
+            _ when document?.SaveType == SaveManager.AutosaveType => $"Автосохранение #{document.AutosaveIndex}",
+            _ => "Ручное сохранение"
+        };
 
         var statusLabel = new Label { Text = status };
+        statusLabel.AddThemeFontSizeOverride("font_size", 13);
         statusLabel.AddThemeColorOverride("font_color", slot.Status switch
         {
             SaveSlotStatus.Invalid => EvolitPalette.WarmAlert,
             SaveSlotStatus.Recoverable => EvolitPalette.WarmSand,
             _ => EvolitPalette.SoftAqua
         });
-        info.AddChild(statusLabel);
+        statusRow.AddChild(statusLabel);
 
         if (document is not null)
         {
             var meta = new Label
             {
-                Text = $"{document.SavedAt.ToLocalTime():dd.MM.yyyy HH:mm}  ·  {FormatPlaytime(document.PlaytimeSeconds)}  ·  seed {document.Seed}  ·  {document.WorldSize}"
+                Text = $"   ·   {document.SavedAt.ToLocalTime():dd.MM.yyyy HH:mm}   ·   {FormatPlaytime(document.PlaytimeSeconds)}   ·   seed {document.Seed}   ·   {document.WorldSize}"
             };
-            meta.AddThemeFontSizeOverride("font_size", 13);
+            meta.AddThemeFontSizeOverride("font_size", 12);
             meta.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-            info.AddChild(meta);
+            statusRow.AddChild(meta);
         }
         else if (!string.IsNullOrWhiteSpace(slot.Error))
         {
-            var error = new Label { Text = slot.Error, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            var error = new Label
+            {
+                Text = $"   ·   {slot.Error}",
+                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                SizeFlagsHorizontal = SizeFlags.ExpandFill
+            };
             error.AddThemeFontSizeOverride("font_size", 12);
             error.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-            info.AddChild(error);
+            statusRow.AddChild(error);
         }
 
-        var actions = new VBoxContainer();
+        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        actions.AddThemeConstantOverride("separation", 6);
         row.AddChild(actions);
 
         if (slot.CanLoad)
         {
-            var load = new Button { Text = "Загрузить", Icon = EvolitIcons.Load("menu/continue.svg"), CustomMinimumSize = new Vector2(132, 40) };
+            var load = CompactButton("Загрузить", "menu/continue.svg");
             load.Pressed += () => LoadRequested?.Invoke(slot);
             actions.AddChild(load);
         }
@@ -201,16 +205,26 @@ public sealed partial class SaveScreen : Control
             _session is not null &&
             document.SaveId == _session.SaveId)
         {
-            var overwrite = new Button { Text = "Перезаписать", Icon = EvolitIcons.Load("actions/apply.svg"), CustomMinimumSize = new Vector2(132, 40) };
+            var overwrite = CompactButton("Перезаписать", "actions/apply.svg");
             overwrite.Pressed += () => OverwriteRequested?.Invoke(slot);
             actions.AddChild(overwrite);
         }
 
-        var delete = new Button { Text = "Удалить", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = new Vector2(132, 40) };
+        var delete = CompactButton("Удалить", "actions/close.svg");
         delete.Pressed += () => DeleteRequested?.Invoke(slot);
         actions.AddChild(delete);
 
         return panel;
+    }
+
+    private static Button CompactButton(string text, string icon)
+    {
+        return new Button
+        {
+            Text = text,
+            Icon = EvolitIcons.Load(icon),
+            CustomMinimumSize = new Vector2(108, 36)
+        };
     }
 
     private static string FormatPlaytime(double seconds)

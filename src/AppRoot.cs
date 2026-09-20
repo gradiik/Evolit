@@ -239,7 +239,10 @@ public sealed partial class AppRoot : Control
         }
 
         var game = new GameScreen();
-        game.Configure(_session);
+        game.Configure(_session, _settings.Load());
+        game.SaveRequested += SaveCurrentManual;
+        game.SettingsRequested += () => ShowSettings(GameFlowState.Game);
+        game.PauseRequested += ShowPause;
         SwitchScreen(game, GameFlowState.Game);
     }
 
@@ -288,8 +291,10 @@ public sealed partial class AppRoot : Control
 
     private void ReturnFromSettings()
     {
-        if (_returnFromSettings == GameFlowState.Pause && _session is not null)
+        if (_session is not null && _returnFromSettings == GameFlowState.Pause)
             ShowPause();
+        else if (_session is not null && _returnFromSettings == GameFlowState.Game)
+            ShowGame();
         else
             ShowMainMenu();
     }

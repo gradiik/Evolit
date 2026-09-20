@@ -83,7 +83,7 @@ public sealed partial class SettingsMenu : Control
         title.AddThemeFontSizeOverride("font_size", 34);
         titles.AddChild(title);
 
-        var subtitle = new Label { Text = "Хранятся отдельно от игровых миров в user://settings" };
+        var subtitle = new Label { Text = "Сохраняются отдельно от игровых миров" };
         subtitle.AddThemeFontSizeOverride("font_size", 13);
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
@@ -180,9 +180,6 @@ public sealed partial class SettingsMenu : Control
         apply.Pressed += ApplySettings;
         footer.AddChild(apply);
 
-        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(110, 44) };
-        back.Pressed += () => BackRequested?.Invoke();
-        footer.AddChild(back);
     }
 
     private void ShowCategory(string category)
@@ -270,7 +267,7 @@ public sealed partial class SettingsMenu : Control
     private Control OptionRow(string text, string[] items, int selected, Action<int> setter)
     {
         var row = Row(text);
-        var option = new OptionButton { CustomMinimumSize = new Vector2(230, 42) };
+        var option = new OptionButton { CustomMinimumSize = new Vector2(260, 42) };
         foreach (var item in items) option.AddItem(item);
         option.Select(Math.Clamp(selected, 0, items.Length - 1));
         option.ItemSelected += index => setter((int)index);
@@ -299,7 +296,7 @@ public sealed partial class SettingsMenu : Control
     private Control SliderRow(string text, double value, double min, double max, Action<double> setter, string suffix)
     {
         var row = Row(text);
-        var controls = new HBoxContainer { CustomMinimumSize = new Vector2(330, 42) };
+        var controls = new HBoxContainer { CustomMinimumSize = new Vector2(360, 42) };
         var slider = new HSlider
         {
             MinValue = min,
@@ -307,7 +304,7 @@ public sealed partial class SettingsMenu : Control
             Step = 1,
             Value = value,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(220, 0)
+            CustomMinimumSize = new Vector2(250, 0)
         };
         slider.Modulate = EvolitPalette.SoftAqua;
 
@@ -333,7 +330,7 @@ public sealed partial class SettingsMenu : Control
     private Control KeyRow(string action, string key)
     {
         var row = Row(action);
-        var button = new Button { Text = key, CustomMinimumSize = new Vector2(230, 42) };
+        var button = new Button { Text = key, CustomMinimumSize = new Vector2(260, 42) };
         button.Pressed += () => SetStatus("Переназначение клавиш пока не реализовано.");
         row.AddChild(button);
         return row;
@@ -341,11 +338,15 @@ public sealed partial class SettingsMenu : Control
 
     private static HBoxContainer Row(string text)
     {
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 48) };
+        var row = new HBoxContainer
+        {
+            CustomMinimumSize = new Vector2(0, 48),
+            Alignment = BoxContainer.AlignmentMode.Begin
+        };
         var label = new Label
         {
             Text = text,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(360, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         row.AddChild(label);

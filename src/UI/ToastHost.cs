@@ -22,10 +22,10 @@ public sealed partial class ToastHost : Control
         {
             MouseFilter = MouseFilterEnum.Ignore
         };
-        _stack.AnchorLeft = 0.72f;
-        _stack.AnchorRight = 0.97f;
-        _stack.AnchorTop = 0.05f;
-        _stack.AnchorBottom = 0.42f;
+        _stack.AnchorLeft = 0.69f;
+        _stack.AnchorRight = 0.94f;
+        _stack.AnchorTop = 0.115f;
+        _stack.AnchorBottom = 0.46f;
         _stack.Alignment = BoxContainer.AlignmentMode.Begin;
         AddChild(_stack);
     }

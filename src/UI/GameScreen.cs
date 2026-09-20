@@ -1,15 +1,27 @@
+using System;
+using Evolit.Game;
 using Evolit.Session;
+using Evolit.Settings;
+using Evolit.UI.Game;
 using Godot;
 
 namespace Evolit.UI;
 
 public sealed partial class GameScreen : Control
 {
-    private GameSession? _session;
+    public event Action? SaveRequested;
+    public event Action? SettingsRequested;
+    public event Action? PauseRequested;
 
-    public void Configure(GameSession session)
+    private GameSession? _session;
+    private AppSettings _settings = AppSettings.Default();
+    private SimulationSpeedState? _speed;
+    private GameHud? _hud;
+
+    public void Configure(GameSession session, AppSettings settings)
     {
         _session = session;
+        _settings = settings.Clone();
     }
 
     public override void _Ready()
@@ -17,62 +29,42 @@ public sealed partial class GameScreen : Control
         if (_session is null)
             return;
 
-        var background = new MenuBackground();
-        background.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(background);
+        var demoWorld = new DemoWorldDataProvider(_session);
+        _speed = new SimulationSpeedState();
+        var stats = new DemoSimulationStatsProvider(_session, demoWorld);
 
-        var top = new PanelContainer();
-        top.AnchorLeft = 0.03f;
-        top.AnchorRight = 0.45f;
-        top.AnchorTop = 0.04f;
-        top.AnchorBottom = 0.17f;
-        top.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
-        AddChild(top);
+        var worldView = new DemoWorldView();
+        worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        worldView.Configure(demoWorld, _settings.CameraSpeed, _settings.SmoothZoom);
+        AddChild(worldView);
 
-        var topMargin = new MarginContainer();
-        topMargin.AddThemeConstantOverride("margin_left", 18);
-        topMargin.AddThemeConstantOverride("margin_right", 18);
-        topMargin.AddThemeConstantOverride("margin_top", 12);
-        topMargin.AddThemeConstantOverride("margin_bottom", 12);
-        top.AddChild(topMargin);
+        _hud = new GameHud();
+        _hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _hud.Configure(stats, demoWorld, _speed);
+        _hud.SaveRequested += () => SaveRequested?.Invoke();
+        _hud.SettingsRequested += () => SettingsRequested?.Invoke();
+        _hud.PauseRequested += () => PauseRequested?.Invoke();
+        AddChild(_hud);
 
-        var info = new VBoxContainer();
-        topMargin.AddChild(info);
+        worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+    }
 
-        var title = new Label { Text = _session.WorldName };
-        title.AddThemeFontSizeOverride("font_size", 22);
-        info.AddChild(title);
-
-        var meta = new Label { Text = $"seed {_session.Seed}  ·  {_session.WorldSize}" };
-        meta.AddThemeFontSizeOverride("font_size", 13);
-        meta.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        info.AddChild(meta);
-
-        var center = new CenterContainer();
-        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(center);
-
-        var message = new VBoxContainer
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("simulation_speed_1"))
         {
-            Alignment = BoxContainer.AlignmentMode.Center
-        };
-        center.AddChild(message);
-
-        var ready = new Label
+            _hud?.SetSpeedFromAction(1);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event.IsActionPressed("simulation_speed_2"))
         {
-            Text = "Мир готов к следующему этапу разработки",
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        ready.AddThemeFontSizeOverride("font_size", 28);
-        ready.AddThemeColorOverride("font_color", new Color(EvolitPalette.MistWhite, 0.78f));
-        message.AddChild(ready);
-
-        var sub = new Label
+            _hud?.SetSpeedFromAction(2);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event.IsActionPressed("simulation_speed_3"))
         {
-            Text = "Генерация мира и симуляция намеренно ещё не созданы.\nEsc — пауза · F3 — debug",
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        sub.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        message.AddChild(sub);
+            _hud?.SetSpeedFromAction(4);
+            GetViewport().SetInputAsHandled();
+        }
     }
 }

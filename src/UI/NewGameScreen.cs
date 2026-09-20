@@ -22,7 +22,7 @@ public sealed partial class NewGameScreen : Control
 
     public override void _Ready()
     {
-        var background = new MenuBackground();
+        var background = new MenuBackground { MotionScale = 0.45f };
         background.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(background);
 
@@ -30,32 +30,34 @@ public sealed partial class NewGameScreen : Control
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(center);
 
-        var card = new PanelContainer { CustomMinimumSize = new Vector2(620, 0) };
-        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
+        var card = new PanelContainer { CustomMinimumSize = new Vector2(720, 0) };
+        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.97f));
         center.AddChild(card);
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 36);
-        margin.AddThemeConstantOverride("margin_right", 36);
-        margin.AddThemeConstantOverride("margin_top", 30);
-        margin.AddThemeConstantOverride("margin_bottom", 30);
+        margin.AddThemeConstantOverride("margin_left", 42);
+        margin.AddThemeConstantOverride("margin_right", 42);
+        margin.AddThemeConstantOverride("margin_top", 34);
+        margin.AddThemeConstantOverride("margin_bottom", 34);
         card.AddChild(margin);
 
         var root = new VBoxContainer();
+        root.AddThemeConstantOverride("separation", 12);
         margin.AddChild(root);
 
         var title = new Label { Text = "Новая игра" };
-        title.AddThemeFontSizeOverride("font_size", 34);
+        title.AddThemeFontSizeOverride("font_size", 36);
         root.AddChild(title);
 
-        var subtitle = new Label { Text = "Пока создаётся только сессия и метаданные будущего мира." };
+        var subtitle = new Label { Text = "Создаём сессию и метаданные будущего мира. Сама генерация появится следующим этапом." };
+        subtitle.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         root.AddChild(subtitle);
 
         root.AddChild(new HSeparator());
 
         root.AddChild(FieldLabel("Название мира"));
-        _worldName = new LineEdit { Text = "Мир 1", PlaceholderText = "Название мира", CustomMinimumSize = new Vector2(0, 44) };
+        _worldName = new LineEdit { Text = "Мир 1", PlaceholderText = "Название мира", CustomMinimumSize = new Vector2(0, 48) };
         root.AddChild(_worldName);
 
         root.AddChild(FieldLabel("Seed"));
@@ -67,11 +69,11 @@ public sealed partial class NewGameScreen : Control
             Text = Random.Shared.Next(1, int.MaxValue).ToString(),
             PlaceholderText = "Число или строка seed",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0, 44)
+            CustomMinimumSize = new Vector2(0, 48)
         };
         seedRow.AddChild(_seed);
 
-        var randomize = new Button { Text = "Случайный seed", CustomMinimumSize = new Vector2(160, 44) };
+        var randomize = new Button { Text = "Случайный seed", CustomMinimumSize = new Vector2(175, 48) };
         randomize.Pressed += () =>
         {
             if (_seed is not null)
@@ -80,7 +82,7 @@ public sealed partial class NewGameScreen : Control
         seedRow.AddChild(randomize);
 
         root.AddChild(FieldLabel("Размер мира"));
-        _worldSize = new OptionButton { CustomMinimumSize = new Vector2(0, 44) };
+        _worldSize = new OptionButton { CustomMinimumSize = new Vector2(0, 48) };
         _worldSize.AddItem("Маленький");
         _worldSize.AddItem("Средний");
         _worldSize.AddItem("Большой");
@@ -89,7 +91,7 @@ public sealed partial class NewGameScreen : Control
 
         var hint = new Label
         {
-            Text = "Размер пока сохраняется как metadata и не запускает генерацию карты.",
+            Text = "Размер пока хранится как metadata и не запускает генерацию карты.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         hint.AddThemeFontSizeOverride("font_size", 13);
@@ -105,11 +107,11 @@ public sealed partial class NewGameScreen : Control
         var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         root.AddChild(buttons);
 
-        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(120, 46) };
+        var back = new Button { Text = "Назад", Icon = EvolitIcons.Load("actions/back.svg"), CustomMinimumSize = new Vector2(125, 48) };
         back.Pressed += () => BackRequested?.Invoke();
         buttons.AddChild(back);
 
-        var create = new Button { Text = "Создать мир", Icon = EvolitIcons.Load("menu/new_game.svg"), CustomMinimumSize = new Vector2(160, 46) };
+        var create = new Button { Text = "Создать мир", Icon = EvolitIcons.Load("menu/new_game.svg"), CustomMinimumSize = new Vector2(175, 48) };
         create.Pressed += Create;
         buttons.AddChild(create);
     }

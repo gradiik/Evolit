@@ -34,7 +34,7 @@ public sealed partial class MainMenu : Control
         card.AnchorRight = 0.365f;
         card.AnchorTop = 0.075f;
         card.AnchorBottom = 0.925f;
-        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.87f));
+        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.88f));
         AddChild(card);
 
         var margin = new MarginContainer();
@@ -50,7 +50,7 @@ public sealed partial class MainMenu : Control
 
         var eyebrow = new Label { Text = "NATURE  ·  TIME  ·  LIFE" };
         eyebrow.AddThemeFontSizeOverride("font_size", 12);
-        eyebrow.AddThemeColorOverride("font_color", new Color(EvolitPalette.EvolutionCyan, 0.72f));
+        eyebrow.AddThemeColorOverride("font_color", new Color(EvolitPalette.EvolutionCyan, 0.82f));
         column.AddChild(eyebrow);
 
         var title = new Label { Text = "Evolit" };
@@ -59,7 +59,7 @@ public sealed partial class MainMenu : Control
 
         var subtitle = new Label { Text = "Эволюция продолжается" };
         subtitle.AddThemeFontSizeOverride("font_size", 16);
-        subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        subtitle.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.92f));
         column.AddChild(subtitle);
 
         column.AddChild(new Control { CustomMinimumSize = new Vector2(0, 20) });
@@ -98,30 +98,65 @@ public sealed partial class MainMenu : Control
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         status.AddThemeFontSizeOverride("font_size", 13);
-        status.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.78f));
+        status.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.90f));
         column.AddChild(status);
+
+        BuildRightMessage();
+
+        Modulate = new Color(1, 1, 1, 0);
+        CreateTween()
+            .TweenProperty(this, "modulate", Colors.White, 0.35)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+    }
+
+    private void BuildRightMessage()
+    {
+        var accent = new ColorRect
+        {
+            Color = new Color(EvolitPalette.EvolutionCyan, 0.42f),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        accent.AnchorLeft = 0.805f;
+        accent.AnchorRight = 0.808f;
+        accent.AnchorTop = 0.18f;
+        accent.AnchorBottom = 0.35f;
+        AddChild(accent);
 
         var rightNote = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         rightNote.AnchorLeft = 0.68f;
-        rightNote.AnchorRight = 0.94f;
+        rightNote.AnchorRight = 0.79f;
         rightNote.AnchorTop = 0.17f;
-        rightNote.AnchorBottom = 0.42f;
+        rightNote.AnchorBottom = 0.39f;
+        rightNote.Alignment = BoxContainer.AlignmentMode.Center;
         AddChild(rightNote);
 
-        var noteTitle = new Label { Text = "МАЛЫЕ ФОРМЫ.\nБОЛЬШИЕ МИРЫ." };
-        noteTitle.HorizontalAlignment = HorizontalAlignment.Right;
-        noteTitle.AddThemeFontSizeOverride("font_size", 24);
-        noteTitle.AddThemeColorOverride("font_color", new Color(EvolitPalette.MistWhite, 0.70f));
+        var noteTitle = new Label
+        {
+            Text = "МАЛЫЕ ФОРМЫ.\nБОЛЬШИЕ МИРЫ.",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        noteTitle.AddThemeFontSizeOverride("font_size", 25);
+        noteTitle.AddThemeColorOverride("font_color", new Color(EvolitPalette.MistWhite, 0.86f));
         rightNote.AddChild(noteTitle);
 
-        var note = new Label { Text = "Системная оболочка готовит место\nдля будущей живой симуляции." };
-        note.HorizontalAlignment = HorizontalAlignment.Right;
+        var note = new Label
+        {
+            Text = "Наблюдай за жизнью,\nменяющейся со временем.",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
         note.AddThemeFontSizeOverride("font_size", 14);
-        note.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.62f));
+        note.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.80f));
         rightNote.AddChild(note);
 
-        Modulate = new Color(1, 1, 1, 0);
-        CreateTween().TweenProperty(this, "modulate", Colors.White, 0.35);
+        var micro = new Label
+        {
+            Text = "ЖИВАЯ СИСТЕМА  /  EVOLIT",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+        micro.AddThemeFontSizeOverride("font_size", 10);
+        micro.AddThemeColorOverride("font_color", new Color(EvolitPalette.EvolutionCyan, 0.55f));
+        rightNote.AddChild(micro);
     }
 
     private static Button MenuButton(string text, string iconPath)
