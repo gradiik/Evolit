@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="48" y1="24" x2="460" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071921"/>
+      <stop offset="0.55" stop-color="#0B3444"/>
+      <stop offset="1" stop-color="#061A20"/>
+    </linearGradient>
+    <radialGradient id="planet" cx="0" cy="0" r="1" gradientTransform="translate(280 170) rotate(90) scale(168)">
+      <stop stop-color="#35D8E2" stop-opacity=".74"/>
+      <stop offset=".55" stop-color="#0F7282" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#08242E" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="142" y1="126" x2="359" y2="374" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF5F3"/>
+      <stop offset=".45" stop-color="#7DDDE0"/>
+      <stop offset="1" stop-color="#20C7D4"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="225" y1="206" x2="339" y2="298" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B7DF72"/>
+      <stop offset=".52" stop-color="#86A85D"/>
+      <stop offset="1" stop-color="#3E7449"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="14" y="14" width="484" height="484" rx="112" fill="url(#bg)"/>
+  <rect x="24" y="24" width="464" height="464" rx="102" fill="none" stroke="#20C7D4" stroke-opacity=".42" stroke-width="4"/>
+
+  <circle cx="285" cy="177" r="166" fill="url(#planet)"/>
+  <path d="M50 354C122 314 174 326 222 343C284 366 336 358 462 315V462H50V354Z" fill="#061A1E" fill-opacity=".82"/>
+  <path d="M51 381C125 350 183 365 237 381C297 399 363 386 461 353" fill="none" stroke="#20C7D4" stroke-opacity=".20" stroke-width="5"/>
+
+  <path d="M351 133H225C170 133 134 170 134 224V288C134 345 171 379 226 379H356V322H233C207 322 193 309 193 283V227C193 201 207 188 233 188H330C343 188 351 181 356 169L368 139C371 134 365 133 351 133Z" fill="url(#mark)"/>
+
+  <path d="M213 278C243 224 287 205 339 206C331 259 296 299 239 307C229 309 219 304 213 296C209 290 209 284 213 278Z" fill="url(#leaf)"/>
+  <path d="M222 297C255 274 286 249 325 220" fill="none" stroke="#DDF4B5" stroke-opacity=".82" stroke-width="7" stroke-linecap="round"/>
+
+  <circle cx="403" cy="117" r="8" fill="#7DDDE0" fill-opacity=".72"/>
+  <circle cx="431" cy="147" r="3" fill="#EAF5F3" fill-opacity=".82"/>
+</svg>

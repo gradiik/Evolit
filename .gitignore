@@ -16,3 +16,6 @@ obj/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local test builds
+.local-build/

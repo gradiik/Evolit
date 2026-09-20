@@ -1,6 +1,7 @@
 [application]
 config/name="Evolit"
 run/main_scene="res://Main.tscn"
+config/icon="res://assets/branding/evolit_icon.svg"
 
 [display]
 window/size/viewport_width=1920
