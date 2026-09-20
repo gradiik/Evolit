@@ -1,15 +1,6 @@
 name: Evolit UI smoke
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'assets/ui/icons/**'
-      - 'src/UI/**'
-      - 'Evolit.csproj'
-      - 'project.godot'
-      - 'Main.tscn'
-      - '.github/workflows/ui-smoke.yml'
   workflow_dispatch:
 
 permissions:
