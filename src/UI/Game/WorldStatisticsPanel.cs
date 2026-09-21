@@ -52,6 +52,11 @@ public sealed partial class WorldStatisticsPanel : Control
         RefreshValues();
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
+    }
+
     private void BuildFrame()
     {
         var dim = new ColorRect
@@ -179,7 +184,7 @@ public sealed partial class WorldStatisticsPanel : Control
 
         var note = new Label
         {
-            Text = "FPS — реальный.\nTPS и Tick — лёгкий runtime-time loop.\nПопуляции и разнообразие — demo-слой.",
+            Text = "FPS — реальный.\nTPS и Tick — runtime-time loop.\nПопуляции и разнообразие — демонстрационные данные интерфейса 0.0.4.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         note.AddThemeFontSizeOverride("font_size", 11);
