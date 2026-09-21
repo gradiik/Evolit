@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Evolit.Game;
 using Godot;
 
@@ -30,6 +31,7 @@ public sealed partial class GameHud : Control
     private Button? _speed4;
     private SelectionPanel? _selectionPanel;
     private Control? _activeTool;
+    private readonly Dictionary<string, Button> _toolButtons = new();
     private DemoEntity? _selectedEntity;
     private double _refreshTimer;
 
@@ -79,17 +81,6 @@ public sealed partial class GameHud : Control
         _selectedEntity = entity;
         _selectionPanel?.SetEntity(entity);
 
-        if (entity is not null && _world is not null)
-        {
-            var stats = _statsProvider?.GetSnapshot() ?? default;
-            _world.AddEvent(
-                stats.Day,
-                stats.GameTime,
-                DemoEventCategory.World,
-                $"Выбран объект: {entity.Name}",
-                entity.Kind == DemoEntityKind.Creature ? "Открыта карточка существа." : "Открыта карточка растения.",
-                entity.Kind == DemoEntityKind.Creature ? "biology/creature.svg" : "biology/plant.svg");
-        }
     }
 
     public void SetSpeedFromAction(int multiplier)
@@ -182,11 +173,11 @@ public sealed partial class GameHud : Control
         gameTools.AddThemeConstantOverride("separation", 5);
         row.AddChild(gameTools);
 
-        gameTools.AddChild(ToolButton("Эволюция", "biology/evolution.svg", ShowEvolution));
-        gameTools.AddChild(ToolButton("Древо", "biology/lineage.svg", ShowLineage));
-        gameTools.AddChild(ToolButton("Летопись", "simulation/history.svg", ShowChronicle));
-        gameTools.AddChild(ToolButton("События", "simulation/event.svg", ShowEvents));
-        gameTools.AddChild(ToolButton("Статистика", "settings/performance.svg", ShowWorldStats));
+        AddGameTool(gameTools, "Эволюция", "biology/evolution.svg", ShowEvolution);
+        AddGameTool(gameTools, "Древо", "biology/lineage.svg", ShowLineage);
+        AddGameTool(gameTools, "Летопись", "simulation/history.svg", ShowChronicle);
+        AddGameTool(gameTools, "События", "simulation/event.svg", ShowEvents);
+        AddGameTool(gameTools, "Статистика", "settings/performance.svg", ShowWorldStats);
 
         row.AddChild(new ColorRect
         {
@@ -266,6 +257,28 @@ public sealed partial class GameHud : Control
         };
         button.Pressed += callback;
         return button;
+    }
+
+    private void AddGameTool(Container parent, string text, string icon, Action callback)
+    {
+        var button = ToolButton(text, icon, () =>
+        {
+            callback();
+            foreach (var pair in _toolButtons)
+                pair.Value.ButtonPressed = pair.Key == text;
+        });
+        button.ToggleMode = true;
+        _toolButtons[text] = button;
+        parent.AddChild(button);
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause") && _activeTool is not null)
+        {
+            CloseActiveTool();
+            GetViewport().SetInputAsHandled();
+        }
     }
 
     private static Button ToolButton(string text, string icon, Action callback)
@@ -421,5 +434,7 @@ public sealed partial class GameHud : Control
         _activeTool = null;
         RemoveChild(old);
         old.QueueFree();
+        foreach (var button in _toolButtons.Values)
+            button.ButtonPressed = false;
     }
 }
