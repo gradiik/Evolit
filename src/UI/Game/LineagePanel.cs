@@ -31,7 +31,7 @@ public sealed partial class LineagePanel : Control
         var subtitle=new Label{Text="Выберите узел для подробностей · панорамирование — средней/правой кнопкой · масштаб — колесом"};subtitle.AddThemeFontSizeOverride("font_size",12);subtitle.AddThemeColorOverride("font_color",EvolitPalette.FogBlue);titles.AddChild(subtitle);
         var controls=new HBoxContainer();controls.AddThemeConstantOverride("separation",6);header.AddChild(controls);
         controls.AddChild(ActionButton("−","Уменьшить",()=>_canvas?.ZoomOut()));controls.AddChild(ActionButton("+","Увеличить",()=>_canvas?.ZoomIn()));controls.AddChild(ActionButton("Сброс","Сбросить масштаб и позицию",()=>_canvas?.ResetView()));controls.AddChild(ActionButton("По центру","Вернуть дерево в центр",()=>_canvas?.CenterView()));
-        var close=new Button{Text="Закрыть",Icon=EvolitIcons.Load("actions/close.svg"),CustomMinimumSize=new(110,38),TooltipText="Закрыть (Esc)"};close.Pressed+=()=>CloseRequested?.Invoke();controls.AddChild(close);
+        var close=new Button{Text="Закрыть",Icon=EvolitIcons.Load("actions/close.svg"),CustomMinimumSize=new(110,38),TooltipText="Закрыть панель"};close.Pressed+=()=>CloseRequested?.Invoke();controls.AddChild(close);
 
         var filters=new HBoxContainer();filters.AddThemeConstantOverride("separation",6);root.AddChild(filters);
         AddFilter(filters,LineageFilter.All,"Все");AddFilter(filters,LineageFilter.Active,"Активные");AddFilter(filters,LineageFilter.Extinct,"Вымершие");AddFilter(filters,LineageFilter.Plants,"Растения");AddFilter(filters,LineageFilter.Creatures,"Существа");
@@ -48,8 +48,6 @@ public sealed partial class LineagePanel : Control
         _inspector=new VBoxContainer();_inspector.AddThemeConstantOverride("separation",8);im.AddChild(_inspector);ShowEmptyInspector();
         UpdateFilterButtons(LineageFilter.All);
     }
-
-    public override void _UnhandledInput(InputEvent e){if(e.IsActionPressed("game_pause")){CloseRequested?.Invoke();GetViewport().SetInputAsHandled();}}
 
     private void Search(string text){if(_canvas is null||string.IsNullOrWhiteSpace(text))return;if(!_canvas.SelectByName(text)){_search!.PlaceholderText="Ничего не найдено";_search.Text="";}}
 

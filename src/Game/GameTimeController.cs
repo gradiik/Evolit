@@ -5,17 +5,20 @@ namespace Evolit.Game;
 public sealed class GameTimeController
 {
     private const double MinutesPerRealSecond = 12.0;
-    private const double BaseTicksPerSecond = 10.0;
+    public const double BaseTicksPerSecond = 10.0;
     private const double MinutesPerDay = 24.0 * 60.0;
 
     private readonly SimulationSpeedState _speed;
     private double _minuteOfDay;
     private double _tickFraction;
+    private double _measureSeconds;
+    private long _measureTicks;
+    private double _measuredTps;
 
     public int Day { get; private set; } = 1;
     public long TickCount { get; private set; }
 
-    public double Tps => _speed.Paused ? 0.0 : BaseTicksPerSecond * _speed.Multiplier;
+    public double Tps => _measuredTps;
 
     public string FormattedTime
     {
@@ -35,8 +38,14 @@ public sealed class GameTimeController
 
     public void Advance(double delta)
     {
-        if (delta <= 0 || _speed.Paused)
+        if (delta <= 0)
             return;
+
+        if (_speed.Paused)
+        {
+            UpdateMeasuredTps(delta, 0);
+            return;
+        }
 
         var multiplier = _speed.Multiplier;
         _minuteOfDay += delta * MinutesPerRealSecond * multiplier;
@@ -54,5 +63,22 @@ public sealed class GameTimeController
             TickCount += completedTicks;
             _tickFraction -= completedTicks;
         }
+
+        UpdateMeasuredTps(delta, completedTicks);
+    }
+
+    private void UpdateMeasuredTps(double delta, long completedTicks)
+    {
+        _measureSeconds += delta;
+        _measureTicks += completedTicks;
+
+        if (_measureSeconds < 0.50)
+            return;
+
+        _measuredTps = _measureSeconds <= 0
+            ? 0
+            : _measureTicks / _measureSeconds;
+        _measureSeconds = 0;
+        _measureTicks = 0;
     }
 }

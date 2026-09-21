@@ -45,6 +45,7 @@ public sealed class DemoWorldDataProvider
 
     public event Action? DataChanged;
     public event Action? HistoryChanged;
+    public event Action<DemoEventEntry>? EventAdded;
 
     public int LastSimulatedDay { get; private set; } = 1;
 
@@ -139,7 +140,7 @@ public sealed class DemoWorldDataProvider
         DemoEventSeverity severity = DemoEventSeverity.Info,
         string relatedEntityId = "")
     {
-        _events.Insert(0, new DemoEventEntry
+        var entry = new DemoEventEntry
         {
             Day = day,
             Time = time,
@@ -150,11 +151,9 @@ public sealed class DemoWorldDataProvider
             Description = description,
             RelatedEntityId = relatedEntityId,
             IconPath = iconPath
-        });
+        };
 
-        if (_events.Count > 40)
-            _events.RemoveRange(40, _events.Count - 40);
-
+        InsertEvent(entry, true);
         DataChanged?.Invoke();
     }
 
@@ -211,17 +210,30 @@ public sealed class DemoWorldDataProvider
             });
         }
 
-        _events.Insert(0, new DemoEventEntry
-        {
-            Day = day,
-            Time = "00:00",
-            Category = DemoEventCategory.World,
-            Kind = DemoEventKind.Observation,
-            Severity = DemoEventSeverity.Info,
-            Title = $"Начался день {day}",
-            Description = "Демо-популяции получили новую точку истории.",
-            IconPath = "simulation/event.svg"
-        });
+        InsertEvent(
+            new DemoEventEntry
+            {
+                Day = day,
+                Time = "00:00",
+                Category = DemoEventCategory.World,
+                Kind = DemoEventKind.Observation,
+                Severity = DemoEventSeverity.Info,
+                Title = $"Начался день {day}",
+                Description = "Демо-популяции получили новую точку истории.",
+                IconPath = "simulation/event.svg"
+            },
+            true);
+    }
+
+    private void InsertEvent(DemoEventEntry entry, bool notify)
+    {
+        _events.Insert(0, entry);
+
+        if (_events.Count > 40)
+            _events.RemoveRange(40, _events.Count - 40);
+
+        if (notify)
+            EventAdded?.Invoke(entry);
     }
 
     private void SeedLegacyHistory()

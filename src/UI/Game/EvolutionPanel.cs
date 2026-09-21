@@ -136,13 +136,6 @@ public sealed partial class EvolutionPanel : Control
 
         ShowSection(_activeSection);
 
-        Modulate = new Color(1, 1, 1, 0);
-        CreateTween().TweenProperty(this, "modulate", Colors.White, 0.16);
-    }
-
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
     }
 
     public override void _ExitTree()
@@ -239,7 +232,9 @@ public sealed partial class EvolutionPanel : Control
         _content.AddChild(SectionLabel("Тренд подвижных форм"));
 
         var graph = new WorldStatsGraph();
-        graph.SetValues(_world.CreaturePopulationHistory, EvolitPalette.EvolutionCyan);
+        graph.SetData(
+            _world.History,
+            [new WorldGraphSeries("Существа", WorldHistoryMetric.CreaturePopulation, EvolitPalette.EvolutionCyan)]);
         _content.AddChild(graph);
 
         _content.AddChild(SectionLabel("Линии сейчас"));

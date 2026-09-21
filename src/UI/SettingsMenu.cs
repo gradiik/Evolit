@@ -261,7 +261,9 @@ public sealed partial class SettingsMenu : Control
         _content.AddChild(KeyRow("Перемещение камеры", $"{InputBindings.Describe("camera_up")} / {InputBindings.Describe("camera_left")} / {InputBindings.Describe("camera_down")} / {InputBindings.Describe("camera_right")}"));
         _content.AddChild(KeyRow("Приближение", $"{InputBindings.Describe("camera_zoom_in")} / {InputBindings.Describe("camera_zoom_out")}"));
         _content.AddChild(KeyRow("Пауза", InputBindings.Describe("game_pause")));
-        _content.AddChild(KeyRow("Скорость времени", $"{InputBindings.Describe("simulation_speed_1")} / {InputBindings.Describe("simulation_speed_2")} / {InputBindings.Describe("simulation_speed_3")}"));
+        _content.AddChild(KeyRow(
+            "Скорость времени 1× / 4× / 16× / MAX",
+            $"{InputBindings.Describe("simulation_speed_1")} / {InputBindings.Describe("simulation_speed_2")} / {InputBindings.Describe("simulation_speed_3")} / {InputBindings.Describe("simulation_speed_max")}"));
         _content.AddChild(KeyRow("Выбор объекта", InputBindings.Describe("select")));
         _content.AddChild(KeyRow("Отмена", InputBindings.Describe("cancel")));
         _content.AddChild(Hint("Переназначение клавиш будет добавлено позже. Отображаются реальные default Input Actions."));

@@ -64,15 +64,6 @@ public sealed partial class WorldStatisticsPanel : Control
         RefreshValues();
     }
 
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event.IsActionPressed("game_pause"))
-        {
-            CloseRequested?.Invoke();
-            GetViewport().SetInputAsHandled();
-        }
-    }
-
     private void BuildFrame()
     {
         var dim = new ColorRect

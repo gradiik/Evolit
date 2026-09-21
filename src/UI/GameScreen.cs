@@ -55,6 +55,10 @@ public sealed partial class GameScreen : Control
         _hud.SaveRequested += () => SaveRequested?.Invoke();
         _hud.SettingsRequested += () => SettingsRequested?.Invoke();
         _hud.PauseRequested += () => PauseRequested?.Invoke();
+        _hud.CameraZoomInRequested += worldView.ZoomIn;
+        _hud.CameraZoomOutRequested += worldView.ZoomOut;
+        _hud.CameraCenterRequested += worldView.CenterCamera;
+        _hud.CameraResetRequested += worldView.ResetCamera;
         AddChild(_hud);
 
         worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
@@ -66,6 +70,15 @@ public sealed partial class GameScreen : Control
         _demoSimulation?.Tick();
     }
 
+    public override void _Input(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("game_pause"))
+            return;
+
+        PauseRequested?.Invoke();
+        GetViewport().SetInputAsHandled();
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event.IsActionPressed("simulation_speed_1"))
@@ -75,12 +88,17 @@ public sealed partial class GameScreen : Control
         }
         else if (@event.IsActionPressed("simulation_speed_2"))
         {
-            _hud?.SetSpeedFromAction(2);
+            _hud?.SetSpeedFromAction(4);
             GetViewport().SetInputAsHandled();
         }
         else if (@event.IsActionPressed("simulation_speed_3"))
         {
-            _hud?.SetSpeedFromAction(4);
+            _hud?.SetSpeedFromAction(16);
+            GetViewport().SetInputAsHandled();
+        }
+        else if (@event.IsActionPressed("simulation_speed_max"))
+        {
+            _hud?.SetSpeedFromAction(SimulationSpeedState.MaxMultiplier);
             GetViewport().SetInputAsHandled();
         }
     }

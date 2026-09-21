@@ -100,7 +100,9 @@ public sealed partial class ChroniclePanel : Control
         AddFilter(filters, "Мир");
         AddFilter(filters, "Эволюция");
         AddFilter(filters, "Ветвления");
+        AddFilter(filters, "Новые виды");
         AddFilter(filters, "Вымирания");
+        AddFilter(filters, "Катастрофы");
         AddFilter(filters, "Системные");
         AddFilter(filters, "Важные");
 
@@ -238,7 +240,9 @@ public sealed partial class ChroniclePanel : Control
             "Мир" => entry.Category == DemoEventCategory.World,
             "Эволюция" => entry.Category == DemoEventCategory.Evolution,
             "Ветвления" => entry.Kind == DemoEventKind.Branching,
+            "Новые виды" => entry.Kind == DemoEventKind.Speciation,
             "Вымирания" => entry.Kind == DemoEventKind.Extinction,
+            "Катастрофы" => entry.Kind == DemoEventKind.Catastrophe,
             "Системные" => entry.Category == DemoEventCategory.System,
             "Важные" => entry.Severity == DemoEventSeverity.Important,
             _ => true
@@ -263,11 +267,6 @@ public sealed partial class ChroniclePanel : Control
             node.RemoveChild(child);
             child.QueueFree();
         }
-    }
-
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
     }
 
     private static Control BuildEntry(DemoChronicleEntry entry)
@@ -380,7 +379,9 @@ public sealed partial class ChroniclePanel : Control
     private static string KindLabel(DemoEventKind kind) => kind switch
     {
         DemoEventKind.Branching => "ВЕТВЛЕНИЕ",
+        DemoEventKind.Speciation => "НОВЫЙ ВИД",
         DemoEventKind.Extinction => "ВЫМИРАНИЕ",
+        DemoEventKind.Catastrophe => "КАТАСТРОФА",
         DemoEventKind.WorldCreated => "МИР",
         DemoEventKind.Observation => "НАБЛЮДЕНИЕ",
         DemoEventKind.Runtime => "СИСТЕМА",

@@ -45,7 +45,6 @@ public sealed partial class DemoWorldView : Control
         if (_world is not null)
             _world.DataChanged += QueueRedraw;
 
-        BuildCameraControls();
         QueueRedraw();
     }
 
@@ -251,53 +250,6 @@ public sealed partial class DemoWorldView : Control
         }
     }
 
-    private void BuildCameraControls()
-    {
-        var panel = new PanelContainer
-        {
-            AnchorLeft = 0.02f,
-            AnchorRight = 0.25f,
-            AnchorTop = 0.105f,
-            AnchorBottom = 0.165f,
-            MouseFilter = MouseFilterEnum.Stop
-        };
-        panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.90f));
-        AddChild(panel);
-
-        var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 7);
-        margin.AddThemeConstantOverride("margin_right", 7);
-        margin.AddThemeConstantOverride("margin_top", 5);
-        margin.AddThemeConstantOverride("margin_bottom", 5);
-        panel.AddChild(margin);
-
-        var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 5);
-        margin.AddChild(row);
-
-        var label = new Label { Text = "Камера" };
-        label.AddThemeFontSizeOverride("font_size", 10);
-        label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        row.AddChild(label);
-
-        row.AddChild(CameraButton("−", "Отдалить", () => ZoomAt(Size * 0.5f, 1f / 1.14f)));
-        row.AddChild(CameraButton("+", "Приблизить", () => ZoomAt(Size * 0.5f, 1.14f)));
-        row.AddChild(CameraButton("Центр", "Вернуть камеру к центру мира", CenterCamera));
-        row.AddChild(CameraButton("Сброс", "Сбросить положение и масштаб камеры", ResetCamera));
-    }
-
-    private static Button CameraButton(string text, string tooltip, Action action)
-    {
-        var button = new Button
-        {
-            Text = text,
-            TooltipText = tooltip,
-            CustomMinimumSize = new Vector2(text.Length > 2 ? 58 : 34, 30)
-        };
-        button.Pressed += action;
-        return button;
-    }
-
     private void ZoomAt(Vector2 screenPoint, float factor)
     {
         _zoomAnchorScreen = screenPoint;
@@ -324,14 +276,24 @@ public sealed partial class DemoWorldView : Control
         ClampCamera();
     }
 
-    private void CenterCamera()
+    public void ZoomIn()
+    {
+        ZoomAt(Size * 0.5f, 1.14f);
+    }
+
+    public void ZoomOut()
+    {
+        ZoomAt(Size * 0.5f, 1f / 1.14f);
+    }
+
+    public void CenterCamera()
     {
         _cameraPosition = Vector2.Zero;
         _hasZoomAnchor = false;
         QueueRedraw();
     }
 
-    private void ResetCamera()
+    public void ResetCamera()
     {
         _cameraPosition = Vector2.Zero;
         _zoom = 1f;

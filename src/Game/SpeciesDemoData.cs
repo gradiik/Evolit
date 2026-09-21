@@ -30,7 +30,9 @@ public enum DemoEventKind
     WorldCreated,
     Observation,
     Branching,
+    Speciation,
     Extinction,
+    Catastrophe,
     Save,
     Speed,
     Runtime

@@ -116,7 +116,7 @@ public sealed partial class EventsPanel : Control
         tools.AddChild(_severity);
 
         _kind = new OptionButton { CustomMinimumSize = new Vector2(150, 34) };
-        foreach (var item in new[] { "Любой тип", "Наблюдения", "Ветвления", "Вымирания", "Сохранения", "Время", "Runtime" })
+        foreach (var item in new[] { "Любой тип", "Наблюдения", "Ветвления", "Новые виды", "Вымирания", "Катастрофы", "Сохранения", "Время", "Runtime" })
             _kind.AddItem(item);
         _kind.ItemSelected += _ => Refresh();
         tools.AddChild(_kind);
@@ -203,10 +203,12 @@ public sealed partial class EventsPanel : Control
         {
             1 => events.Where(item => item.Kind == DemoEventKind.Observation),
             2 => events.Where(item => item.Kind == DemoEventKind.Branching),
-            3 => events.Where(item => item.Kind == DemoEventKind.Extinction),
-            4 => events.Where(item => item.Kind == DemoEventKind.Save),
-            5 => events.Where(item => item.Kind == DemoEventKind.Speed),
-            6 => events.Where(item => item.Kind == DemoEventKind.Runtime),
+            3 => events.Where(item => item.Kind == DemoEventKind.Speciation),
+            4 => events.Where(item => item.Kind == DemoEventKind.Extinction),
+            5 => events.Where(item => item.Kind == DemoEventKind.Catastrophe),
+            6 => events.Where(item => item.Kind == DemoEventKind.Save),
+            7 => events.Where(item => item.Kind == DemoEventKind.Speed),
+            8 => events.Where(item => item.Kind == DemoEventKind.Runtime),
             _ => events
         };
 
@@ -238,11 +240,6 @@ public sealed partial class EventsPanel : Control
 
         foreach (var entry in materialized)
             _feed.AddChild(BuildEvent(entry));
-    }
-
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
     }
 
     private static Control BuildEvent(DemoEventEntry entry)
@@ -334,7 +331,9 @@ public sealed partial class EventsPanel : Control
     private static string KindLabel(DemoEventKind kind) => kind switch
     {
         DemoEventKind.Branching => "ВЕТВЛЕНИЕ",
+        DemoEventKind.Speciation => "НОВЫЙ ВИД",
         DemoEventKind.Extinction => "ВЫМИРАНИЕ",
+        DemoEventKind.Catastrophe => "КАТАСТРОФА",
         DemoEventKind.WorldCreated => "МИР",
         DemoEventKind.Observation => "НАБЛЮДЕНИЕ",
         DemoEventKind.Save => "СОХРАНЕНИЕ",
