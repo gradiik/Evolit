@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "current": "0.0.4",
+  "development_branch": "main",
+  "protocol": "VERSIONING.md",
+  "versions": [
+    {
+      "version": "0.0.4",
+      "status": "development",
+      "branch": "version/0.0.4",
+      "tag": null,
+      "commit": null,
+      "note": "Current 0.0.4 development. Freeze commit and tag only after explicit release approval."
+    },
+    {
+      "version": "0.0.3",
+      "status": "checkpoint",
+      "branch": "version/0.0.3",
+      "tag": null,
+      "commit": "04e1cfa88de983dca6ed2ad582c9af7a4a010dcc",
+      "note": "Historical baseline checkpoint. No immutable tag has been created yet."
+    }
+  ]
+}
