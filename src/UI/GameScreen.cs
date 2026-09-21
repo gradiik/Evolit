@@ -42,15 +42,16 @@ public sealed partial class GameScreen : Control
 
         _demoSimulation = new DemoSimulationController(_world, _time);
         var stats = new DemoSimulationStatsProvider(_session, _world, _time);
+        var quality = GraphicsQualityProfile.From(_settings);
 
         var worldView = new DemoWorldView();
         worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom);
+        worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom, quality);
         AddChild(worldView);
 
         _hud = new GameHud();
         _hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _hud.Configure(stats, _world, _speed);
+        _hud.Configure(stats, _world, _speed, _settings);
         _hud.SaveRequested += () => SaveRequested?.Invoke();
         _hud.SettingsRequested += () => SettingsRequested?.Invoke();
         _hud.PauseRequested += () => PauseRequested?.Invoke();

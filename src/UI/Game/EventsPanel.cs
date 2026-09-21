@@ -48,12 +48,13 @@ public sealed partial class EventsPanel : Control
         dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(dim);
 
-        var outer = new MarginContainer();
-        outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        outer.AddThemeConstantOverride("margin_left", 110);
-        outer.AddThemeConstantOverride("margin_right", 110);
-        outer.AddThemeConstantOverride("margin_top", 62);
-        outer.AddThemeConstantOverride("margin_bottom", 72);
+        var outer = new MarginContainer
+        {
+            AnchorLeft = 0.08f,
+            AnchorRight = 0.92f,
+            AnchorTop = 0.10f,
+            AnchorBottom = 0.80f
+        };
         AddChild(outer);
 
         var card = new PanelContainer();
@@ -175,7 +176,7 @@ public sealed partial class EventsPanel : Control
 
     private static Control BuildEvent(DemoEventEntry entry)
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 74) };
+        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 66) };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
 
         var margin = new MarginContainer();

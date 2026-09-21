@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Evolit.Game;
+using Evolit.Settings;
 using Godot;
 
 namespace Evolit.UI.Game;
@@ -14,6 +15,8 @@ public sealed partial class GameHud : Control
     private ISimulationStatsProvider? _statsProvider;
     private DemoWorldDataProvider? _world;
     private SimulationSpeedState? _speed;
+    private bool _showFps;
+    private bool _showPerformance;
 
     private Label? _day;
     private Label? _time;
@@ -24,6 +27,10 @@ public sealed partial class GameHud : Control
     private Label? _fps;
     private Label? _tps;
     private Label? _tick;
+    private Control? _techPanel;
+    private Control? _fpsBox;
+    private Control? _tpsBox;
+    private Control? _tickBox;
 
     private Button? _pauseSpeed;
     private Button? _speed1;
@@ -35,11 +42,13 @@ public sealed partial class GameHud : Control
     private DemoEntity? _selectedEntity;
     private double _refreshTimer;
 
-    public void Configure(ISimulationStatsProvider statsProvider, DemoWorldDataProvider world, SimulationSpeedState speed)
+    public void Configure(ISimulationStatsProvider statsProvider, DemoWorldDataProvider world, SimulationSpeedState speed, AppSettings settings)
     {
         _statsProvider = statsProvider;
         _world = world;
         _speed = speed;
+        _showFps = settings.ShowFps;
+        _showPerformance = settings.ShowPerformance;
     }
 
     public override void _Ready()
@@ -54,6 +63,7 @@ public sealed partial class GameHud : Control
         if (_world is not null)
             _world.DataChanged += RefreshSelection;
 
+        ApplyDiagnosticVisibility();
         RefreshStats();
         RefreshSpeedButtons();
     }
@@ -121,6 +131,7 @@ public sealed partial class GameHud : Control
         var tech = new PanelContainer();
         tech.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(tech);
+        _techPanel = tech;
 
         var techMargin = new MarginContainer();
         techMargin.AddThemeConstantOverride("margin_left", 9);
@@ -133,9 +144,9 @@ public sealed partial class GameHud : Control
         techRow.AddThemeConstantOverride("separation", 10);
         techMargin.AddChild(techRow);
 
-        _fps = AddTechStat(techRow, "FPS");
-        _tps = AddTechStat(techRow, "TPS");
-        _tick = AddTechStat(techRow, "TICK");
+        _fps = AddTechStat(techRow, "FPS", out _fpsBox);
+        _tps = AddTechStat(techRow, "TPS", out _tpsBox);
+        _tick = AddTechStat(techRow, "TICK", out _tickBox);
 
         _pauseSpeed = SpeedButton("", "Остановить игровое время", ToggleSimulationPause, "simulation/pause.svg");
         _speed1 = SpeedButton("1×", "Скорость времени 1×", () => SetSimulationSpeed(1));
@@ -226,10 +237,11 @@ public sealed partial class GameHud : Control
         return data;
     }
 
-    private static Label AddTechStat(Container parent, string caption)
+    private static Label AddTechStat(Container parent, string caption, out Control boxControl)
     {
         var box = new VBoxContainer { CustomMinimumSize = new Vector2(43, 0) };
         box.AddThemeConstantOverride("separation", 0);
+        boxControl = box;
 
         var name = new Label { Text = caption, HorizontalAlignment = HorizontalAlignment.Center };
         name.AddThemeFontSizeOverride("font_size", 8);
@@ -294,6 +306,15 @@ public sealed partial class GameHud : Control
         return button;
     }
 
+    private void ApplyDiagnosticVisibility()
+    {
+        var showAny = _showFps || _showPerformance;
+        if (_techPanel is not null) _techPanel.Visible = showAny;
+        if (_fpsBox is not null) _fpsBox.Visible = showAny;
+        if (_tpsBox is not null) _tpsBox.Visible = _showPerformance;
+        if (_tickBox is not null) _tickBox.Visible = _showPerformance;
+    }
+
     private void RefreshStats()
     {
         if (_statsProvider is null)
@@ -306,9 +327,9 @@ public sealed partial class GameHud : Control
         if (_plants is not null) _plants.Text = stats.PlantCount.ToString();
         if (_species is not null) _species.Text = stats.SpeciesCount.ToString();
         if (_subspecies is not null) _subspecies.Text = stats.SubspeciesCount.ToString();
-        if (_fps is not null) _fps.Text = $"{stats.Fps:0}";
-        if (_tps is not null) _tps.Text = $"{stats.Tps:0}";
-        if (_tick is not null) _tick.Text = stats.Tick.ToString();
+        if (_fps is not null && (_showFps || _showPerformance)) _fps.Text = $"{stats.Fps:0}";
+        if (_tps is not null && _showPerformance) _tps.Text = $"{stats.Tps:0}";
+        if (_tick is not null && _showPerformance) _tick.Text = stats.Tick.ToString();
     }
 
     private void ToggleSimulationPause()

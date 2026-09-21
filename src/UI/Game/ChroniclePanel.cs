@@ -46,12 +46,13 @@ public sealed partial class ChroniclePanel : Control
         dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(dim);
 
-        var outer = new MarginContainer();
-        outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        outer.AddThemeConstantOverride("margin_left", 120);
-        outer.AddThemeConstantOverride("margin_right", 120);
-        outer.AddThemeConstantOverride("margin_top", 64);
-        outer.AddThemeConstantOverride("margin_bottom", 72);
+        var outer = new MarginContainer
+        {
+            AnchorLeft = 0.07f,
+            AnchorRight = 0.93f,
+            AnchorTop = 0.08f,
+            AnchorBottom = 0.78f
+        };
         AddChild(outer);
 
         var card = new PanelContainer();
@@ -134,7 +135,7 @@ public sealed partial class ChroniclePanel : Control
 
     private static Control BuildEntry(DemoChronicleEntry entry)
     {
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 84) };
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 72) };
         row.AddThemeConstantOverride("separation", 14);
 
         var day = new Label

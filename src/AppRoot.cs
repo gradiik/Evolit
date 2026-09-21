@@ -37,6 +37,7 @@ public sealed partial class AppRoot : Control
     {
         Theme = NatureTechTheme.Create();
         InputBindings.EnsureDefaults();
+        SettingsRuntime.Apply(_settings.Load());
 
         _screenHost = new Control { Name = "ScreenHost" };
         _screenHost.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);

@@ -9,61 +9,418 @@ namespace Evolit.UI;
 public sealed partial class EncyclopediaScreen : Control
 {
     public event Action? BackRequested;
-    private readonly List<DemoSpeciesRecord> _species=SpeciesDemoData.CreateSpecies();
-    private VBoxContainer? _list;
-    private Label? _details;
+
+    private readonly List<DemoSpeciesRecord> _species = SpeciesDemoData.CreateSpecies();
+    private readonly Dictionary<string, Button> _filters = new();
+    private readonly Dictionary<string, Button> _cards = new();
+    private GridContainer? _grid;
+    private PanelContainer? _inspector;
+    private VBoxContainer? _inspectorContent;
     private LineEdit? _search;
-    private string _filter="Все";
+    private string _filter = "Все";
+    private string? _selectedId;
 
     public override void _Ready()
     {
-        var background=new MenuBackground();background.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);AddChild(background);
-        var outer=new MarginContainer();outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);outer.AddThemeConstantOverride("margin_left",72);outer.AddThemeConstantOverride("margin_right",72);outer.AddThemeConstantOverride("margin_top",54);outer.AddThemeConstantOverride("margin_bottom",54);AddChild(outer);
-        var card=new PanelContainer();card.AddThemeStyleboxOverride("panel",NatureTechTheme.CardStyle(.97f));outer.AddChild(card);
-        var m=new MarginContainer();m.AddThemeConstantOverride("margin_left",26);m.AddThemeConstantOverride("margin_right",26);m.AddThemeConstantOverride("margin_top",22);m.AddThemeConstantOverride("margin_bottom",22);card.AddChild(m);
-        var root=new VBoxContainer();root.AddThemeConstantOverride("separation",12);m.AddChild(root);
-        var header=new HBoxContainer();root.AddChild(header);
-        var titles=new VBoxContainer{SizeFlagsHorizontal=SizeFlags.ExpandFill};header.AddChild(titles);
-        var title=new Label{Text="Энциклопедия Evolit"};title.AddThemeFontSizeOverride("font_size",32);titles.AddChild(title);
-        var sub=new Label{Text="Каталог известных демо-линий · сведения основаны только на доступных данных мира"};sub.AddThemeColorOverride("font_color",EvolitPalette.FogBlue);titles.AddChild(sub);
-        var back=new Button{Text="Назад",Icon=EvolitIcons.Load("actions/back.svg"),CustomMinimumSize=new(110,40)};back.Pressed+=()=>BackRequested?.Invoke();header.AddChild(back);
-
-        var tools=new HBoxContainer();tools.AddThemeConstantOverride("separation",6);root.AddChild(tools);
-        foreach(var f in new[]{"Все","Растения","Существа","Вымершие"}){var b=new Button{Text=f,ToggleMode=true,ButtonPressed=f=="Все"};var captured=f;b.Pressed+=()=>{_filter=captured;Refresh();};tools.AddChild(b);}
-        tools.AddChild(new Control{SizeFlagsHorizontal=SizeFlags.ExpandFill});
-        _search=new LineEdit{PlaceholderText="Поиск по названию…",ClearButtonEnabled=true,CustomMinimumSize=new(250,36)};_search.TextChanged+=_=>Refresh();tools.AddChild(_search);
-        root.AddChild(new HSeparator());
-
-        var body=new HBoxContainer{SizeFlagsVertical=SizeFlags.ExpandFill};body.AddThemeConstantOverride("separation",12);root.AddChild(body);
-        var scroll=new ScrollContainer{SizeFlagsHorizontal=SizeFlags.ExpandFill,SizeFlagsVertical=SizeFlags.ExpandFill};body.AddChild(scroll);
-        _list=new VBoxContainer{SizeFlagsHorizontal=SizeFlags.ExpandFill};_list.AddThemeConstantOverride("separation",8);scroll.AddChild(_list);
-        var inspector=new PanelContainer{CustomMinimumSize=new(330,0),SizeFlagsVertical=SizeFlags.ExpandFill};inspector.AddThemeStyleboxOverride("panel",NatureTechTheme.SectionStyle());body.AddChild(inspector);
-        var im=new MarginContainer();im.AddThemeConstantOverride("margin_left",18);im.AddThemeConstantOverride("margin_right",18);im.AddThemeConstantOverride("margin_top",18);im.AddThemeConstantOverride("margin_bottom",18);inspector.AddChild(im);
-        _details=new Label{Text="Выберите запись слева.",AutowrapMode=TextServer.AutowrapMode.WordSmart};_details.AddThemeColorOverride("font_color",EvolitPalette.FogBlue);im.AddChild(_details);
+        Build();
+        Resized += UpdateColumns;
         Refresh();
+        UpdateColumns();
     }
 
-    public override void _UnhandledInput(InputEvent e){if(e.IsActionPressed("game_pause")){BackRequested?.Invoke();GetViewport().SetInputAsHandled();}}
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause"))
+        {
+            BackRequested?.Invoke();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    private void Build()
+    {
+        var background = new MenuBackground { Name = "MenuBackground" };
+        background.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        AddChild(background);
+
+        var outer = new MarginContainer();
+        outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        outer.AddThemeConstantOverride("margin_left", 52);
+        outer.AddThemeConstantOverride("margin_right", 52);
+        outer.AddThemeConstantOverride("margin_top", 42);
+        outer.AddThemeConstantOverride("margin_bottom", 48);
+        AddChild(outer);
+
+        var card = new PanelContainer();
+        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.97f));
+        outer.AddChild(card);
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 24);
+        margin.AddThemeConstantOverride("margin_right", 24);
+        margin.AddThemeConstantOverride("margin_top", 20);
+        margin.AddThemeConstantOverride("margin_bottom", 20);
+        card.AddChild(margin);
+
+        var root = new VBoxContainer();
+        root.AddThemeConstantOverride("separation", 10);
+        margin.AddChild(root);
+
+        var header = new HBoxContainer();
+        root.AddChild(header);
+
+        var titles = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        header.AddChild(titles);
+
+        var title = new Label { Text = "Энциклопедия Evolit" };
+        title.AddThemeFontSizeOverride("font_size", 32);
+        titles.AddChild(title);
+
+        var subtitle = new Label
+        {
+            Text = "Известные линии мира · портреты — стабильные UI-идентификаторы, а не дополнительные биологические свойства."
+        };
+        subtitle.AddThemeFontSizeOverride("font_size", 12);
+        subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        titles.AddChild(subtitle);
+
+        var back = new Button
+        {
+            Text = "Назад",
+            Icon = EvolitIcons.Load("actions/back.svg"),
+            CustomMinimumSize = new Vector2(110, 40)
+        };
+        back.Pressed += () => BackRequested?.Invoke();
+        header.AddChild(back);
+
+        var tools = new HBoxContainer();
+        tools.AddThemeConstantOverride("separation", 6);
+        root.AddChild(tools);
+        AddFilter(tools, "Все");
+        AddFilter(tools, "Растения");
+        AddFilter(tools, "Существа");
+        AddFilter(tools, "Вымершие");
+        tools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+
+        _search = new LineEdit
+        {
+            PlaceholderText = "Поиск по названию…",
+            ClearButtonEnabled = true,
+            CustomMinimumSize = new Vector2(260, 36)
+        };
+        _search.TextChanged += _ => Refresh();
+        tools.AddChild(_search);
+        root.AddChild(new HSeparator());
+
+        var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 12);
+        root.AddChild(body);
+
+        var catalog = new PanelContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        catalog.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
+        body.AddChild(catalog);
+
+        var catalogMargin = new MarginContainer();
+        catalogMargin.AddThemeConstantOverride("margin_left", 12);
+        catalogMargin.AddThemeConstantOverride("margin_right", 12);
+        catalogMargin.AddThemeConstantOverride("margin_top", 12);
+        catalogMargin.AddThemeConstantOverride("margin_bottom", 12);
+        catalog.AddChild(catalogMargin);
+
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled
+        };
+        catalogMargin.AddChild(scroll);
+
+        _grid = new GridContainer { Columns = 3, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _grid.AddThemeConstantOverride("h_separation", 9);
+        _grid.AddThemeConstantOverride("v_separation", 9);
+        scroll.AddChild(_grid);
+
+        _inspector = new PanelContainer
+        {
+            Visible = false,
+            CustomMinimumSize = new Vector2(330, 0),
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        _inspector.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
+        body.AddChild(_inspector);
+
+        var inspectorMargin = new MarginContainer();
+        inspectorMargin.AddThemeConstantOverride("margin_left", 18);
+        inspectorMargin.AddThemeConstantOverride("margin_right", 18);
+        inspectorMargin.AddThemeConstantOverride("margin_top", 18);
+        inspectorMargin.AddThemeConstantOverride("margin_bottom", 18);
+        _inspector.AddChild(inspectorMargin);
+
+        var inspectorScroll = new ScrollContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled
+        };
+        inspectorMargin.AddChild(inspectorScroll);
+
+        _inspectorContent = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _inspectorContent.AddThemeConstantOverride("separation", 9);
+        inspectorScroll.AddChild(_inspectorContent);
+        UpdateFilterButtons();
+    }
+
+    private void AddFilter(Container parent, string name)
+    {
+        var button = new Button
+        {
+            Text = name,
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(98, 34)
+        };
+        button.Pressed += () =>
+        {
+            _filter = name;
+            UpdateFilterButtons();
+            Refresh();
+        };
+        _filters[name] = button;
+        parent.AddChild(button);
+    }
+
+    private void UpdateFilterButtons()
+    {
+        foreach (var pair in _filters)
+            pair.Value.ButtonPressed = pair.Key == _filter;
+    }
 
     private void Refresh()
     {
-        if(_list is null)return;foreach(var c in _list.GetChildren()){_list.RemoveChild(c);c.QueueFree();}
-        var q=_search?.Text?.Trim()??"";
-        var rows=_species.Where(s=>s.Kind!=DemoSpeciesKind.Origin).Where(s=>_filter switch{"Растения"=>s.Kind==DemoSpeciesKind.Plant,"Существа"=>s.Kind==DemoSpeciesKind.Creature,"Вымершие"=>s.Status==DemoSpeciesStatus.Extinct,_=>true}).Where(s=>q.Length==0||s.Name.Contains(q,StringComparison.OrdinalIgnoreCase));
-        foreach(var s in rows)_list.AddChild(Card(s));
+        if (_grid is null)
+            return;
+
+        foreach (var child in _grid.GetChildren())
+        {
+            _grid.RemoveChild(child);
+            child.QueueFree();
+        }
+        _cards.Clear();
+
+        var query = _search?.Text.Trim() ?? string.Empty;
+        var rows = _species
+            .Where(species => species.Kind != DemoSpeciesKind.Origin)
+            .Where(MatchesFilter)
+            .Where(species => query.Length == 0 || species.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (rows.Count == 0)
+        {
+            var empty = new Label
+            {
+                Text = "Ничего не найдено. Измени фильтр или поисковый запрос.",
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                CustomMinimumSize = new Vector2(280, 80)
+            };
+            empty.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+            _grid.AddChild(empty);
+        }
+        else
+        {
+            foreach (var species in rows)
+                _grid.AddChild(BuildCard(species));
+        }
+
+        if (_selectedId is not null && rows.All(species => species.Id != _selectedId))
+            ClearSelection();
+
+        UpdateColumns();
     }
 
-    private Control Card(DemoSpeciesRecord s)
+    private bool MatchesFilter(DemoSpeciesRecord species)
     {
-        var b=new Button{Text=$"{s.Name}\n{s.Description}",Alignment=HorizontalAlignment.Left,CustomMinimumSize=new(0,72),TooltipText="Открыть запись"};
-        b.Pressed+=()=>Show(s);return b;
+        return _filter switch
+        {
+            "Растения" => species.Kind == DemoSpeciesKind.Plant,
+            "Существа" => species.Kind == DemoSpeciesKind.Creature,
+            "Вымершие" => species.Status == DemoSpeciesStatus.Extinct,
+            _ => true
+        };
     }
 
-    private void Show(DemoSpeciesRecord s)
+    private Control BuildCard(DemoSpeciesRecord species)
     {
-        if(_details is null)return;
-        var parent=_species.FirstOrDefault(x=>x.Id==s.ParentId);
-        _details.Text=$"{s.Name}\n\nТип: {(s.Kind==DemoSpeciesKind.Plant?"Растительная линия":"Подвижная линия")}\nСтатус: {(s.Status==DemoSpeciesStatus.Extinct?"Вымерший":"Активный")}\nПоявление: день {s.DayAppeared}\nПопуляция: {s.Population}\nАдаптивность: {s.Adaptability*100:0}%\nРодитель: {parent?.Name??"—"}\n\n{s.Description}";
-        _details.AddThemeColorOverride("font_color",EvolitPalette.MistWhite);
+        var button = new Button
+        {
+            Text = string.Empty,
+            ToggleMode = true,
+            ButtonPressed = species.Id == _selectedId,
+            CustomMinimumSize = new Vector2(250, 126),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            TooltipText = $"Открыть запись: {species.Name}"
+        };
+        button.Pressed += () => SelectSpecies(species);
+        _cards[species.Id] = button;
+
+        var margin = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
+        margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        margin.AddThemeConstantOverride("margin_left", 12);
+        margin.AddThemeConstantOverride("margin_right", 12);
+        margin.AddThemeConstantOverride("margin_top", 10);
+        margin.AddThemeConstantOverride("margin_bottom", 10);
+        button.AddChild(margin);
+
+        var row = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        row.AddThemeConstantOverride("separation", 11);
+        margin.AddChild(row);
+
+        var portrait = new SpeciesPortrait
+        {
+            CustomMinimumSize = new Vector2(76, 76),
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        portrait.Configure(species, _species);
+        row.AddChild(portrait);
+
+        var text = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        text.AddThemeConstantOverride("separation", 3);
+        row.AddChild(text);
+
+        var name = new Label { Text = species.Name, MouseFilter = MouseFilterEnum.Ignore };
+        name.AddThemeFontSizeOverride("font_size", 17);
+        text.AddChild(name);
+
+        var type = new Label
+        {
+            Text = species.Kind == DemoSpeciesKind.Plant ? "Растительная линия" : "Подвижная линия",
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        type.AddThemeFontSizeOverride("font_size", 11);
+        type.AddThemeColorOverride("font_color", species.Kind == DemoSpeciesKind.Plant ? EvolitPalette.YoungLeaf : EvolitPalette.SoftAqua);
+        text.AddChild(type);
+
+        var status = new Label
+        {
+            Text = species.Status == DemoSpeciesStatus.Extinct ? "Вымерший" : "Активный",
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        status.AddThemeFontSizeOverride("font_size", 10);
+        status.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.WarmAlert : EvolitPalette.FogBlue);
+        text.AddChild(status);
+
+        var metrics = new Label
+        {
+            Text = $"Популяция {species.Population} · адаптивность {species.Adaptability * 100:0}%",
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        metrics.AddThemeFontSizeOverride("font_size", 10);
+        metrics.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        text.AddChild(metrics);
+        return button;
+    }
+
+    private void SelectSpecies(DemoSpeciesRecord species)
+    {
+        _selectedId = species.Id;
+        foreach (var pair in _cards)
+            pair.Value.ButtonPressed = pair.Key == _selectedId;
+        ShowInspector(species);
+    }
+
+    private void ClearSelection()
+    {
+        _selectedId = null;
+        if (_inspector is not null)
+            _inspector.Visible = false;
+        foreach (var button in _cards.Values)
+            button.ButtonPressed = false;
+    }
+
+    private void ShowInspector(DemoSpeciesRecord species)
+    {
+        if (_inspector is null || _inspectorContent is null)
+            return;
+
+        foreach (var child in _inspectorContent.GetChildren())
+        {
+            _inspectorContent.RemoveChild(child);
+            child.QueueFree();
+        }
+
+        _inspector.Visible = true;
+        var portrait = new SpeciesPortrait
+        {
+            CustomMinimumSize = new Vector2(0, 126),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        portrait.Configure(species, _species);
+        _inspectorContent.AddChild(portrait);
+
+        var title = new Label { Text = species.Name };
+        title.AddThemeFontSizeOverride("font_size", 23);
+        _inspectorContent.AddChild(title);
+
+        var accent = species.Kind == DemoSpeciesKind.Plant ? EvolitPalette.YoungLeaf : EvolitPalette.SoftAqua;
+        var type = new Label { Text = species.Kind == DemoSpeciesKind.Plant ? "РАСТИТЕЛЬНАЯ ЛИНИЯ" : "ПОДВИЖНАЯ ЛИНИЯ" };
+        type.AddThemeFontSizeOverride("font_size", 10);
+        type.AddThemeColorOverride("font_color", accent);
+        _inspectorContent.AddChild(type);
+        _inspectorContent.AddChild(new HSeparator());
+        _inspectorContent.AddChild(Detail("Статус", species.Status == DemoSpeciesStatus.Extinct ? "Вымерший" : "Активный"));
+        _inspectorContent.AddChild(Detail("Появление", $"День {species.DayAppeared}"));
+        _inspectorContent.AddChild(Detail("Популяция", species.Population.ToString()));
+        _inspectorContent.AddChild(Detail("Адаптивность", $"{species.Adaptability * 100:0}%"));
+
+        var parent = _species.FirstOrDefault(item => item.Id == species.ParentId);
+        _inspectorContent.AddChild(Detail("Родитель", parent?.Name ?? "—"));
+
+        var children = _species.Where(item => item.ParentId == species.Id).Select(item => item.Name).ToArray();
+        if (children.Length > 0)
+            _inspectorContent.AddChild(Detail("Потомки", string.Join(", ", children), true));
+
+        _inspectorContent.AddChild(new HSeparator());
+        var description = new Label
+        {
+            Text = species.Description,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        _inspectorContent.AddChild(description);
+    }
+
+    private static Control Detail(string caption, string value, bool wrap = false)
+    {
+        var row = new HBoxContainer();
+        var name = new Label { Text = caption, CustomMinimumSize = new Vector2(104, 0) };
+        name.AddThemeFontSizeOverride("font_size", 11);
+        name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        row.AddChild(name);
+
+        var data = new Label
+        {
+            Text = value,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            AutowrapMode = wrap ? TextServer.AutowrapMode.WordSmart : TextServer.AutowrapMode.Off
+        };
+        data.AddThemeFontSizeOverride("font_size", 11);
+        data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
+        row.AddChild(data);
+        return row;
+    }
+
+    private void UpdateColumns()
+    {
+        if (_grid is null)
+            return;
+
+        _grid.Columns = Size.X >= 1550 ? 3 : Size.X >= 1050 ? 2 : 1;
     }
 }

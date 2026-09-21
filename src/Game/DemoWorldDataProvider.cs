@@ -34,16 +34,17 @@ public sealed class DemoEntity
 
 public sealed class DemoWorldDataProvider
 {
+    private const int MaxHistorySamples = 2048;
+
     private readonly List<DemoEntity> _entities;
     private readonly List<DemoSpeciesRecord> _species;
     private readonly List<DemoChronicleEntry> _chronicle;
     private readonly List<DemoEventEntry> _events;
-    private readonly List<float> _creaturePopulationHistory = [22, 27, 31, 35, 38, 42, 46, 49, 52, 54];
-    private readonly List<float> _plantPopulationHistory = [35, 39, 44, 48, 53, 57, 61, 65, 68, 71];
-    private readonly List<float> _speciesHistory = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2];
-    private readonly List<float> _subspeciesHistory = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4];
+    private readonly List<WorldHistorySample> _history = new();
+    private long _nextHistorySequence;
 
     public event Action? DataChanged;
+    public event Action? HistoryChanged;
 
     public int LastSimulatedDay { get; private set; } = 1;
 
@@ -92,6 +93,8 @@ public sealed class DemoWorldDataProvider
                 PopulationHistory = [25, 31, 36, 40, 48, 53, 59, 64, 68, 71]
             }
         ];
+
+        SeedLegacyHistory();
     }
 
     public IReadOnlyList<DemoEntity> Entities => _entities;
@@ -99,10 +102,7 @@ public sealed class DemoWorldDataProvider
     public IReadOnlyList<DemoChronicleEntry> Chronicle => _chronicle;
     public IReadOnlyList<DemoEventEntry> Events => _events;
 
-    public IReadOnlyList<float> CreaturePopulationHistory => _creaturePopulationHistory;
-    public IReadOnlyList<float> PlantPopulationHistory => _plantPopulationHistory;
-    public IReadOnlyList<float> SpeciesHistory => _speciesHistory;
-    public IReadOnlyList<float> SubspeciesHistory => _subspeciesHistory;
+    public IReadOnlyList<WorldHistorySample> History => _history;
 
     public int CreatureCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Creature).Sum(entity => entity.Population);
     public int PlantCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Plant).Sum(entity => entity.Population);
@@ -124,6 +124,7 @@ public sealed class DemoWorldDataProvider
             AdvanceSingleDay(current);
 
         LastSimulatedDay = day;
+        HistoryChanged?.Invoke();
         DataChanged?.Invoke();
     }
 
@@ -164,10 +165,6 @@ public sealed class DemoWorldDataProvider
 
         Append(creature.PopulationHistory, creature.Population);
         Append(plant.PopulationHistory, plant.Population);
-        Append(_creaturePopulationHistory, CreatureCount);
-        Append(_plantPopulationHistory, PlantCount);
-        Append(_speciesHistory, SpeciesCount);
-        Append(_subspeciesHistory, SubspeciesCount);
 
         var motilisMinor = _species.First(species => species.Id == "motilis_minor");
         var viridiaMinor = _species.First(species => species.Id == "viridia_minor");
@@ -177,6 +174,15 @@ public sealed class DemoWorldDataProvider
         viridiaMinor.Adaptability = Mathf.Clamp(viridiaMinor.Adaptability + 0.003f, 0.1f, 0.98f);
         Append(motilisMinor.PopulationHistory, motilisMinor.Population);
         Append(viridiaMinor.PopulationHistory, viridiaMinor.Population);
+
+        AppendHistory(new WorldHistorySample(
+            _nextHistorySequence++,
+            day,
+            "00:00",
+            CreatureCount,
+            PlantCount,
+            SpeciesCount,
+            SubspeciesCount));
 
         if (day > 4)
         {
@@ -199,6 +205,35 @@ public sealed class DemoWorldDataProvider
             Description = "Демо-популяции получили новую точку истории.",
             IconPath = "simulation/event.svg"
         });
+    }
+
+    private void SeedLegacyHistory()
+    {
+        int[] creatures = [22, 27, 31, 35, 38, 42, 46, 49, 52, 54];
+        int[] plants = [35, 39, 44, 48, 53, 57, 61, 65, 68, 71];
+        int[] species = [1, 1, 1, 2, 2, 2, 2, 2, 2, 2];
+        int[] subspecies = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4];
+
+        for (var i = 0; i < creatures.Length; i++)
+        {
+            _history.Add(new WorldHistorySample(
+                i,
+                null,
+                null,
+                creatures[i],
+                plants[i],
+                species[i],
+                subspecies[i]));
+        }
+
+        _nextHistorySequence = _history.Count;
+    }
+
+    private void AppendHistory(WorldHistorySample sample)
+    {
+        _history.Add(sample);
+        if (_history.Count > MaxHistorySamples)
+            _history.RemoveRange(0, _history.Count - MaxHistorySamples);
     }
 
     private static void Append(List<float> values, float value)

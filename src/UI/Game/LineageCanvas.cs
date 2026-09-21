@@ -111,7 +111,9 @@ public sealed partial class LineageCanvas : Control
         var margin = new MarginContainer(); margin.AddThemeConstantOverride("margin_left", 10); margin.AddThemeConstantOverride("margin_right", 10); margin.AddThemeConstantOverride("margin_top", 8); margin.AddThemeConstantOverride("margin_bottom", 8); panel.AddChild(margin);
         var root = new VBoxContainer(); root.AddThemeConstantOverride("separation", 3); margin.AddChild(root);
         var header = new HBoxContainer(); root.AddChild(header);
-        var icon = new TextureRect { Texture = EvolitIcons.Load(species.Kind switch { DemoSpeciesKind.Plant => "biology/plant.svg", DemoSpeciesKind.Creature => "biology/creature.svg", _ => "biology/life.svg" }), CustomMinimumSize = new(22,22), Modulate = accent, MouseFilter = MouseFilterEnum.Ignore }; header.AddChild(icon);
+        var portrait = new SpeciesPortrait { CustomMinimumSize = new Vector2(26, 26), MouseFilter = MouseFilterEnum.Ignore };
+        if (_world is not null) portrait.Configure(species, _world.Species);
+        header.AddChild(portrait);
         var title = new Label { Text = species.Name, SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore }; title.AddThemeFontSizeOverride("font_size", species.ParentId == "origin" ? 15 : 13); title.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.Disabled : EvolitPalette.MistWhite); header.AddChild(title);
         var badge = new Label { Text = species.Status == DemoSpeciesStatus.Extinct ? "ВЫМЕР" : species.Kind == DemoSpeciesKind.Origin ? "КОРЕНЬ" : "АКТИВЕН", MouseFilter = MouseFilterEnum.Ignore }; badge.AddThemeFontSizeOverride("font_size", 9); badge.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.WarmAlert : accent); header.AddChild(badge);
         var meta = new Label { Text = $"День {species.DayAppeared} · популяция {species.Population}", MouseFilter = MouseFilterEnum.Ignore }; meta.AddThemeFontSizeOverride("font_size", 10); meta.AddThemeColorOverride("font_color", EvolitPalette.FogBlue); root.AddChild(meta);

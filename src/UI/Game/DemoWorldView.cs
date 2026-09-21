@@ -1,5 +1,6 @@
 using System;
 using Evolit.Game;
+using Evolit.Settings;
 using Godot;
 
 namespace Evolit.UI.Game;
@@ -15,14 +16,16 @@ public sealed partial class DemoWorldView : Control
     private float _targetZoom = 1f;
     private float _cameraSpeed = 5f;
     private bool _smoothZoom = true;
+    private GraphicsQualityProfile _quality = GraphicsQualityProfile.From(AppSettings.Default());
 
     private static readonly Rect2 LandBounds = new(-720, -440, 1440, 880);
 
-    public void Configure(DemoWorldDataProvider world, double cameraSpeed, bool smoothZoom)
+    public void Configure(DemoWorldDataProvider world, double cameraSpeed, bool smoothZoom, GraphicsQualityProfile quality)
     {
         _world = world;
         _cameraSpeed = (float)Math.Clamp(cameraSpeed, 1, 10);
         _smoothZoom = smoothZoom;
+        _quality = quality;
     }
 
     public override void _Ready()
@@ -108,16 +111,31 @@ public sealed partial class DemoWorldView : Control
         DrawRect(landScreen, new Color(0.235f, 0.355f, 0.205f), true);
         DrawRect(landScreen, new Color(EvolitPalette.YoungLeaf, 0.20f), false, 2f);
 
-        DrawOrganicPatch(new Vector2(-390, -190), 205f, 0.22f, new Color(0.29f, 0.41f, 0.24f, 0.24f));
-        DrawOrganicPatch(new Vector2(360, 210), 250f, 1.90f, new Color(0.18f, 0.31f, 0.19f, 0.19f));
-        DrawOrganicPatch(new Vector2(30, 120), 165f, 3.40f, new Color(0.38f, 0.46f, 0.24f, 0.11f));
-        DrawOrganicPatch(new Vector2(420, -240), 120f, 5.10f, new Color(0.31f, 0.39f, 0.22f, 0.10f));
+        DrawDecorativePatches();
 
         if (_world is null)
             return;
 
         foreach (var entity in _world.Entities)
             DrawEntity(entity);
+    }
+
+    private void DrawDecorativePatches()
+    {
+        DrawOrganicPatch(new Vector2(-390, -190), 205f, 0.22f, new Color(0.29f, 0.41f, 0.24f, 0.24f));
+        DrawOrganicPatch(new Vector2(360, 210), 250f, 1.90f, new Color(0.18f, 0.31f, 0.19f, 0.19f));
+
+        if (_quality.DecorativePatchCount >= 4)
+        {
+            DrawOrganicPatch(new Vector2(30, 120), 165f, 3.40f, new Color(0.38f, 0.46f, 0.24f, 0.11f));
+            DrawOrganicPatch(new Vector2(420, -240), 120f, 5.10f, new Color(0.31f, 0.39f, 0.22f, 0.10f));
+        }
+
+        if (_quality.DecorativePatchCount >= 6)
+        {
+            DrawOrganicPatch(new Vector2(-520, 255), 118f, 2.70f, new Color(0.24f, 0.38f, 0.20f, 0.11f));
+            DrawOrganicPatch(new Vector2(175, -285), 105f, 4.55f, new Color(0.34f, 0.43f, 0.23f, 0.10f));
+        }
     }
 
     private void DrawOrganicPatch(Vector2 center, float radius, float phase, Color color)
@@ -146,7 +164,7 @@ public sealed partial class DemoWorldView : Control
         if (selected)
         {
             DrawCircle(center, 42f * _zoom, new Color(EvolitPalette.EvolutionCyan, 0.11f));
-            DrawArc(center, 35f * _zoom, 0, Mathf.Tau, 56, EvolitPalette.EvolutionCyan, 2.5f, true);
+            DrawArc(center, 35f * _zoom, 0, Mathf.Tau, _quality.SelectionArcSegments, EvolitPalette.EvolutionCyan, 2.5f, true);
             DrawCircle(center, 29f * _zoom, new Color(EvolitPalette.EvolutionCyan, 0.035f));
         }
 
@@ -165,6 +183,12 @@ public sealed partial class DemoWorldView : Control
             DrawLine(center + new Vector2(-24, -4) * _zoom, center + new Vector2(-35, -10) * _zoom, new Color(0.40f, 0.64f, 0.59f), Math.Max(2f, 3f * _zoom), true);
             DrawLine(center + new Vector2(-24, 4) * _zoom, center + new Vector2(-35, 10) * _zoom, new Color(0.40f, 0.64f, 0.59f), Math.Max(2f, 3f * _zoom), true);
             DrawCircle(center + new Vector2(17, -3) * _zoom, Math.Max(2.2f, 3.2f * _zoom), EvolitPalette.DeepNavyTeal);
+
+            if (_quality.ExtraEntityDetails)
+            {
+                DrawLine(center + new Vector2(-4, -14) * _zoom, center + new Vector2(4, -22) * _zoom, new Color(0.58f, 0.82f, 0.74f, 0.72f), Math.Max(1f, 1.6f * _zoom), true);
+                DrawLine(center + new Vector2(3, 14) * _zoom, center + new Vector2(9, 21) * _zoom, new Color(0.58f, 0.82f, 0.74f, 0.62f), Math.Max(1f, 1.4f * _zoom), true);
+            }
         }
         else
         {
@@ -173,6 +197,12 @@ public sealed partial class DemoWorldView : Control
             DrawCircle(center + new Vector2(-12, -10) * _zoom, 12f * _zoom, new Color(0.53f, 0.67f, 0.32f));
             DrawCircle(center + new Vector2(12, -17) * _zoom, 11f * _zoom, new Color(0.43f, 0.61f, 0.29f));
             DrawCircle(center + new Vector2(3, -25) * _zoom, 8f * _zoom, new Color(0.59f, 0.70f, 0.36f));
+
+            if (_quality.ExtraEntityDetails)
+            {
+                DrawCircle(center + new Vector2(-17, -24) * _zoom, 6f * _zoom, new Color(0.49f, 0.66f, 0.31f, 0.90f));
+                DrawCircle(center + new Vector2(16, -5) * _zoom, 5f * _zoom, new Color(0.57f, 0.71f, 0.36f, 0.82f));
+            }
         }
     }
 

@@ -10,6 +10,7 @@ public sealed partial class SettingsMenu : Control
 {
     public event Action? BackRequested;
     public event Action<string, ToastKind>? NotificationRequested;
+    public event Action<AppSettings>? SettingsApplied;
 
     private readonly string[] _categories = ["Графика", "Звук", "Интерфейс", "Геймплей", "Управление"];
     private readonly Dictionary<string, Button> _categoryButtons = new();
@@ -83,7 +84,7 @@ public sealed partial class SettingsMenu : Control
         title.AddThemeFontSizeOverride("font_size", 34);
         titles.AddChild(title);
 
-        var subtitle = new Label { Text = "Сохраняются отдельно от игровых миров" };
+        var subtitle = new Label { Text = "Рабочие параметры применяются по кнопке «Применить» и сохраняются отдельно от миров." };
         subtitle.AddThemeFontSizeOverride("font_size", 13);
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
@@ -217,36 +218,38 @@ public sealed partial class SettingsMenu : Control
         _content.AddChild(OptionRow("Разрешение", ["1280×720", "1920×1080", "2560×1440"], _state.Resolution, value => _state.Resolution = value));
         _content.AddChild(ToggleRow("Вертикальная синхронизация", _state.VSync, value => _state.VSync = value));
         _content.AddChild(OptionRow("Уровень детализации", ["Низкий", "Средний", "Высокий"], _state.DetailLevel, value => _state.DetailLevel = value));
-        _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value));
-        _content.AddChild(OptionRow("Качество теней", ["Выкл.", "Низкое", "Среднее", "Высокое"], _state.ShadowQuality, value => _state.ShadowQuality = value));
-        _content.AddChild(OptionRow("Эффекты", ["Низкие", "Средние", "Высокие"], _state.EffectsQuality, value => _state.EffectsQuality = value));
-        _content.AddChild(Hint("Часть графических значений пока сохраняется как конфигурация и не меняет renderer."));
+        _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value, false, "Отдельный water renderer пока отсутствует."));
+        _content.AddChild(OptionRow("Качество теней", ["Выкл.", "Низкое", "Среднее", "Высокое"], _state.ShadowQuality, value => _state.ShadowQuality = value, false, "Система теней пока отсутствует."));
+        _content.AddChild(OptionRow("Эффекты", ["Низкие", "Средние", "Высокие"], _state.EffectsQuality, value => _state.EffectsQuality = value, false, "Отдельная система эффектов пока отсутствует."));
+        _content.AddChild(Hint("Режим окна, разрешение, VSync и общая детализация работают. Недоступные параметры отключены, а не имитируют применение."));
     }
 
     private void BuildSound()
     {
         if (_content is null) return;
         _content.AddChild(SliderRow("Общая громкость", _state.MasterVolume, 0, 100, value => _state.MasterVolume = value, "%"));
-        _content.AddChild(SliderRow("Музыка", _state.MusicVolume, 0, 100, value => _state.MusicVolume = value, "%"));
-        _content.AddChild(SliderRow("Эффекты", _state.EffectsVolume, 0, 100, value => _state.EffectsVolume = value, "%"));
-        _content.AddChild(SliderRow("Интерфейс", _state.UiVolume, 0, 100, value => _state.UiVolume = value, "%"));
+        _content.AddChild(SliderRow("Музыка", _state.MusicVolume, 0, 100, value => _state.MusicVolume = value, "%", false, "В проекте пока нет отдельной Music audio bus."));
+        _content.AddChild(SliderRow("Эффекты", _state.EffectsVolume, 0, 100, value => _state.EffectsVolume = value, "%", false, "В проекте пока нет отдельной Effects audio bus."));
+        _content.AddChild(SliderRow("Интерфейс", _state.UiVolume, 0, 100, value => _state.UiVolume = value, "%", false, "В проекте пока нет отдельной UI audio bus."));
         _content.AddChild(ToggleRow("Без звука", _state.Mute, value => _state.Mute = value));
+        _content.AddChild(Hint("Master volume и mute применяются через AudioServer. Отдельные каналы включатся, когда появятся соответствующие audio buses."));
     }
 
     private void BuildInterface()
     {
         if (_content is null) return;
-        _content.AddChild(OptionRow("Масштаб интерфейса", ["75%", "100%", "125%", "150%"], _state.UiScale, value => _state.UiScale = value));
-        _content.AddChild(OptionRow("Размер текста", ["Маленький", "Обычный", "Большой"], _state.TextSize, value => _state.TextSize = value));
-        _content.AddChild(ToggleRow("Подсказки", _state.Tooltips, value => _state.Tooltips = value));
+        _content.AddChild(OptionRow("Масштаб интерфейса", ["75%", "100%", "125%", "150%"], _state.UiScale, value => _state.UiScale = value, false, "Централизованный UI scaling ещё не подключён."));
+        _content.AddChild(OptionRow("Размер текста", ["Маленький", "Обычный", "Большой"], _state.TextSize, value => _state.TextSize = value, false, "Централизованная типографическая шкала ещё не подключена."));
+        _content.AddChild(ToggleRow("Подсказки", _state.Tooltips, value => _state.Tooltips = value, false, "Глобальный переключатель tooltip ещё не подключён."));
         _content.AddChild(ToggleRow("Показывать FPS", _state.ShowFps, value => _state.ShowFps = value));
         _content.AddChild(ToggleRow("Показывать статистику производительности", _state.ShowPerformance, value => _state.ShowPerformance = value));
+        _content.AddChild(Hint("FPS и расширенная диагностика реально управляют техническим блоком HUD после возврата в игру."));
     }
 
     private void BuildGameplay()
     {
         if (_content is null) return;
-        _content.AddChild(ToggleRow("Автопауза при открытии меню", _state.AutoPause, value => _state.AutoPause = value));
+        _content.AddChild(ToggleRow("Автопауза при открытии меню", _state.AutoPause, value => _state.AutoPause = value, false, "Автопауза ещё не подключена к flow-состояниям."));
         _content.AddChild(SliderRow("Скорость камеры", _state.CameraSpeed, 1, 10, value => _state.CameraSpeed = value, "×"));
         _content.AddChild(ToggleRow("Плавное приближение камеры", _state.SmoothZoom, value => _state.SmoothZoom = value));
         _content.AddChild(Hint("Баланс, эволюция и параметры симуляции намеренно отсутствуют."));
@@ -264,38 +267,49 @@ public sealed partial class SettingsMenu : Control
         _content.AddChild(Hint("Переназначение клавиш будет добавлено позже. Отображаются реальные default Input Actions."));
     }
 
-    private Control OptionRow(string text, string[] items, int selected, Action<int> setter)
+    private Control OptionRow(string text, string[] items, int selected, Action<int> setter, bool enabled = true, string? unavailableReason = null)
     {
-        var row = Row(text);
-        var option = new OptionButton { CustomMinimumSize = new Vector2(260, 42) };
+        var row = Row(text, enabled);
+        var option = new OptionButton
+        {
+            CustomMinimumSize = new Vector2(260, 42),
+            Disabled = !enabled,
+            TooltipText = unavailableReason ?? string.Empty
+        };
         foreach (var item in items) option.AddItem(item);
         option.Select(Math.Clamp(selected, 0, items.Length - 1));
-        option.ItemSelected += index => setter((int)index);
+        if (enabled)
+            option.ItemSelected += index => setter((int)index);
         row.AddChild(option);
         return row;
     }
 
-    private Control ToggleRow(string text, bool value, Action<bool> setter)
+    private Control ToggleRow(string text, bool value, Action<bool> setter, bool enabled = true, string? unavailableReason = null)
     {
-        var row = Row(text);
+        var row = Row(text, enabled);
         var toggle = new CheckButton
         {
             Text = value ? "Вкл." : "Выкл.",
             ButtonPressed = value,
+            Disabled = !enabled,
+            TooltipText = unavailableReason ?? string.Empty,
             CustomMinimumSize = new Vector2(118, 42)
         };
-        toggle.Toggled += pressed =>
+        if (enabled)
         {
-            toggle.Text = pressed ? "Вкл." : "Выкл.";
-            setter(pressed);
-        };
+            toggle.Toggled += pressed =>
+            {
+                toggle.Text = pressed ? "Вкл." : "Выкл.";
+                setter(pressed);
+            };
+        }
         row.AddChild(toggle);
         return row;
     }
 
-    private Control SliderRow(string text, double value, double min, double max, Action<double> setter, string suffix)
+    private Control SliderRow(string text, double value, double min, double max, Action<double> setter, string suffix, bool enabled = true, string? unavailableReason = null)
     {
-        var row = Row(text);
+        var row = Row(text, enabled);
         var controls = new HBoxContainer { CustomMinimumSize = new Vector2(360, 42) };
         var slider = new HSlider
         {
@@ -303,10 +317,12 @@ public sealed partial class SettingsMenu : Control
             MaxValue = max,
             Step = 1,
             Value = value,
+            Editable = enabled,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(250, 0)
+            CustomMinimumSize = new Vector2(250, 0),
+            TooltipText = unavailableReason ?? string.Empty
         };
-        slider.Modulate = EvolitPalette.SoftAqua;
+        slider.Modulate = enabled ? EvolitPalette.SoftAqua : EvolitPalette.Disabled;
 
         var valueLabel = new Label
         {
@@ -314,12 +330,17 @@ public sealed partial class SettingsMenu : Control
             CustomMinimumSize = new Vector2(62, 0),
             HorizontalAlignment = HorizontalAlignment.Right
         };
+        if (!enabled)
+            valueLabel.AddThemeColorOverride("font_color", EvolitPalette.Disabled);
 
-        slider.ValueChanged += next =>
+        if (enabled)
         {
-            setter(next);
-            valueLabel.Text = $"{next:0}{suffix}";
-        };
+            slider.ValueChanged += next =>
+            {
+                setter(next);
+                valueLabel.Text = $"{next:0}{suffix}";
+            };
+        }
 
         controls.AddChild(slider);
         controls.AddChild(valueLabel);
@@ -329,14 +350,19 @@ public sealed partial class SettingsMenu : Control
 
     private Control KeyRow(string action, string key)
     {
-        var row = Row(action);
-        var button = new Button { Text = key, CustomMinimumSize = new Vector2(260, 42) };
-        button.Pressed += () => SetStatus("Переназначение клавиш пока не реализовано.");
+        var row = Row(action, false);
+        var button = new Button
+        {
+            Text = key,
+            Disabled = true,
+            TooltipText = "Переназначение пока не реализовано.",
+            CustomMinimumSize = new Vector2(260, 42)
+        };
         row.AddChild(button);
         return row;
     }
 
-    private static HBoxContainer Row(string text)
+    private static HBoxContainer Row(string text, bool enabled)
     {
         var row = new HBoxContainer
         {
@@ -349,6 +375,8 @@ public sealed partial class SettingsMenu : Control
             CustomMinimumSize = new Vector2(360, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
+        if (!enabled)
+            label.AddThemeColorOverride("font_color", EvolitPalette.Disabled);
         row.AddChild(label);
         return row;
     }
@@ -378,8 +406,10 @@ public sealed partial class SettingsMenu : Control
 
         if (_store.Save(_state, out var error))
         {
-            SetStatus("Настройки сохранены.");
-            NotificationRequested?.Invoke("Настройки сохранены", ToastKind.Success);
+            SettingsRuntime.Apply(_state);
+            SettingsApplied?.Invoke(_state.Clone());
+            SetStatus("Настройки сохранены и применены.");
+            NotificationRequested?.Invoke("Настройки применены", ToastKind.Success);
         }
         else
         {
