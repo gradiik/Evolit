@@ -287,7 +287,7 @@ public sealed partial class WorldStatsGraph : Control
             lines.Add("Закреплено · клик для снятия");
 
         _tooltipLabel.Text = string.Join("\n", lines);
-        _tooltip.Size = new Vector2(190, 32 + _series.Count * 20);
+        _tooltip.Size = new Vector2(190, 32 + (_series.Count + (_pinnedIndex >= 0 ? 1 : 0)) * 20);
         _tooltip.Visible = true;
     }
 

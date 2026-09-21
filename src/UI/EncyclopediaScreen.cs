@@ -290,7 +290,7 @@ public sealed partial class EncyclopediaScreen : Control
         foreach (var pair in _cards)
             pair.Value.ButtonPressed = pair.Key == _selectedId;
 
-        ShowInspector(selected);
+        ShowInspector(selected!);
         UpdateColumns();
     }
 
