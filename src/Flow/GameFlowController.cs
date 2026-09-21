@@ -12,7 +12,8 @@ public enum GameFlowState
     Game,
     Pause,
     Settings,
-    Versions
+    Versions,
+    Encyclopedia
 }
 
 public sealed class GameFlowController
