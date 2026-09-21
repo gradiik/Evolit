@@ -424,7 +424,9 @@ public sealed partial class AppRoot : Control
             DemoEventCategory.System,
             title,
             description,
-            icon);
+            icon,
+            DemoEventKind.Save,
+            DemoEventSeverity.Info);
     }
 
     private void SwitchScreen(Control screen, GameFlowState state)

@@ -30,6 +30,7 @@ public sealed partial class WorldStatsGraph : Control
     private int _visibleStart;
     private int _visibleEnd = -1;
     private int _hoverIndex = -1;
+    private int _pinnedIndex = -1;
     private float _maxY = 1f;
     private Rect2 _plotRect;
     private PanelContainer? _tooltip;
@@ -61,6 +62,7 @@ public sealed partial class WorldStatsGraph : Control
         _visibleStart = Math.Clamp(visibleStartIndex, 0, Math.Max(0, _samples.Count - 1));
         _visibleEnd = _samples.Count - 1;
         _hoverIndex = -1;
+        _pinnedIndex = -1;
         if (_tooltip is not null)
             _tooltip.Visible = false;
         RebuildGeometry();
@@ -69,7 +71,25 @@ public sealed partial class WorldStatsGraph : Control
     public override void _GuiInput(InputEvent @event)
     {
         if (@event is InputEventMouseMotion motion)
-            UpdateHover(motion.Position);
+        {
+            if (_pinnedIndex < 0)
+                UpdateHover(motion.Position);
+            return;
+        }
+
+        if (@event is InputEventMouseButton button
+            && button.ButtonIndex == MouseButton.Left
+            && button.Pressed
+            && _hoverIndex >= _visibleStart
+            && _hoverIndex <= _visibleEnd)
+        {
+            _pinnedIndex = _pinnedIndex == _hoverIndex ? -1 : _hoverIndex;
+            if (_pinnedIndex >= 0)
+                _hoverIndex = _pinnedIndex;
+            UpdateTooltipText();
+            QueueRedraw();
+            AcceptEvent();
+        }
     }
 
     public override void _Draw()
@@ -238,6 +258,13 @@ public sealed partial class WorldStatsGraph : Control
 
     private void ClearHover()
     {
+        if (_pinnedIndex >= 0)
+        {
+            _hoverIndex = _pinnedIndex;
+            QueueRedraw();
+            return;
+        }
+
         if (_hoverIndex < 0 && (_tooltip is null || !_tooltip.Visible))
             return;
 
@@ -253,9 +280,11 @@ public sealed partial class WorldStatsGraph : Control
             return;
 
         var sample = _samples[_hoverIndex];
-        var lines = new List<string>(_series.Count + 1) { sample.TooltipLabel };
+        var lines = new List<string>(_series.Count + 2) { sample.TooltipLabel };
         foreach (var item in _series)
             lines.Add($"{item.Label}: {(int)Math.Round(GetMetric(sample, item.Metric))}");
+        if (_pinnedIndex >= 0)
+            lines.Add("Закреплено · клик для снятия");
 
         _tooltipLabel.Text = string.Join("\n", lines);
         _tooltip.Size = new Vector2(190, 32 + _series.Count * 20);

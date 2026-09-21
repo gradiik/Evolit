@@ -15,6 +15,9 @@ public sealed partial class EventsPanel : Control
     private readonly Dictionary<string, Button> _filters = new();
     private string _activeFilter = "Все";
     private LineEdit? _search;
+    private OptionButton? _severity;
+    private OptionButton? _kind;
+    private Label? _resultCount;
 
     public void Configure(DemoWorldDataProvider world)
     {
@@ -53,7 +56,7 @@ public sealed partial class EventsPanel : Control
             AnchorLeft = 0.08f,
             AnchorRight = 0.92f,
             AnchorTop = 0.10f,
-            AnchorBottom = 0.80f
+            AnchorBottom = 0.86f
         };
         AddChild(outer);
 
@@ -101,9 +104,36 @@ public sealed partial class EventsPanel : Control
         AddFilter(filters, "Эволюция");
 
         filters.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        _search = new LineEdit { PlaceholderText = "Поиск событий…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(240, 36) };
+
+        var tools = new HBoxContainer();
+        tools.AddThemeConstantOverride("separation", 7);
+        root.AddChild(tools);
+
+        _severity = new OptionButton { CustomMinimumSize = new Vector2(145, 34) };
+        foreach (var item in new[] { "Любая важность", "Обычные", "Предупреждения", "Важные" })
+            _severity.AddItem(item);
+        _severity.ItemSelected += _ => Refresh();
+        tools.AddChild(_severity);
+
+        _kind = new OptionButton { CustomMinimumSize = new Vector2(150, 34) };
+        foreach (var item in new[] { "Любой тип", "Наблюдения", "Ветвления", "Вымирания", "Сохранения", "Время", "Runtime" })
+            _kind.AddItem(item);
+        _kind.ItemSelected += _ => Refresh();
+        tools.AddChild(_kind);
+
+        _resultCount = new Label
+        {
+            Text = "0 событий",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _resultCount.AddThemeFontSizeOverride("font_size", 11);
+        _resultCount.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        tools.AddChild(_resultCount);
+
+        _search = new LineEdit { PlaceholderText = "Поиск событий…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(250, 36) };
         _search.TextChanged += _ => Refresh();
-        filters.AddChild(_search);
+        tools.AddChild(_search);
 
         root.AddChild(new HSeparator());
 
@@ -152,7 +182,7 @@ public sealed partial class EventsPanel : Control
             child.QueueFree();
         }
 
-        var events = _world.Events.AsEnumerable();
+        IEnumerable<DemoEventEntry> events = _world.Events;
         events = _activeFilter switch
         {
             "Мир" => events.Where(item => item.Category == DemoEventCategory.World),
@@ -161,11 +191,52 @@ public sealed partial class EventsPanel : Control
             _ => events
         };
 
+        events = (_severity?.Selected ?? 0) switch
+        {
+            1 => events.Where(item => item.Severity == DemoEventSeverity.Info),
+            2 => events.Where(item => item.Severity == DemoEventSeverity.Warning),
+            3 => events.Where(item => item.Severity == DemoEventSeverity.Important),
+            _ => events
+        };
+
+        events = (_kind?.Selected ?? 0) switch
+        {
+            1 => events.Where(item => item.Kind == DemoEventKind.Observation),
+            2 => events.Where(item => item.Kind == DemoEventKind.Branching),
+            3 => events.Where(item => item.Kind == DemoEventKind.Extinction),
+            4 => events.Where(item => item.Kind == DemoEventKind.Save),
+            5 => events.Where(item => item.Kind == DemoEventKind.Speed),
+            6 => events.Where(item => item.Kind == DemoEventKind.Runtime),
+            _ => events
+        };
+
         var query = _search?.Text.Trim() ?? string.Empty;
         if (!string.IsNullOrWhiteSpace(query))
-            events = events.Where(item => item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || item.Description.Contains(query, StringComparison.OrdinalIgnoreCase));
+        {
+            events = events.Where(item =>
+                item.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || item.RelatedEntityId.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
 
-        foreach (var entry in events.Take(30))
+        var materialized = events.Take(60).ToList();
+        if (_resultCount is not null)
+            _resultCount.Text = $"{materialized.Count} событий";
+
+        if (materialized.Count == 0)
+        {
+            var empty = new Label
+            {
+                Text = "По текущим фильтрам событий нет.",
+                CustomMinimumSize = new Vector2(0, 72),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            empty.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+            _feed.AddChild(empty);
+            return;
+        }
+
+        foreach (var entry in materialized)
             _feed.AddChild(BuildEvent(entry));
     }
 
@@ -189,7 +260,7 @@ public sealed partial class EventsPanel : Control
         var row = new HBoxContainer();
         margin.AddChild(row);
 
-        var accent = CategoryColor(entry.Category);
+        var accent = EventAccent(entry);
         var icon = new TextureRect
         {
             Texture = EvolitIcons.Load(entry.IconPath),
@@ -202,9 +273,16 @@ public sealed partial class EventsPanel : Control
         var text = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         row.AddChild(text);
 
-        var title = new Label { Text = entry.Title };
+        var titleRow = new HBoxContainer();
+        text.AddChild(titleRow);
+
+        var title = new Label { Text = entry.Title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
         title.AddThemeFontSizeOverride("font_size", 16);
-        text.AddChild(title);
+        titleRow.AddChild(title);
+
+        titleRow.AddChild(Badge(KindLabel(entry.Kind), accent));
+        if (entry.Severity != DemoEventSeverity.Info)
+            titleRow.AddChild(Badge(SeverityLabel(entry.Severity), SeverityColor(entry.Severity)));
 
         var description = new Label { Text = entry.Description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
         description.AddThemeFontSizeOverride("font_size", 12);
@@ -222,13 +300,75 @@ public sealed partial class EventsPanel : Control
         return panel;
     }
 
-    private static Color CategoryColor(DemoEventCategory category)
+    private static Control Badge(string text, Color color)
     {
-        return category switch
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(color, 0.08f),
+            BorderColor = new Color(color, 0.30f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 7,
+            CornerRadiusTopRight = 7,
+            CornerRadiusBottomLeft = 7,
+            CornerRadiusBottomRight = 7
+        });
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 6);
+        margin.AddThemeConstantOverride("margin_right", 6);
+        margin.AddThemeConstantOverride("margin_top", 2);
+        margin.AddThemeConstantOverride("margin_bottom", 2);
+        panel.AddChild(margin);
+
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeColorOverride("font_color", color);
+        margin.AddChild(label);
+        return panel;
+    }
+
+    private static string KindLabel(DemoEventKind kind) => kind switch
+    {
+        DemoEventKind.Branching => "ВЕТВЛЕНИЕ",
+        DemoEventKind.Extinction => "ВЫМИРАНИЕ",
+        DemoEventKind.WorldCreated => "МИР",
+        DemoEventKind.Observation => "НАБЛЮДЕНИЕ",
+        DemoEventKind.Save => "СОХРАНЕНИЕ",
+        DemoEventKind.Speed => "ВРЕМЯ",
+        DemoEventKind.Runtime => "RUNTIME",
+        _ => "СОБЫТИЕ"
+    };
+
+    private static string SeverityLabel(DemoEventSeverity severity) => severity switch
+    {
+        DemoEventSeverity.Warning => "ВНИМАНИЕ",
+        DemoEventSeverity.Important => "ВАЖНО",
+        _ => "INFO"
+    };
+
+    private static Color EventAccent(DemoEventEntry entry)
+    {
+        if (entry.Severity == DemoEventSeverity.Warning)
+            return EvolitPalette.WarmAlert;
+        if (entry.Severity == DemoEventSeverity.Important)
+            return EvolitPalette.WarmSand;
+
+        return entry.Category switch
         {
             DemoEventCategory.Evolution => EvolitPalette.EvolutionCyan,
             DemoEventCategory.System => EvolitPalette.FogBlue,
             _ => EvolitPalette.YoungLeaf
         };
     }
+
+    private static Color SeverityColor(DemoEventSeverity severity) => severity switch
+    {
+        DemoEventSeverity.Warning => EvolitPalette.WarmAlert,
+        DemoEventSeverity.Important => EvolitPalette.WarmSand,
+        _ => EvolitPalette.FogBlue
+    };
 }

@@ -15,11 +15,32 @@ public enum DemoSpeciesStatus
     Extinct
 }
 
+// High-level source/scope of an observation. Kept compatible with the
+// existing UI filters and event creation call sites.
 public enum DemoEventCategory
 {
     World,
     System,
     Evolution
+}
+
+public enum DemoEventKind
+{
+    General,
+    WorldCreated,
+    Observation,
+    Branching,
+    Extinction,
+    Save,
+    Speed,
+    Runtime
+}
+
+public enum DemoEventSeverity
+{
+    Info,
+    Warning,
+    Important
 }
 
 public sealed class DemoSpeciesRecord
@@ -39,9 +60,13 @@ public sealed class DemoSpeciesRecord
 public sealed class DemoChronicleEntry
 {
     public int Day { get; init; }
+    public string Time { get; init; } = string.Empty;
     public DemoEventCategory Category { get; init; }
+    public DemoEventKind Kind { get; init; } = DemoEventKind.General;
+    public DemoEventSeverity Severity { get; init; } = DemoEventSeverity.Info;
     public string Title { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
+    public string RelatedEntityId { get; init; } = string.Empty;
     public string IconPath { get; init; } = "simulation/event.svg";
 }
 
@@ -50,8 +75,11 @@ public sealed class DemoEventEntry
     public int Day { get; init; }
     public string Time { get; init; } = "00:00";
     public DemoEventCategory Category { get; init; }
+    public DemoEventKind Kind { get; init; } = DemoEventKind.General;
+    public DemoEventSeverity Severity { get; init; } = DemoEventSeverity.Info;
     public string Title { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
+    public string RelatedEntityId { get; init; } = string.Empty;
     public string IconPath { get; init; } = "simulation/event.svg";
 }
 
@@ -169,6 +197,8 @@ public static class SpeciesDemoData
             {
                 Day = 0,
                 Category = DemoEventCategory.World,
+                Kind = DemoEventKind.WorldCreated,
+                Severity = DemoEventSeverity.Important,
                 Title = "Мир создан",
                 Description = "Сессия получила seed и начала собственную историю.",
                 IconPath = "environment/world.svg"
@@ -177,32 +207,43 @@ public static class SpeciesDemoData
             {
                 Day = 0,
                 Category = DemoEventCategory.Evolution,
+                Kind = DemoEventKind.Branching,
+                Severity = DemoEventSeverity.Important,
                 Title = "Появились первые линии",
                 Description = "Условные линии Viridia и Motilis отделились от первичной формы.",
+                RelatedEntityId = "origin",
                 IconPath = "biology/evolution.svg"
             },
             new DemoChronicleEntry
             {
                 Day = 1,
                 Category = DemoEventCategory.Evolution,
+                Kind = DemoEventKind.Branching,
                 Title = "Viridia Minor",
                 Description = "Зафиксировано первое растительное ответвление демо-набора.",
+                RelatedEntityId = "viridia_minor",
                 IconPath = "biology/plant.svg"
             },
             new DemoChronicleEntry
             {
                 Day = 1,
                 Category = DemoEventCategory.Evolution,
+                Kind = DemoEventKind.Branching,
+                Severity = DemoEventSeverity.Important,
                 Title = "Motilis Minor и Motilis Longa",
                 Description = "Подвижная линия разделилась на две активные формы.",
+                RelatedEntityId = "motilis",
                 IconPath = "biology/creature.svg"
             },
             new DemoChronicleEntry
             {
                 Day = 1,
                 Category = DemoEventCategory.Evolution,
+                Kind = DemoEventKind.Extinction,
+                Severity = DemoEventSeverity.Warning,
                 Title = "Motilis Brevis угасла",
                 Description = "Демо-ветвь отмечена как вымершая для визуализации дерева.",
+                RelatedEntityId = "motilis_brevis",
                 IconPath = "biology/extinction.svg"
             }
         ];
@@ -217,6 +258,8 @@ public static class SpeciesDemoData
                 Day = 1,
                 Time = "00:00",
                 Category = DemoEventCategory.World,
+                Kind = DemoEventKind.WorldCreated,
+                Severity = DemoEventSeverity.Important,
                 Title = $"Сессия «{worldName}» готова",
                 Description = "Игровая оболочка и демо-данные подключены.",
                 IconPath = "environment/world.svg"
@@ -226,8 +269,11 @@ public static class SpeciesDemoData
                 Day = 1,
                 Time = "00:00",
                 Category = DemoEventCategory.Evolution,
+                Kind = DemoEventKind.Branching,
+                Severity = DemoEventSeverity.Info,
                 Title = "Демо-линии загружены",
                 Description = "Viridia и Motilis используются только для проверки UI.",
+                RelatedEntityId = "origin",
                 IconPath = "biology/evolution.svg"
             },
             new DemoEventEntry
@@ -235,6 +281,8 @@ public static class SpeciesDemoData
                 Day = 1,
                 Time = "00:00",
                 Category = DemoEventCategory.System,
+                Kind = DemoEventKind.Runtime,
+                Severity = DemoEventSeverity.Info,
                 Title = "Runtime готов",
                 Description = "Время, HUD и инструменты наблюдения активны.",
                 IconPath = "status/info.svg"

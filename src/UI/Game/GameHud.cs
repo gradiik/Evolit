@@ -356,7 +356,15 @@ public sealed partial class GameHud : Control
             return;
 
         var stats = _statsProvider?.GetSnapshot() ?? default;
-        _world.AddEvent(stats.Day, stats.GameTime, DemoEventCategory.System, title, "Изменено управление временем.", "simulation/timeline.svg");
+        _world.AddEvent(
+            stats.Day,
+            stats.GameTime,
+            DemoEventCategory.System,
+            title,
+            "Изменено управление временем.",
+            "simulation/timeline.svg",
+            DemoEventKind.Speed,
+            DemoEventSeverity.Info);
     }
 
     private void RefreshSpeedButtons()

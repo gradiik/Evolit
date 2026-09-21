@@ -49,16 +49,16 @@ public sealed partial class LineageCanvas : Control
     {
         if (e is InputEventMouseButton b)
         {
-            if (b.ButtonIndex == MouseButton.WheelUp && b.Pressed) { ZoomIn(); AcceptEvent(); return; }
-            if (b.ButtonIndex == MouseButton.WheelDown && b.Pressed) { ZoomOut(); AcceptEvent(); return; }
+            if (b.ButtonIndex == MouseButton.WheelUp && b.Pressed) { ZoomAt(b.Position, 1.15f); AcceptEvent(); return; }
+            if (b.ButtonIndex == MouseButton.WheelDown && b.Pressed) { ZoomAt(b.Position, 1f / 1.15f); AcceptEvent(); return; }
             if (b.ButtonIndex is MouseButton.Middle or MouseButton.Right) { _dragging = b.Pressed; AcceptEvent(); return; }
         }
         if (e is InputEventMouseMotion m && _dragging) { _pan += m.Relative; UpdateTransform(); AcceptEvent(); }
     }
 
     public override void _Draw() { DrawGrid(); DrawConnections(); }
-    public void ZoomIn() { _zoom = Mathf.Clamp(_zoom * 1.15f, .55f, 2.1f); UpdateTransform(); }
-    public void ZoomOut() { _zoom = Mathf.Clamp(_zoom / 1.15f, .55f, 2.1f); UpdateTransform(); }
+    public void ZoomIn() => ZoomAt(Size * 0.5f, 1.15f);
+    public void ZoomOut() => ZoomAt(Size * 0.5f, 1f / 1.15f);
     public void ResetView() { _zoom = 1; _pan = Vector2.Zero; UpdateTransform(); }
     public void CenterView() { _pan = Vector2.Zero; UpdateTransform(); }
     public void SetFilter(LineageFilter filter) { _filter = filter; UpdateFilter(); }
@@ -78,6 +78,15 @@ public sealed partial class LineageCanvas : Control
     {
         if (!_positions.TryGetValue(id, out var pos)) return;
         _pan = -(pos + new Vector2(NodeWidth / 2, NodeHeight / 2)) * _zoom;
+        UpdateTransform();
+    }
+
+    private void ZoomAt(Vector2 screenPoint, float factor)
+    {
+        var local = (screenPoint - Size * 0.5f - _pan) / Math.Max(_zoom, 0.01f);
+        var nextZoom = Mathf.Clamp(_zoom * factor, .55f, 2.1f);
+        _zoom = nextZoom;
+        _pan = screenPoint - Size * 0.5f - local * _zoom;
         UpdateTransform();
     }
 

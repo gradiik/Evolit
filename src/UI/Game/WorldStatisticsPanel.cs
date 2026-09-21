@@ -163,7 +163,7 @@ public sealed partial class WorldStatisticsPanel : Control
 
         var rangeHint = new Label
         {
-            Text = "Диапазоны появляются только когда для них накоплена реальная история.",
+            Text = "Наведи на график для точных значений · клик закрепляет точку · диапазоны появляются по мере накопления истории.",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             HorizontalAlignment = HorizontalAlignment.Right
         };

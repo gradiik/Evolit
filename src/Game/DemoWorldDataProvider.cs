@@ -128,15 +128,27 @@ public sealed class DemoWorldDataProvider
         DataChanged?.Invoke();
     }
 
-    public void AddEvent(int day, string time, DemoEventCategory category, string title, string description, string iconPath)
+    public void AddEvent(
+        int day,
+        string time,
+        DemoEventCategory category,
+        string title,
+        string description,
+        string iconPath,
+        DemoEventKind kind = DemoEventKind.General,
+        DemoEventSeverity severity = DemoEventSeverity.Info,
+        string relatedEntityId = "")
     {
         _events.Insert(0, new DemoEventEntry
         {
             Day = day,
             Time = time,
             Category = category,
+            Kind = kind,
+            Severity = severity,
             Title = title,
             Description = description,
+            RelatedEntityId = relatedEntityId,
             IconPath = iconPath
         });
 
@@ -189,7 +201,10 @@ public sealed class DemoWorldDataProvider
             _chronicle.Add(new DemoChronicleEntry
             {
                 Day = day,
+                Time = "00:00",
                 Category = DemoEventCategory.World,
+                Kind = DemoEventKind.Observation,
+                Severity = DemoEventSeverity.Info,
                 Title = "Наблюдение обновлено",
                 Description = "Демо-runtime добавил новую точку статистики без запуска биологической симуляции.",
                 IconPath = "simulation/history.svg"
@@ -201,6 +216,8 @@ public sealed class DemoWorldDataProvider
             Day = day,
             Time = "00:00",
             Category = DemoEventCategory.World,
+            Kind = DemoEventKind.Observation,
+            Severity = DemoEventSeverity.Info,
             Title = $"Начался день {day}",
             Description = "Демо-популяции получили новую точку истории.",
             IconPath = "simulation/event.svg"

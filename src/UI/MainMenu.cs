@@ -99,11 +99,11 @@ public sealed partial class MainMenu : Control
 
         var status = new Label
         {
-            Text = $"Evolit {Evolit.Versioning.AppVersionCatalog.CurrentVersion} · контрольная сборка",
+            Text = $"Evolit {Evolit.Versioning.AppVersionCatalog.CurrentVersion} · разработка",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        status.AddThemeFontSizeOverride("font_size", 13);
-        status.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.90f));
+        status.AddThemeFontSizeOverride("font_size", 14);
+        status.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.98f));
         column.AddChild(status);
 
         BuildRightMessage();
@@ -171,7 +171,7 @@ public sealed partial class MainMenu : Control
             Text = text,
             Icon = EvolitIcons.Load(iconPath),
             Alignment = HorizontalAlignment.Left,
-            CustomMinimumSize = new Vector2(0, 50),
+            CustomMinimumSize = new Vector2(0, 52),
             FocusMode = FocusModeEnum.All
         };
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Evolit.Game;
 using Godot;
@@ -12,7 +13,11 @@ public sealed partial class ChroniclePanel : Control
     private DemoWorldDataProvider? _world;
     private VBoxContainer? _timeline;
     private LineEdit? _search;
-    private OptionButton? _category;
+    private Label? _resultCount;
+    private Button? _sortButton;
+    private readonly Dictionary<string, Button> _filters = new();
+    private string _activeFilter = "Все";
+    private bool _newestFirst = true;
 
     public void Configure(DemoWorldDataProvider world)
     {
@@ -51,7 +56,7 @@ public sealed partial class ChroniclePanel : Control
             AnchorLeft = 0.07f,
             AnchorRight = 0.93f,
             AnchorTop = 0.08f,
-            AnchorBottom = 0.78f
+            AnchorBottom = 0.875f
         };
         AddChild(outer);
 
@@ -88,15 +93,52 @@ public sealed partial class ChroniclePanel : Control
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
+        var filters = new HBoxContainer();
+        filters.AddThemeConstantOverride("separation", 5);
+        root.AddChild(filters);
+        AddFilter(filters, "Все");
+        AddFilter(filters, "Мир");
+        AddFilter(filters, "Эволюция");
+        AddFilter(filters, "Ветвления");
+        AddFilter(filters, "Вымирания");
+        AddFilter(filters, "Системные");
+        AddFilter(filters, "Важные");
+
         var tools = new HBoxContainer();
-        tools.AddThemeConstantOverride("separation", 8);
+        tools.AddThemeConstantOverride("separation", 7);
         root.AddChild(tools);
-        _category = new OptionButton { CustomMinimumSize = new Vector2(170, 36) };
-        foreach (var item in new[] { "Все категории", "Мир", "Система", "Эволюция" }) _category.AddItem(item);
-        _category.ItemSelected += _ => Refresh();
-        tools.AddChild(_category);
-        tools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        _search = new LineEdit { PlaceholderText = "Поиск в летописи…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(260, 36) };
+
+        _resultCount = new Label
+        {
+            Text = "0 записей",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _resultCount.AddThemeFontSizeOverride("font_size", 11);
+        _resultCount.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        tools.AddChild(_resultCount);
+
+        _sortButton = new Button
+        {
+            Text = "Новые сверху",
+            ToggleMode = true,
+            ButtonPressed = true,
+            CustomMinimumSize = new Vector2(132, 34)
+        };
+        _sortButton.Pressed += () =>
+        {
+            _newestFirst = _sortButton.ButtonPressed;
+            _sortButton.Text = _newestFirst ? "Новые сверху" : "Старые сверху";
+            Refresh();
+        };
+        tools.AddChild(_sortButton);
+
+        _search = new LineEdit
+        {
+            PlaceholderText = "Поиск в летописи…",
+            ClearButtonEnabled = true,
+            CustomMinimumSize = new Vector2(270, 36)
+        };
         _search.TextChanged += _ => Refresh();
         tools.AddChild(_search);
 
@@ -106,8 +148,9 @@ public sealed partial class ChroniclePanel : Control
         root.AddChild(scroll);
 
         _timeline = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _timeline.AddThemeConstantOverride("separation", 8);
+        _timeline.AddThemeConstantOverride("separation", 7);
         scroll.AddChild(_timeline);
+        UpdateFilterButtons();
     }
 
     private void Refresh()
@@ -115,17 +158,111 @@ public sealed partial class ChroniclePanel : Control
         if (_timeline is null || _world is null)
             return;
 
-        foreach (var child in _timeline.GetChildren())
+        Clear(_timeline);
+
+        IEnumerable<DemoChronicleEntry> entries = _world.Chronicle;
+        entries = entries.Where(MatchesFilter);
+
+        var query = _search?.Text.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(query))
         {
-            _timeline.RemoveChild(child);
-            child.QueueFree();
+            entries = entries.Where(entry =>
+                entry.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || entry.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || entry.RelatedEntityId.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || entry.Time.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        var entries = _world.Chronicle.AsEnumerable();
-        entries = (_category?.Selected ?? 0) switch { 1 => entries.Where(x => x.Category == DemoEventCategory.World), 2 => entries.Where(x => x.Category == DemoEventCategory.System), 3 => entries.Where(x => x.Category == DemoEventCategory.Evolution), _ => entries };
-        var query = _search?.Text.Trim() ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(query)) entries = entries.Where(x => x.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || x.Description.Contains(query, StringComparison.OrdinalIgnoreCase));
-        foreach (var entry in entries.OrderByDescending(item => item.Day)) _timeline.AddChild(BuildEntry(entry));
+        var materialized = (_newestFirst
+                ? entries.OrderByDescending(item => item.Day).ThenByDescending(item => item.Time)
+                : entries.OrderBy(item => item.Day).ThenBy(item => item.Time))
+            .ToList();
+
+        if (_resultCount is not null)
+            _resultCount.Text = $"{materialized.Count} записей";
+
+        if (materialized.Count == 0)
+        {
+            var empty = new Label
+            {
+                Text = "По текущему фильтру записей нет.",
+                CustomMinimumSize = new Vector2(0, 72),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            empty.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+            _timeline.AddChild(empty);
+            return;
+        }
+
+        int? currentDay = null;
+        foreach (var entry in materialized)
+        {
+            if (currentDay != entry.Day)
+            {
+                currentDay = entry.Day;
+                _timeline.AddChild(BuildDayHeader(entry.Day));
+            }
+
+            _timeline.AddChild(BuildEntry(entry));
+        }
+    }
+
+    private void AddFilter(Container parent, string name)
+    {
+        var button = new Button
+        {
+            Text = name,
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(92, 34)
+        };
+        button.Pressed += () =>
+        {
+            _activeFilter = name;
+            UpdateFilterButtons();
+            Refresh();
+        };
+        _filters[name] = button;
+        parent.AddChild(button);
+    }
+
+    private void UpdateFilterButtons()
+    {
+        foreach (var pair in _filters)
+            pair.Value.ButtonPressed = pair.Key == _activeFilter;
+    }
+
+    private bool MatchesFilter(DemoChronicleEntry entry)
+    {
+        return _activeFilter switch
+        {
+            "Мир" => entry.Category == DemoEventCategory.World,
+            "Эволюция" => entry.Category == DemoEventCategory.Evolution,
+            "Ветвления" => entry.Kind == DemoEventKind.Branching,
+            "Вымирания" => entry.Kind == DemoEventKind.Extinction,
+            "Системные" => entry.Category == DemoEventCategory.System,
+            "Важные" => entry.Severity == DemoEventSeverity.Important,
+            _ => true
+        };
+    }
+
+    private static Control BuildDayHeader(int day)
+    {
+        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 30) };
+        var dayLabel = new Label { Text = $"ДЕНЬ {day}" };
+        dayLabel.AddThemeFontSizeOverride("font_size", 11);
+        dayLabel.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
+        row.AddChild(dayLabel);
+        row.AddChild(new HSeparator { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        return row;
+    }
+
+    private static void Clear(Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            node.RemoveChild(child);
+            child.QueueFree();
+        }
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -135,33 +272,12 @@ public sealed partial class ChroniclePanel : Control
 
     private static Control BuildEntry(DemoChronicleEntry entry)
     {
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 72) };
-        row.AddThemeConstantOverride("separation", 14);
-
-        var day = new Label
+        var panel = new PanelContainer
         {
-            Text = $"ДЕНЬ\n{entry.Day}",
-            CustomMinimumSize = new Vector2(72, 0),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            CustomMinimumSize = new Vector2(0, 78),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
-        day.AddThemeFontSizeOverride("font_size", 12);
-        day.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
-        row.AddChild(day);
-
-        var markerColumn = new VBoxContainer { CustomMinimumSize = new Vector2(18, 0), Alignment = BoxContainer.AlignmentMode.Center };
-        row.AddChild(markerColumn);
-
-        markerColumn.AddChild(new ColorRect
-        {
-            Color = CategoryColor(entry.Category),
-            CustomMinimumSize = new Vector2(9, 9),
-            MouseFilter = MouseFilterEnum.Ignore
-        });
-
-        var panel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
-        row.AddChild(panel);
 
         var margin = new MarginContainer();
         margin.AddThemeConstantOverride("margin_left", 14);
@@ -171,34 +287,122 @@ public sealed partial class ChroniclePanel : Control
         panel.AddChild(margin);
 
         var content = new HBoxContainer();
+        content.AddThemeConstantOverride("separation", 12);
         margin.AddChild(content);
 
+        var accent = Accent(entry.Category, entry.Severity);
         var icon = new TextureRect
         {
             Texture = EvolitIcons.Load(entry.IconPath),
-            CustomMinimumSize = new Vector2(26, 26),
-            Modulate = CategoryColor(entry.Category),
+            CustomMinimumSize = new Vector2(28, 28),
+            Modulate = accent,
             MouseFilter = MouseFilterEnum.Ignore
         };
         content.AddChild(icon);
 
         var text = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        text.AddThemeConstantOverride("separation", 2);
         content.AddChild(text);
 
-        var title = new Label { Text = entry.Title };
-        title.AddThemeFontSizeOverride("font_size", 16);
-        text.AddChild(title);
+        var titleRow = new HBoxContainer();
+        text.AddChild(titleRow);
 
-        var description = new Label { Text = entry.Description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        var title = new Label { Text = entry.Title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        title.AddThemeFontSizeOverride("font_size", 16);
+        titleRow.AddChild(title);
+
+        titleRow.AddChild(Badge(KindLabel(entry.Kind), accent));
+        if (entry.Severity != DemoEventSeverity.Info)
+            titleRow.AddChild(Badge(SeverityLabel(entry.Severity), SeverityColor(entry.Severity)));
+
+        var description = new Label
+        {
+            Text = entry.Description,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
         description.AddThemeFontSizeOverride("font_size", 12);
         description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(description);
 
-        return row;
+        var metaText = string.Empty;
+        if (!string.IsNullOrWhiteSpace(entry.Time))
+            metaText = entry.Time;
+        if (!string.IsNullOrWhiteSpace(entry.RelatedEntityId))
+            metaText += (metaText.Length > 0 ? "\n" : "") + entry.RelatedEntityId;
+
+        if (metaText.Length > 0)
+        {
+            var meta = new Label
+            {
+                Text = metaText,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                CustomMinimumSize = new Vector2(126, 0)
+            };
+            meta.AddThemeFontSizeOverride("font_size", 10);
+            meta.AddThemeColorOverride("font_color", new Color(accent, 0.82f));
+            content.AddChild(meta);
+        }
+
+        return panel;
     }
 
-    private static Color CategoryColor(DemoEventCategory category)
+    private static Control Badge(string text, Color color)
     {
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(color, 0.08f),
+            BorderColor = new Color(color, 0.32f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 7,
+            CornerRadiusTopRight = 7,
+            CornerRadiusBottomLeft = 7,
+            CornerRadiusBottomRight = 7
+        });
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 6);
+        margin.AddThemeConstantOverride("margin_right", 6);
+        margin.AddThemeConstantOverride("margin_top", 2);
+        margin.AddThemeConstantOverride("margin_bottom", 2);
+        panel.AddChild(margin);
+
+        var label = new Label { Text = text };
+        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeColorOverride("font_color", color);
+        margin.AddChild(label);
+        return panel;
+    }
+
+    private static string KindLabel(DemoEventKind kind) => kind switch
+    {
+        DemoEventKind.Branching => "ВЕТВЛЕНИЕ",
+        DemoEventKind.Extinction => "ВЫМИРАНИЕ",
+        DemoEventKind.WorldCreated => "МИР",
+        DemoEventKind.Observation => "НАБЛЮДЕНИЕ",
+        DemoEventKind.Runtime => "СИСТЕМА",
+        DemoEventKind.Save => "СОХРАНЕНИЕ",
+        DemoEventKind.Speed => "ВРЕМЯ",
+        _ => "СОБЫТИЕ"
+    };
+
+    private static string SeverityLabel(DemoEventSeverity severity) => severity switch
+    {
+        DemoEventSeverity.Warning => "ВНИМАНИЕ",
+        DemoEventSeverity.Important => "ВАЖНО",
+        _ => "INFO"
+    };
+
+    private static Color Accent(DemoEventCategory category, DemoEventSeverity severity)
+    {
+        if (severity == DemoEventSeverity.Warning)
+            return EvolitPalette.WarmAlert;
+        if (severity == DemoEventSeverity.Important)
+            return EvolitPalette.WarmSand;
+
         return category switch
         {
             DemoEventCategory.Evolution => EvolitPalette.EvolutionCyan,
@@ -206,4 +410,11 @@ public sealed partial class ChroniclePanel : Control
             _ => EvolitPalette.YoungLeaf
         };
     }
+
+    private static Color SeverityColor(DemoEventSeverity severity) => severity switch
+    {
+        DemoEventSeverity.Warning => EvolitPalette.WarmAlert,
+        DemoEventSeverity.Important => EvolitPalette.WarmSand,
+        _ => EvolitPalette.FogBlue
+    };
 }
