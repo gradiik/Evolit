@@ -49,7 +49,7 @@ public sealed partial class NewGameScreen : Control
         title.AddThemeFontSizeOverride("font_size", 36);
         root.AddChild(title);
 
-        var subtitle = new Label { Text = "Создаём сессию и метаданные будущего мира. Сама генерация появится следующим этапом." };
+        var subtitle = new Label { Text = "Создаём сессию и детерминированную гексагональную карту по seed." };
         subtitle.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         root.AddChild(subtitle);
@@ -91,7 +91,7 @@ public sealed partial class NewGameScreen : Control
 
         var hint = new Label
         {
-            Text = "Размер пока хранится как metadata и не запускает генерацию карты.",
+            Text = "Размер определяет радиус гексагонального мира. Один и тот же seed и размер воспроизводят ту же карту.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         hint.AddThemeFontSizeOverride("font_size", 13);

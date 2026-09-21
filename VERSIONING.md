@@ -37,4 +37,4 @@ The in-app Versions screen is informational/selection UI. Selecting an old versi
 
 Before changing code, compare the requested version with `versions.json` and the repository state. If they conflict, do not guess: preserve the existing checkpoint and report the mismatch. Never invent commits, tags, branches, releases, artifacts, or version history.
 
-Current project-specific rule: development remains on 0.0.4 until the user explicitly requests 0.0.5 or another version.
+Current project-specific rule: development is now 0.0.5. Do not advance to 0.0.6 or another version without explicit user instruction.

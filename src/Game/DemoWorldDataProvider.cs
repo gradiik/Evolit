@@ -43,6 +43,8 @@ public sealed class DemoWorldDataProvider
     private readonly List<WorldHistorySample> _history = new();
     private long _nextHistorySequence;
 
+    public WorldMap Map { get; }
+
     public event Action? DataChanged;
     public event Action? HistoryChanged;
     public event Action<DemoEventEntry>? EventAdded;
@@ -51,9 +53,13 @@ public sealed class DemoWorldDataProvider
 
     public DemoWorldDataProvider(GameSession session)
     {
+        Map = WorldMapGenerator.Generate(session.Seed, session.WorldSize);
         _species = SpeciesDemoData.CreateSpecies();
         _chronicle = SpeciesDemoData.CreateChronicle();
         _events = SpeciesDemoData.CreateEvents(session.WorldName);
+
+        var creatureSpawn = Map.FindNearestLandPosition(new Vector2(-240, 70));
+        var plantSpawn = Map.FindNearestLandPosition(new Vector2(250, -90));
 
         _entities =
         [
@@ -64,7 +70,7 @@ public sealed class DemoWorldDataProvider
                 Name = "Motilis Minor",
                 Species = "Motilis",
                 Subspecies = "Motilis Minor",
-                WorldPosition = new Vector2(-170, 40),
+                WorldPosition = creatureSpawn,
                 AgeDays = 3,
                 Health = 0.86f,
                 Energy = 0.63f,
@@ -82,7 +88,7 @@ public sealed class DemoWorldDataProvider
                 Name = "Viridia Minor",
                 Species = "Viridia",
                 Subspecies = "Viridia Minor",
-                WorldPosition = new Vector2(210, -90),
+                WorldPosition = plantSpawn,
                 AgeDays = 8,
                 Health = 0.94f,
                 Energy = 0,
@@ -109,6 +115,13 @@ public sealed class DemoWorldDataProvider
     public int PlantCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Plant).Sum(entity => entity.Population);
     public int SpeciesCount => _species.Count(species => species.ParentId == "origin" && species.Status == DemoSpeciesStatus.Active);
     public int SubspeciesCount => _species.Count(species => species.ParentId != "origin" && species.ParentId.Length > 0 && species.Status == DemoSpeciesStatus.Active);
+
+    public float GetMovementSpeedMultiplier(DemoEntity entity)
+    {
+        return WorldMovementRules.SpeedMultiplier(
+            Map.GetCellAtWorld(entity.WorldPosition),
+            entity.Kind);
+    }
 
     public double AverageAdaptability => _species
         .Where(species => species.Kind != DemoSpeciesKind.Origin && species.Status == DemoSpeciesStatus.Active)

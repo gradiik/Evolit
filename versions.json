@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.4",
+  "current": "0.0.5",
   "development_branch": "main",
   "protocol": "VERSIONING.md",
   "versions": [
     {
-      "version": "0.0.4",
+      "version": "0.0.5",
       "status": "development",
-      "branch": "version/0.0.4",
+      "branch": null,
       "tag": null,
       "commit": null,
-      "note": "Current 0.0.4 development. Freeze commit and tag only after explicit release approval."
+      "note": "Current 0.0.5 development on main. Freeze checkpoint/tag only when this version is explicitly completed/released."
+    },
+    {
+      "version": "0.0.4",
+      "status": "checkpoint",
+      "branch": "version/0.0.4",
+      "tag": null,
+      "commit": "268fce1dd4d1d4b9f4d644a789e3110868201ff6",
+      "note": "Completed 0.0.4 development checkpoint before starting 0.0.5. No immutable release tag has been created."
     },
     {
       "version": "0.0.3",

@@ -144,7 +144,7 @@ public sealed partial class GameHud : Control
 
         var stats = new HBoxContainer
         {
-            CustomMinimumSize = new Vector2(390, 0)
+            CustomMinimumSize = new Vector2(410, 0)
         };
         stats.AddThemeConstantOverride("separation", 6);
         row.AddChild(stats);
@@ -166,15 +166,15 @@ public sealed partial class GameHud : Control
         primary.AddThemeConstantOverride("separation", 8);
         row.AddChild(primary);
 
-        AddGameTool(primary, "Эволюция", "biology/evolution.svg", ShowEvolution, 138);
-        AddGameTool(primary, "Древо", "biology/lineage.svg", ShowLineage, 132);
+        AddGameTool(primary, "Эволюция", "biology/evolution.svg", ShowEvolution, 150);
+        AddGameTool(primary, "Древо", "biology/lineage.svg", ShowLineage, 150);
         AddGameTool(primary, "Статистика", "settings/performance.svg", ShowWorldStats, 150);
 
         row.AddChild(Separator());
 
         var speedPanel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(292, 0)
+            CustomMinimumSize = new Vector2(304, 0)
         };
         speedPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(speedPanel);
@@ -242,14 +242,14 @@ public sealed partial class GameHud : Control
         secondary.AddThemeConstantOverride("separation", 7);
         row.AddChild(secondary);
 
-        AddGameTool(secondary, "Летопись", "simulation/history.svg", ShowChronicle, 145);
-        AddGameTool(secondary, "События", "simulation/event.svg", ShowEvents, 145);
+        AddGameTool(secondary, "Летопись", "simulation/history.svg", ShowChronicle, 155);
+        AddGameTool(secondary, "События", "simulation/event.svg", ShowEvents, 155);
 
         row.AddChild(Separator());
 
         var camera = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(300, 0)
+            CustomMinimumSize = new Vector2(320, 0)
         };
         camera.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(camera);
@@ -282,7 +282,7 @@ public sealed partial class GameHud : Control
 
         var tech = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(150, 0)
+            CustomMinimumSize = new Vector2(160, 0)
         };
         tech.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(tech);
@@ -309,8 +309,8 @@ public sealed partial class GameHud : Control
         systemTools.AddThemeConstantOverride("separation", 6);
         row.AddChild(systemTools);
 
-        systemTools.AddChild(ToolButton("Сохранить", "actions/apply.svg", () => SaveRequested?.Invoke(), 110));
-        systemTools.AddChild(ToolButton("Настройки", "menu/settings.svg", () => SettingsRequested?.Invoke(), 118));
+        systemTools.AddChild(ToolButton("Сохранить", "actions/apply.svg", () => SaveRequested?.Invoke(), 118));
+        systemTools.AddChild(ToolButton("Настройки", "menu/settings.svg", () => SettingsRequested?.Invoke(), 126));
         systemTools.AddChild(ToolButton("Меню", "actions/more.svg", () => PauseRequested?.Invoke(), 92));
     }
 

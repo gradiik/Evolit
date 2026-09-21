@@ -14,7 +14,9 @@ public sealed record AppVersionRecord(
 
 public static class AppVersionCatalog
 {
-    public const string CurrentVersion = "0.0.4";
+    public const string CurrentVersion = "0.0.5";
+    public const string PreviousVersion = "0.0.4";
+    public const string PreviousCommit = "268fce1dd4d1d4b9f4d644a789e3110868201ff6";
     public const string BaselineVersion = "0.0.3";
     public const string BaselineCommit = "04e1cfa88de983dca6ed2ad582c9af7a4a010dcc";
     public const int VisibleHistoryLimit = 5;
@@ -24,9 +26,15 @@ public static class AppVersionCatalog
         new(
             CurrentVersion,
             "21 сентября 2026",
-            "Полировка UI 0.0.4: переработанный HUD, 1×/4×/16×/MAX, event popups, улучшенная камера, графики, энциклопедия и летопись.",
-            "Текущая сборка",
+            "0.0.5: гексагональная карта мира, высоты и глубины, океан, озёра, реки, типы поверхности и движение с учётом среды.",
+            "Текущая разработка",
             true),
+        new(
+            PreviousVersion,
+            "21 сентября 2026",
+            "0.0.4: переработанный HUD, 1×/4×/16×/MAX, event popups, улучшенная камера, графики, энциклопедия и летопись.",
+            PreviousCommit,
+            false),
         new(
             BaselineVersion,
             "20 сентября 2026",

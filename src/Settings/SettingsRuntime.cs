@@ -7,16 +7,18 @@ public readonly record struct GraphicsQualityProfile(
     int DetailLevel,
     int DecorativePatchCount,
     int SelectionArcSegments,
-    bool ExtraEntityDetails)
+    bool ExtraEntityDetails,
+    int WaterDetail)
 {
     public static GraphicsQualityProfile From(AppSettings settings)
     {
         var level = Math.Clamp(settings.DetailLevel, 0, 2);
+        var water = Math.Clamp(settings.WaterQuality, 0, 2);
         return level switch
         {
-            0 => new GraphicsQualityProfile(0, 2, 28, false),
-            2 => new GraphicsQualityProfile(2, 6, 72, true),
-            _ => new GraphicsQualityProfile(1, 4, 48, false)
+            0 => new GraphicsQualityProfile(0, 2, 28, false, water),
+            2 => new GraphicsQualityProfile(2, 6, 72, true, water),
+            _ => new GraphicsQualityProfile(1, 4, 48, false, water)
         };
     }
 }

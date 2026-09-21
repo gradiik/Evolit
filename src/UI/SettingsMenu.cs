@@ -218,10 +218,10 @@ public sealed partial class SettingsMenu : Control
         _content.AddChild(OptionRow("Разрешение", ["1280×720", "1920×1080", "2560×1440"], _state.Resolution, value => _state.Resolution = value));
         _content.AddChild(ToggleRow("Вертикальная синхронизация", _state.VSync, value => _state.VSync = value));
         _content.AddChild(OptionRow("Уровень детализации", ["Низкий", "Средний", "Высокий"], _state.DetailLevel, value => _state.DetailLevel = value));
-        _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value, false, "Отдельный water renderer пока отсутствует."));
+        _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value));
         _content.AddChild(OptionRow("Качество теней", ["Выкл.", "Низкое", "Среднее", "Высокое"], _state.ShadowQuality, value => _state.ShadowQuality = value, false, "Система теней пока отсутствует."));
         _content.AddChild(OptionRow("Эффекты", ["Низкие", "Средние", "Высокие"], _state.EffectsQuality, value => _state.EffectsQuality = value, false, "Отдельная система эффектов пока отсутствует."));
-        _content.AddChild(Hint("Режим окна, разрешение, VSync и общая детализация работают. Недоступные параметры отключены, а не имитируют применение."));
+        _content.AddChild(Hint("Режим окна, разрешение, VSync, общая детализация и качество воды работают. Тени и отдельные эффекты пока отключены до появления соответствующих renderer-слоёв."));
     }
 
     private void BuildSound()
