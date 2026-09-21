@@ -11,6 +11,8 @@ public sealed partial class ChroniclePanel : Control
 
     private DemoWorldDataProvider? _world;
     private VBoxContainer? _timeline;
+    private LineEdit? _search;
+    private OptionButton? _category;
 
     public void Configure(DemoWorldDataProvider world)
     {
@@ -85,6 +87,18 @@ public sealed partial class ChroniclePanel : Control
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
+        var tools = new HBoxContainer();
+        tools.AddThemeConstantOverride("separation", 8);
+        root.AddChild(tools);
+        _category = new OptionButton { CustomMinimumSize = new Vector2(170, 36) };
+        foreach (var item in new[] { "Все категории", "Мир", "Система", "Эволюция" }) _category.AddItem(item);
+        _category.ItemSelected += _ => Refresh();
+        tools.AddChild(_category);
+        tools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        _search = new LineEdit { PlaceholderText = "Поиск в летописи…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(260, 36) };
+        _search.TextChanged += _ => Refresh();
+        tools.AddChild(_search);
+
         root.AddChild(new HSeparator());
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -106,8 +120,16 @@ public sealed partial class ChroniclePanel : Control
             child.QueueFree();
         }
 
-        foreach (var entry in _world.Chronicle.OrderBy(item => item.Day))
-            _timeline.AddChild(BuildEntry(entry));
+        var entries = _world.Chronicle.AsEnumerable();
+        entries = (_category?.Selected ?? 0) switch { 1 => entries.Where(x => x.Category == DemoEventCategory.World), 2 => entries.Where(x => x.Category == DemoEventCategory.System), 3 => entries.Where(x => x.Category == DemoEventCategory.Evolution), _ => entries };
+        var query = _search?.Text.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(query)) entries = entries.Where(x => x.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || x.Description.Contains(query, StringComparison.OrdinalIgnoreCase));
+        foreach (var entry in entries.OrderByDescending(item => item.Day)) _timeline.AddChild(BuildEntry(entry));
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
     }
 
     private static Control BuildEntry(DemoChronicleEntry entry)
