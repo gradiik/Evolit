@@ -175,8 +175,8 @@ public sealed partial class WorldStatisticsPanel : Control
         graphs.AddThemeConstantOverride("separation", 9);
         root.AddChild(graphs);
 
-        _populationGraph = GraphCard(graphs, "Популяция", PopulationSeries, 235);
-        _diversityGraph = GraphCard(graphs, "Разнообразие", DiversitySeries, 185);
+        _populationGraph = GraphCard(graphs, "Популяция", PopulationSeries, 205);
+        _diversityGraph = GraphCard(graphs, "Разнообразие", DiversitySeries, 175);
     }
 
     private Control Metric(string key, string caption)
