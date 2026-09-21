@@ -14,6 +14,7 @@ public static class WorldMovementRules
             HexTerrainType.Lake => 2.3f,
             HexTerrainType.River => 1.6f,
             HexTerrainType.Sand => 1.18f,
+            HexTerrainType.Desert => 1.32f,
             HexTerrainType.Grassland => 1.0f,
             HexTerrainType.Rocky => 1.45f,
             HexTerrainType.Mountain => 2.25f,

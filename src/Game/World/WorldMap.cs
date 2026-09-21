@@ -12,6 +12,7 @@ public enum HexTerrainType
     Lake,
     River,
     Sand,
+    Desert,
     Grassland,
     Rocky,
     Mountain
@@ -61,8 +62,12 @@ public sealed class WorldHexCell
     public HexWaterKind WaterKind { get; set; }
     public float Elevation { get; set; }
     public float WaterDepth { get; set; }
-    public float Moisture { get; set; }
+    public float Humidity { get; set; }
+    public float TemperatureCelsius { get; set; }
+    public float ElevationMeters { get; set; }
+    public float PressureKPa { get; set; }
     public float MovementCost { get; set; }
+    public float MovementSpeedMultiplier { get; set; }
     public float VisualVariation { get; init; }
 
     public bool IsWater => WaterKind != HexWaterKind.None;

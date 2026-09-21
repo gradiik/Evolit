@@ -12,11 +12,13 @@ public static class WorldMapGenerator
 
     public static WorldMap Generate(string seed, string sizeName)
     {
+        // Roughly triple the playable area of the 0.0.5 baseline without
+        // tripling the linear radius (which would create ~9x as many cells).
         var radius = sizeName switch
         {
-            "Маленький" => 16,
-            "Большой" => 28,
-            _ => 22
+            "Маленький" => 28,
+            "Большой" => 49,
+            _ => 38
         };
 
         var seedValue = StableHash(seed);
@@ -73,25 +75,48 @@ public static class WorldMapGenerator
                 if (radial > 0.86f)
                     elevation -= (radial - 0.86f) * 1.75f;
 
-                var moisture = Mathf.Clamp(
+                var humidity = Mathf.Clamp(
                     Fbm(
-                        q * 0.075f + 91.3f,
-                        r * 0.075f - 44.8f,
+                        q * 0.070f + 91.3f,
+                        r * 0.070f - 44.8f,
                         seed ^ 0x33F10Du,
                         4),
                     0f,
                     1f);
 
+                var temperatureNoise =
+                    Fbm(
+                        q * 0.045f - 73.5f,
+                        r * 0.045f + 28.7f,
+                        seed ^ 0x6E71A3u,
+                        3) - 0.5f;
+                var latitude = Mathf.Clamp(
+                    Mathf.Abs(center.Y) / Math.Max(1f, radius * HexSize * 1.5f),
+                    0f,
+                    1f);
+                var clampedElevation = Mathf.Clamp(elevation, -0.85f, 0.95f);
+                var elevationMeters = clampedElevation >= 0f
+                    ? clampedElevation * 3200f
+                    : clampedElevation * 700f;
+                var temperature = 29f
+                    - latitude * 17f
+                    - Math.Max(0f, elevationMeters) * 0.0062f
+                    + temperatureNoise * 8f;
+
                 cells.Add(new WorldHexCell
                 {
                     Coord = coord,
                     WorldCenter = center,
-                    Elevation = Mathf.Clamp(elevation, -0.85f, 0.95f),
-                    Moisture = moisture,
+                    Elevation = clampedElevation,
+                    ElevationMeters = elevationMeters,
+                    Humidity = humidity,
+                    TemperatureCelsius = temperature,
+                    PressureKPa = AtmosphericPressure(elevationMeters),
                     Terrain = HexTerrainType.Grassland,
                     WaterKind = HexWaterKind.None,
                     WaterDepth = 0,
                     MovementCost = 1f,
+                    MovementSpeedMultiplier = 1f,
                     VisualVariation = Hash01(q, r, seed ^ 0xC18A57u)
                 });
             }
@@ -108,9 +133,9 @@ public static class WorldMapGenerator
     {
         var targetCount = radius switch
         {
-            <= 16 => 2,
-            >= 28 => 4,
-            _ => 3
+            <= 28 => 3,
+            >= 49 => 6,
+            _ => 4
         };
 
         var candidates = cells
@@ -206,9 +231,9 @@ public static class WorldMapGenerator
     {
         var targetCount = radius switch
         {
-            <= 16 => 2,
-            >= 28 => 4,
-            _ => 3
+            <= 28 => 3,
+            >= 49 => 6,
+            _ => 4
         };
 
         var existing = FindLakeComponents(cells, lookup);
@@ -447,19 +472,54 @@ public static class WorldMapGenerator
                         lookup.TryGetValue(coord, out var neighbor)
                         && neighbor.IsWater);
 
+                if (touchesWater)
+                    cell.Humidity = Mathf.Clamp(cell.Humidity + 0.18f, 0f, 1f);
+
                 if (cell.Elevation > 0.61f)
                     cell.Terrain = HexTerrainType.Mountain;
-                else if (cell.Elevation > 0.41f || cell.Moisture < 0.22f)
+                else if (cell.Elevation > 0.41f)
                     cell.Terrain = HexTerrainType.Rocky;
-                else if ((touchesWater && cell.Elevation < 0.18f)
-                         || (cell.Moisture < 0.34f && cell.Elevation < 0.30f))
+                else if (touchesWater && cell.Elevation < 0.18f)
                     cell.Terrain = HexTerrainType.Sand;
+                else if (cell.Humidity < 0.30f
+                         && cell.TemperatureCelsius >= 23f
+                         && cell.Elevation < 0.36f)
+                    cell.Terrain = HexTerrainType.Desert;
+                else if (cell.Humidity < 0.20f)
+                    cell.Terrain = HexTerrainType.Rocky;
                 else
                     cell.Terrain = HexTerrainType.Grassland;
             }
 
+            if (cell.IsWater)
+                cell.Humidity = 1f;
+
+            cell.PressureKPa = AmbientPressure(cell);
             cell.MovementCost = WorldMovementRules.BaseMovementCost(cell);
+            cell.MovementSpeedMultiplier =
+                WorldMovementRules.SpeedMultiplier(cell, DemoEntityKind.Creature);
         }
+    }
+
+    private static float AtmosphericPressure(float elevationMeters)
+    {
+        var altitude = Math.Max(0f, elevationMeters);
+        return 101.325f * MathF.Exp(-altitude / 8434.5f);
+    }
+
+    private static float AmbientPressure(WorldHexCell cell)
+    {
+        var atmosphere = AtmosphericPressure(cell.ElevationMeters);
+        if (!cell.IsWater)
+            return atmosphere;
+
+        var depthMeters = cell.Terrain switch
+        {
+            HexTerrainType.River => 2.5f + cell.WaterDepth * 18f,
+            HexTerrainType.Lake => 6f + cell.WaterDepth * 120f,
+            _ => cell.WaterDepth * 850f
+        };
+        return atmosphere + depthMeters * 9.80665f;
     }
 
     private static float Fbm(float x, float y, uint seed, int octaves)

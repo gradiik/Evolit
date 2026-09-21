@@ -166,9 +166,9 @@ public sealed partial class GameHud : Control
         primary.AddThemeConstantOverride("separation", 8);
         row.AddChild(primary);
 
-        AddGameTool(primary, "Эволюция", "biology/evolution.svg", ShowEvolution, 150);
-        AddGameTool(primary, "Древо", "biology/lineage.svg", ShowLineage, 150);
-        AddGameTool(primary, "Статистика", "settings/performance.svg", ShowWorldStats, 150);
+        AddGameTool(primary, "Эволюция", "biology/evolution.svg", ShowEvolution, 170, true);
+        AddGameTool(primary, "Древо", "biology/lineage.svg", ShowLineage, 170, true);
+        AddGameTool(primary, "Статистика", "settings/performance.svg", ShowWorldStats, 170, true);
 
         row.AddChild(Separator());
 
@@ -414,7 +414,8 @@ public sealed partial class GameHud : Control
         string text,
         string icon,
         Action callback,
-        float width)
+        float width,
+        bool expand = false)
     {
         var button = ToolButton(text, icon, () =>
         {
@@ -423,6 +424,9 @@ public sealed partial class GameHud : Control
         }, width);
 
         button.ToggleMode = true;
+        if (expand)
+            button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+
         _toolButtons[text] = button;
         parent.AddChild(button);
     }

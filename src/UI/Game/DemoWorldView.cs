@@ -9,7 +9,7 @@ public sealed partial class DemoWorldView : Control
 {
     public event Action<DemoEntity?>? SelectionChanged;
 
-    private const float MinZoom = 0.20f;
+    private const float MinZoom = 0.10f;
     private const float MaxZoom = 3.0f;
 
     private readonly Vector2[] _hexPoints = new Vector2[6];
@@ -295,6 +295,7 @@ public sealed partial class DemoWorldView : Control
             HexTerrainType.Lake => new Color(0.060f, 0.305f, 0.325f),
             HexTerrainType.River => new Color(0.080f, 0.370f, 0.385f),
             HexTerrainType.Sand => new Color(0.49f, 0.45f, 0.29f),
+            HexTerrainType.Desert => new Color(0.60f, 0.49f, 0.25f),
             HexTerrainType.Grassland => new Color(0.235f, 0.405f, 0.225f),
             HexTerrainType.Rocky => new Color(0.335f, 0.365f, 0.315f),
             HexTerrainType.Mountain => new Color(0.285f, 0.315f, 0.300f),
@@ -332,7 +333,7 @@ public sealed partial class DemoWorldView : Control
     {
         var center = WorldToScreen(entity.WorldPosition);
         var selected = ReferenceEquals(entity, _selected);
-        var visualScale = Mathf.Clamp(_zoom, 0.52f, 2.5f);
+        var visualScale = Mathf.Clamp(_zoom, 0.38f, 2.5f);
 
         if (selected)
         {
