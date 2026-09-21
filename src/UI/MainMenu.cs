@@ -10,6 +10,7 @@ public sealed partial class MainMenu : Control
     public event Action? SavesRequested;
     public event Action? SettingsRequested;
     public event Action? EncyclopediaRequested;
+    public event Action? VersionsRequested;
     public event Action? ExitRequested;
 
     private bool _continueAvailable;
@@ -86,6 +87,10 @@ public sealed partial class MainMenu : Control
         encyclopedia.Pressed += () => EncyclopediaRequested?.Invoke();
         column.AddChild(encyclopedia);
 
+        var versions = MenuButton("Версии", "simulation/history.svg");
+        versions.Pressed += () => VersionsRequested?.Invoke();
+        column.AddChild(versions);
+
         var exit = MenuButton("Выход", "menu/exit.svg");
         exit.Pressed += () => ExitRequested?.Invoke();
         column.AddChild(exit);
@@ -94,7 +99,7 @@ public sealed partial class MainMenu : Control
 
         var status = new Label
         {
-            Text = "Системный каркас · мир пока не симулируется",
+            Text = $"Evolit {Evolit.Versioning.AppVersionCatalog.CurrentVersion} · контрольная сборка",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         status.AddThemeFontSizeOverride("font_size", 13);
