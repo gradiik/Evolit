@@ -37,7 +37,7 @@ public sealed partial class WorldStatsGraph : Control
 
     public WorldStatsGraph()
     {
-        CustomMinimumSize = new Vector2(0, 190);
+        CustomMinimumSize = new Vector2(0, 145);
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.None;
     }
