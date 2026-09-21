@@ -104,11 +104,18 @@ public sealed partial class AppRoot : Control
         menu.NewGameRequested += ShowNewGame;
         menu.SavesRequested += () => ShowSaves(GameFlowState.MainMenu);
         menu.SettingsRequested += () => ShowSettings(GameFlowState.MainMenu);
-        menu.EncyclopediaRequested += () => _toasts?.ShowToast("Энциклопедия будет добавлена позже.");
+        menu.EncyclopediaRequested += ShowEncyclopedia;
         menu.VersionsRequested += ShowVersions;
         menu.ExitRequested += () => GetTree().Quit();
 
         SwitchScreen(menu, GameFlowState.MainMenu);
+    }
+
+    private void ShowEncyclopedia()
+    {
+        var screen = new EncyclopediaScreen();
+        screen.BackRequested += ShowMainMenu;
+        SwitchScreen(screen, GameFlowState.Encyclopedia);
     }
 
     private void ShowVersions()
