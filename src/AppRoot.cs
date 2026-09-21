@@ -6,6 +6,7 @@ using Evolit.Save;
 using Evolit.Session;
 using Evolit.Settings;
 using Evolit.UI;
+using Evolit.Versioning;
 using Godot;
 
 namespace Evolit;
@@ -15,6 +16,7 @@ public sealed partial class AppRoot : Control
     private readonly GameFlowController _flow = new();
     private readonly SaveManager _saves = new();
     private readonly SettingsStore _settings = new();
+    private readonly VersionSelectionStore _versionSelection = new();
 
     private Control? _screenHost;
     private ToastHost? _toasts;
@@ -103,9 +105,39 @@ public sealed partial class AppRoot : Control
         menu.SavesRequested += () => ShowSaves(GameFlowState.MainMenu);
         menu.SettingsRequested += () => ShowSettings(GameFlowState.MainMenu);
         menu.EncyclopediaRequested += () => _toasts?.ShowToast("Энциклопедия будет добавлена позже.");
+        menu.VersionsRequested += ShowVersions;
         menu.ExitRequested += () => GetTree().Quit();
 
         SwitchScreen(menu, GameFlowState.MainMenu);
+    }
+
+    private void ShowVersions()
+    {
+        var screen = new VersionsScreen();
+        screen.Configure(_versionSelection.LoadTarget());
+        screen.BackRequested += ShowMainMenu;
+        screen.RollbackRequested += record =>
+        {
+            _confirm?.ShowDialog(
+                "Подготовить откат?",
+                $"Вы хотите выбрать Evolit {record.Version} для отката? Исходный код не будет изменён автоматически.",
+                "Выбрать версию",
+                () =>
+                {
+                    var result = _versionSelection.SaveTarget(record.Version);
+                    if (result == Error.Ok)
+                    {
+                        _toasts?.ShowToast($"Evolit {record.Version} выбран как цель отката", ToastKind.Success);
+                        ShowVersions();
+                    }
+                    else
+                    {
+                        _toasts?.ShowToast($"Не удалось сохранить цель отката: {result}", ToastKind.Error);
+                    }
+                });
+        };
+
+        SwitchScreen(screen, GameFlowState.Versions);
     }
 
     private void ShowNewGame()
@@ -419,7 +451,7 @@ public sealed partial class AppRoot : Control
         var worldTime = _gameTime is null ? "—" : $"День {_gameTime.Day} · {_gameTime.FormattedTime}";
 
         _debug.SetData(
-            $"EVOLIT DEBUG\n" +
+            $"EVOLIT {AppVersionCatalog.CurrentVersion} DEBUG\n" +
             $"FPS: {Engine.GetFramesPerSecond():0}\n" +
             $"State: {_flow.Current}\n" +
             $"World time: {worldTime}\n" +
