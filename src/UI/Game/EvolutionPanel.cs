@@ -140,6 +140,11 @@ public sealed partial class EvolutionPanel : Control
         CreateTween().TweenProperty(this, "modulate", Colors.White, 0.16);
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
+    }
+
     public override void _ExitTree()
     {
         if (_world is not null)
@@ -312,7 +317,7 @@ public sealed partial class EvolutionPanel : Control
 
         var note = new Label
         {
-            Text = "Demo layer\n\nВсе значения на этом экране нужны для проверки интерфейса. Реальные мутации, отбор и давление среды появятся вместе с симуляцией.",
+            Text = "Интерфейс 0.0.4\n\nМутации, давление среды и отбор здесь являются демонстрацией интерфейса и не изменяют мир. Биологическая симуляция будет подключена отдельно.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         note.AddThemeFontSizeOverride("font_size", 12);
