@@ -14,6 +14,7 @@ public sealed partial class EventsPanel : Control
     private VBoxContainer? _feed;
     private readonly Dictionary<string, Button> _filters = new();
     private string _activeFilter = "Все";
+    private LineEdit? _search;
 
     public void Configure(DemoWorldDataProvider world)
     {
@@ -98,6 +99,11 @@ public sealed partial class EventsPanel : Control
         AddFilter(filters, "Система");
         AddFilter(filters, "Эволюция");
 
+        filters.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        _search = new LineEdit { PlaceholderText = "Поиск событий…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(240, 36) };
+        _search.TextChanged += _ => Refresh();
+        filters.AddChild(_search);
+
         root.AddChild(new HSeparator());
 
         var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -154,8 +160,17 @@ public sealed partial class EventsPanel : Control
             _ => events
         };
 
+        var query = _search?.Text.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(query))
+            events = events.Where(item => item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || item.Description.Contains(query, StringComparison.OrdinalIgnoreCase));
+
         foreach (var entry in events.Take(30))
             _feed.AddChild(BuildEvent(entry));
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event.IsActionPressed("game_pause")) { CloseRequested?.Invoke(); GetViewport().SetInputAsHandled(); }
     }
 
     private static Control BuildEvent(DemoEventEntry entry)
