@@ -115,18 +115,19 @@ public sealed partial class LineageCanvas : Control
         var accent = NodeColor(species);
         var panel = new PanelContainer { MouseFilter = MouseFilterEnum.Stop, TooltipText = $"Открыть {species.Name}" };
         panel.AddThemeStyleboxOverride("panel", NodeStyle(accent, species.Status == DemoSpeciesStatus.Extinct, species.Id == _selectedId));
+        UiMotion.BindHover(panel);
         panel.GuiInput += e => { if (e is InputEventMouseButton b && b.ButtonIndex == MouseButton.Left && b.Pressed) { SelectSpecies(species); AcceptEvent(); } };
 
         var margin = new MarginContainer(); margin.AddThemeConstantOverride("margin_left", 10); margin.AddThemeConstantOverride("margin_right", 10); margin.AddThemeConstantOverride("margin_top", 8); margin.AddThemeConstantOverride("margin_bottom", 8); panel.AddChild(margin);
         var root = new VBoxContainer(); root.AddThemeConstantOverride("separation", 3); margin.AddChild(root);
         var header = new HBoxContainer(); root.AddChild(header);
-        var portrait = new SpeciesPortrait { CustomMinimumSize = new Vector2(26, 26), MouseFilter = MouseFilterEnum.Ignore };
+        var portrait = new SpeciesPortrait { CustomMinimumSize = UiMetrics.Size(26, 26), MouseFilter = MouseFilterEnum.Ignore };
         if (_world is not null) portrait.Configure(species, _world.Species);
         header.AddChild(portrait);
-        var title = new Label { Text = species.Name, SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore }; title.AddThemeFontSizeOverride("font_size", species.ParentId == "origin" ? 15 : 13); title.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.Disabled : EvolitPalette.MistWhite); header.AddChild(title);
-        var badge = new Label { Text = species.Status == DemoSpeciesStatus.Extinct ? "ВЫМЕР" : species.Kind == DemoSpeciesKind.Origin ? "КОРЕНЬ" : "АКТИВЕН", MouseFilter = MouseFilterEnum.Ignore }; badge.AddThemeFontSizeOverride("font_size", 9); badge.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.WarmAlert : accent); header.AddChild(badge);
-        var meta = new Label { Text = $"День {species.DayAppeared} · популяция {species.Population}", MouseFilter = MouseFilterEnum.Ignore }; meta.AddThemeFontSizeOverride("font_size", 10); meta.AddThemeColorOverride("font_color", EvolitPalette.FogBlue); root.AddChild(meta);
-        var adapt = new Label { Text = $"Адаптивность {species.Adaptability*100:0}%", MouseFilter = MouseFilterEnum.Ignore }; adapt.AddThemeFontSizeOverride("font_size", 10); adapt.AddThemeColorOverride("font_color", accent); root.AddChild(adapt);
+        var title = new Label { Text = species.Name, SizeFlagsHorizontal = SizeFlags.ExpandFill, MouseFilter = MouseFilterEnum.Ignore }; title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(species.ParentId == "origin" ? 15 : 13)); title.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.Disabled : EvolitPalette.MistWhite); header.AddChild(title);
+        var badge = new Label { Text = species.Status == DemoSpeciesStatus.Extinct ? "ВЫМЕР" : species.Kind == DemoSpeciesKind.Origin ? "КОРЕНЬ" : "АКТИВЕН", MouseFilter = MouseFilterEnum.Ignore }; badge.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9)); badge.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.WarmAlert : accent); header.AddChild(badge);
+        var meta = new Label { Text = $"День {species.DayAppeared} · популяция {species.Population}", MouseFilter = MouseFilterEnum.Ignore }; meta.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10)); meta.AddThemeColorOverride("font_color", EvolitPalette.FogBlue); root.AddChild(meta);
+        var adapt = new Label { Text = $"Адаптивность {species.Adaptability*100:0}%", MouseFilter = MouseFilterEnum.Ignore }; adapt.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10)); adapt.AddThemeColorOverride("font_color", accent); root.AddChild(adapt);
         return panel;
     }
 

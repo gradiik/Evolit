@@ -75,6 +75,12 @@ public sealed partial class GameScreen : Control
         if (!@event.IsActionPressed("game_pause"))
             return;
 
+        if (_hud?.CloseActiveToolIfAny() == true)
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         PauseRequested?.Invoke();
         GetViewport().SetInputAsHandled();
     }

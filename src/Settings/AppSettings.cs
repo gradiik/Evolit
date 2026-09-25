@@ -1,12 +1,21 @@
+using System.Collections.Generic;
+
 namespace Evolit.Settings;
 
 public sealed class AppSettings
 {
+    public const int CurrentSchemaVersion = 2;
+
+    public int SchemaVersion { get; set; }
+
     public int DisplayMode { get; set; }
     public int Resolution { get; set; }
     public bool VSync { get; set; }
     public int DetailLevel { get; set; }
     public int WaterQuality { get; set; }
+
+    // Kept for backwards-compatible settings files. These options are not
+    // exposed until the corresponding renderer systems exist.
     public int ShadowQuality { get; set; }
     public int EffectsQuality { get; set; }
 
@@ -21,15 +30,22 @@ public sealed class AppSettings
     public bool Tooltips { get; set; }
     public bool ShowFps { get; set; }
     public bool ShowPerformance { get; set; }
+    public int MotionMode { get; set; }
 
+    // Kept for migration. Game flow currently pauses implicitly whenever the
+    // GameScreen leaves the tree, so exposing this toggle would be misleading.
     public bool AutoPause { get; set; }
+
     public double CameraSpeed { get; set; }
     public bool SmoothZoom { get; set; }
+
+    public Dictionary<string, string> KeyBindings { get; set; } = new();
 
     public static AppSettings Default()
     {
         return new AppSettings
         {
+            SchemaVersion = CurrentSchemaVersion,
             DisplayMode = 0,
             Resolution = 1,
             VSync = true,
@@ -47,9 +63,11 @@ public sealed class AppSettings
             Tooltips = true,
             ShowFps = false,
             ShowPerformance = false,
+            MotionMode = 2,
             AutoPause = true,
             CameraSpeed = 5,
-            SmoothZoom = true
+            SmoothZoom = true,
+            KeyBindings = new Dictionary<string, string>()
         };
     }
 
@@ -57,6 +75,7 @@ public sealed class AppSettings
     {
         return new AppSettings
         {
+            SchemaVersion = SchemaVersion,
             DisplayMode = DisplayMode,
             Resolution = Resolution,
             VSync = VSync,
@@ -74,9 +93,11 @@ public sealed class AppSettings
             Tooltips = Tooltips,
             ShowFps = ShowFps,
             ShowPerformance = ShowPerformance,
+            MotionMode = MotionMode,
             AutoPause = AutoPause,
             CameraSpeed = CameraSpeed,
-            SmoothZoom = SmoothZoom
+            SmoothZoom = SmoothZoom,
+            KeyBindings = new Dictionary<string, string>(KeyBindings)
         };
     }
 }

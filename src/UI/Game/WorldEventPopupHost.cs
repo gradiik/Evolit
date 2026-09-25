@@ -38,23 +38,37 @@ public sealed partial class WorldEventPopupHost : Control
         {
             MouseFilter = MouseFilterEnum.Ignore,
             SizeFlagsHorizontal = SizeFlags.ShrinkBegin,
-            CustomMinimumSize = new Vector2(400, 84)
+            CustomMinimumSize = UiMetrics.Size(400, 84)
         };
 
         var panel = BuildPanel(entry);
-        panel.Scale = new Vector2(0.985f, 0.985f);
-        panel.Modulate = new Color(1, 1, 1, 0);
+        panel.Scale = UiMotion.Mode == UiMotionMode.Full
+            ? new Vector2(0.985f, 0.985f)
+            : Vector2.One;
+        panel.Modulate = UiMotion.Mode == UiMotionMode.Off
+            ? Colors.White
+            : new Color(1, 1, 1, 0);
         wrapper.AddChild(panel);
         _stack.AddChild(wrapper);
 
         var item = new PopupItem(wrapper, panel);
         _items.Add(item);
 
-        var appear = CreateTween()
-            .SetEase(Tween.EaseType.Out)
-            .SetTrans(Tween.TransitionType.Cubic);
-        appear.Parallel().TweenProperty(panel, "scale", Vector2.One, 0.18);
-        appear.Parallel().TweenProperty(panel, "modulate", Colors.White, 0.18);
+        if (UiMotion.Mode != UiMotionMode.Off)
+        {
+            var appear = CreateTween()
+                .SetEase(Tween.EaseType.Out)
+                .SetTrans(Tween.TransitionType.Cubic);
+
+            if (UiMotion.Mode == UiMotionMode.Full)
+                appear.TweenProperty(panel, "scale", Vector2.One, UiMotion.Normal);
+
+            appear.Parallel().TweenProperty(
+                panel,
+                "modulate",
+                Colors.White,
+                UiMotion.Normal);
+        }
 
         var lifetime = entry.Severity switch
         {
@@ -88,7 +102,7 @@ public sealed partial class WorldEventPopupHost : Control
         var panel = new PanelContainer
         {
             MouseFilter = MouseFilterEnum.Ignore,
-            CustomMinimumSize = new Vector2(390, 78)
+            CustomMinimumSize = UiMetrics.Size(390, 78)
         };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
 
@@ -107,7 +121,7 @@ public sealed partial class WorldEventPopupHost : Control
         row.AddChild(new ColorRect
         {
             Color = accent,
-            CustomMinimumSize = new Vector2(4, 0),
+            CustomMinimumSize = UiMetrics.Size(4, 0),
             MouseFilter = MouseFilterEnum.Ignore
         });
 
@@ -115,7 +129,7 @@ public sealed partial class WorldEventPopupHost : Control
         {
             Texture = EvolitIcons.Load(entry.IconPath),
             Modulate = accent,
-            CustomMinimumSize = new Vector2(26, 26),
+            CustomMinimumSize = UiMetrics.Size(26, 26),
             MouseFilter = MouseFilterEnum.Ignore
         };
         row.AddChild(icon);
@@ -137,7 +151,7 @@ public sealed partial class WorldEventPopupHost : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        title.AddThemeFontSizeOverride("font_size", 14);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(14));
         title.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         titleRow.AddChild(title);
 
@@ -146,7 +160,7 @@ public sealed partial class WorldEventPopupHost : Control
             Text = SeverityLabel(entry.Severity),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        severity.AddThemeFontSizeOverride("font_size", 9);
+        severity.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         severity.AddThemeColorOverride("font_color", accent);
         titleRow.AddChild(severity);
 
@@ -156,7 +170,7 @@ public sealed partial class WorldEventPopupHost : Control
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = MouseFilterEnum.Ignore
         };
-        description.AddThemeFontSizeOverride("font_size", 10);
+        description.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(description);
 
@@ -164,10 +178,10 @@ public sealed partial class WorldEventPopupHost : Control
         {
             Text = $"День {entry.Day} · {entry.Time}",
             HorizontalAlignment = HorizontalAlignment.Right,
-            CustomMinimumSize = new Vector2(86, 0),
+            CustomMinimumSize = UiMetrics.Size(86, 0),
             MouseFilter = MouseFilterEnum.Ignore
         };
-        meta.AddThemeFontSizeOverride("font_size", 9);
+        meta.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         meta.AddThemeColorOverride("font_color", new Color(accent, 0.86f));
         row.AddChild(meta);
 
@@ -191,6 +205,13 @@ public sealed partial class WorldEventPopupHost : Control
         if (!IsInstanceValid(item.Wrapper) || !IsInstanceValid(item.Panel))
             return;
 
+        if (UiMotion.Mode == UiMotionMode.Off)
+        {
+            item.Wrapper.QueueFree();
+            return;
+        }
+
+        duration = UiMotion.Slow;
         var exit = CreateTween()
             .SetEase(Tween.EaseType.In)
             .SetTrans(Tween.TransitionType.Quad);
@@ -219,7 +240,7 @@ public sealed partial class WorldEventPopupHost : Control
                 item.Wrapper,
                 "custom_minimum_size",
                 Vector2.Zero,
-                0.14);
+                UiMotion.Fast);
             collapse.TweenCallback(Callable.From(() =>
             {
                 if (!IsInstanceValid(item.Wrapper))

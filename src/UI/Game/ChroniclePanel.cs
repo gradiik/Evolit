@@ -81,15 +81,15 @@ public sealed partial class ChroniclePanel : Control
         header.AddChild(titles);
 
         var title = new Label { Text = "Летопись мира" };
-        title.AddThemeFontSizeOverride("font_size", 30);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(30));
         titles.AddChild(title);
 
         var subtitle = new Label { Text = "Постоянная история ключевых событий и поворотных точек мира." };
-        subtitle.AddThemeFontSizeOverride("font_size", 13);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
-        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = new Vector2(112, 40) };
+        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = UiMetrics.Size(112, 40) };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
@@ -116,7 +116,7 @@ public sealed partial class ChroniclePanel : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center
         };
-        _resultCount.AddThemeFontSizeOverride("font_size", 11);
+        _resultCount.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         _resultCount.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         tools.AddChild(_resultCount);
 
@@ -125,7 +125,7 @@ public sealed partial class ChroniclePanel : Control
             Text = "Новые сверху",
             ToggleMode = true,
             ButtonPressed = true,
-            CustomMinimumSize = new Vector2(132, 34)
+            CustomMinimumSize = UiMetrics.Size(132, 34)
         };
         _sortButton.Pressed += () =>
         {
@@ -139,7 +139,7 @@ public sealed partial class ChroniclePanel : Control
         {
             PlaceholderText = "Поиск в летописи…",
             ClearButtonEnabled = true,
-            CustomMinimumSize = new Vector2(270, 36)
+            CustomMinimumSize = UiMetrics.Size(270, 36)
         };
         _search.TextChanged += _ => Refresh();
         tools.AddChild(_search);
@@ -188,7 +188,7 @@ public sealed partial class ChroniclePanel : Control
             var empty = new Label
             {
                 Text = "По текущему фильтру записей нет.",
-                CustomMinimumSize = new Vector2(0, 72),
+                CustomMinimumSize = UiMetrics.Size(0, 72),
                 VerticalAlignment = VerticalAlignment.Center
             };
             empty.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
@@ -215,7 +215,7 @@ public sealed partial class ChroniclePanel : Control
         {
             Text = name,
             ToggleMode = true,
-            CustomMinimumSize = new Vector2(92, 34)
+            CustomMinimumSize = UiMetrics.Size(92, 34)
         };
         button.Pressed += () =>
         {
@@ -251,9 +251,9 @@ public sealed partial class ChroniclePanel : Control
 
     private static Control BuildDayHeader(int day)
     {
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 30) };
+        var row = new HBoxContainer { CustomMinimumSize = UiMetrics.Size(0, 30) };
         var dayLabel = new Label { Text = $"ДЕНЬ {day}" };
-        dayLabel.AddThemeFontSizeOverride("font_size", 11);
+        dayLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         dayLabel.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
         row.AddChild(dayLabel);
         row.AddChild(new HSeparator { SizeFlagsHorizontal = SizeFlags.ExpandFill });
@@ -273,7 +273,7 @@ public sealed partial class ChroniclePanel : Control
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 78),
+            CustomMinimumSize = UiMetrics.Size(0, 78),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
@@ -293,7 +293,7 @@ public sealed partial class ChroniclePanel : Control
         var icon = new TextureRect
         {
             Texture = EvolitIcons.Load(entry.IconPath),
-            CustomMinimumSize = new Vector2(28, 28),
+            CustomMinimumSize = UiMetrics.Size(28, 28),
             Modulate = accent,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -307,7 +307,7 @@ public sealed partial class ChroniclePanel : Control
         text.AddChild(titleRow);
 
         var title = new Label { Text = entry.Title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        title.AddThemeFontSizeOverride("font_size", 16);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         titleRow.AddChild(title);
 
         titleRow.AddChild(Badge(KindLabel(entry.Kind), accent));
@@ -319,7 +319,7 @@ public sealed partial class ChroniclePanel : Control
             Text = entry.Description,
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        description.AddThemeFontSizeOverride("font_size", 12);
+        description.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(description);
 
@@ -335,9 +335,9 @@ public sealed partial class ChroniclePanel : Control
             {
                 Text = metaText,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                CustomMinimumSize = new Vector2(126, 0)
+                CustomMinimumSize = UiMetrics.Size(126, 0)
             };
-            meta.AddThemeFontSizeOverride("font_size", 10);
+            meta.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
             meta.AddThemeColorOverride("font_color", new Color(accent, 0.82f));
             content.AddChild(meta);
         }
@@ -370,7 +370,7 @@ public sealed partial class ChroniclePanel : Control
         panel.AddChild(margin);
 
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         label.AddThemeColorOverride("font_color", color);
         margin.AddChild(label);
         return panel;

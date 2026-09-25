@@ -67,15 +67,15 @@ public sealed partial class EvolutionPanel : Control
         header.AddChild(titles);
 
         var title = new Label { Text = "Эволюция" };
-        title.AddThemeFontSizeOverride("font_size", 30);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(30));
         titles.AddChild(title);
 
         var subtitle = new Label { Text = "Наблюдение за линиями развития и демонстрация будущих инструментов отбора." };
-        subtitle.AddThemeFontSizeOverride("font_size", 13);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
-        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = new Vector2(112, 40) };
+        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = UiMetrics.Size(112, 40) };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
@@ -115,7 +115,7 @@ public sealed partial class EvolutionPanel : Control
 
         var summaryPanel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(245, 0),
+            CustomMinimumSize = UiMetrics.Size(245, 0),
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         summaryPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
@@ -146,7 +146,7 @@ public sealed partial class EvolutionPanel : Control
 
     private Control BuildNavigation()
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(188, 0) };
+        var panel = new PanelContainer { CustomMinimumSize = UiMetrics.Size(188, 0) };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
 
         var margin = new MarginContainer();
@@ -167,7 +167,7 @@ public sealed partial class EvolutionPanel : Control
                 Text = section,
                 ToggleMode = true,
                 Alignment = HorizontalAlignment.Left,
-                CustomMinimumSize = new Vector2(0, 42)
+                CustomMinimumSize = UiMetrics.Size(0, 42)
             };
             var captured = section;
             button.Pressed += () => ShowSection(captured);
@@ -192,7 +192,7 @@ public sealed partial class EvolutionPanel : Control
             return;
 
         var heading = new Label { Text = section };
-        heading.AddThemeFontSizeOverride("font_size", 23);
+        heading.AddThemeFontSizeOverride("font_size", UiMetrics.Font(23));
         heading.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         _content.AddChild(heading);
 
@@ -299,7 +299,7 @@ public sealed partial class EvolutionPanel : Control
             return;
 
         var label = new Label { Text = "Сводка" };
-        label.AddThemeFontSizeOverride("font_size", 18);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(18));
         label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         _summary.AddChild(label);
 
@@ -315,14 +315,14 @@ public sealed partial class EvolutionPanel : Control
             Text = "Интерфейс 0.0.4\n\nМутации, давление среды и отбор здесь являются демонстрацией интерфейса и не изменяют мир. Биологическая симуляция будет подключена отдельно.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        note.AddThemeFontSizeOverride("font_size", 12);
+        note.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         note.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         _summary.AddChild(note);
     }
 
     private static Control MetricCard(string caption, string value, string note)
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 86), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var panel = new PanelContainer { CustomMinimumSize = UiMetrics.Size(0, 86), SizeFlagsHorizontal = SizeFlags.ExpandFill };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.72f));
 
         var margin = new MarginContainer();
@@ -336,17 +336,17 @@ public sealed partial class EvolutionPanel : Control
         margin.AddChild(box);
 
         var cap = new Label { Text = caption };
-        cap.AddThemeFontSizeOverride("font_size", 11);
+        cap.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         cap.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         box.AddChild(cap);
 
         var data = new Label { Text = value };
-        data.AddThemeFontSizeOverride("font_size", 21);
+        data.AddThemeFontSizeOverride("font_size", UiMetrics.Font(21));
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         box.AddChild(data);
 
         var sub = new Label { Text = note };
-        sub.AddThemeFontSizeOverride("font_size", 11);
+        sub.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         sub.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.76f));
         box.AddChild(sub);
 
@@ -355,7 +355,7 @@ public sealed partial class EvolutionPanel : Control
 
     private static Control LineageCard(DemoSpeciesRecord lineage)
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 88) };
+        var panel = new PanelContainer { CustomMinimumSize = UiMetrics.Size(0, 88) };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.72f));
 
         var margin = new MarginContainer();
@@ -371,7 +371,7 @@ public sealed partial class EvolutionPanel : Control
         var icon = new TextureRect
         {
             Texture = EvolitIcons.Load(lineage.Kind == DemoSpeciesKind.Plant ? "biology/plant.svg" : "biology/creature.svg"),
-            CustomMinimumSize = new Vector2(30, 30),
+            CustomMinimumSize = UiMetrics.Size(30, 30),
             Modulate = lineage.Kind == DemoSpeciesKind.Plant ? EvolitPalette.YoungLeaf : EvolitPalette.SoftAqua,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -381,11 +381,11 @@ public sealed partial class EvolutionPanel : Control
         row.AddChild(text);
 
         var title = new Label { Text = lineage.Name };
-        title.AddThemeFontSizeOverride("font_size", 17);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(17));
         text.AddChild(title);
 
         var description = new Label { Text = lineage.Description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        description.AddThemeFontSizeOverride("font_size", 12);
+        description.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(description);
 
@@ -398,7 +398,7 @@ public sealed partial class EvolutionPanel : Control
 
     private static Control SpeciesRow(DemoSpeciesRecord species)
     {
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 38) };
+        var row = new HBoxContainer { CustomMinimumSize = UiMetrics.Size(0, 38) };
         var name = new Label { Text = $"   {species.Name}", SizeFlagsHorizontal = SizeFlags.ExpandFill };
         name.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.Disabled : EvolitPalette.MistWhite);
         row.AddChild(name);
@@ -428,20 +428,20 @@ public sealed partial class EvolutionPanel : Control
         box.AddChild(header);
 
         var title = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        title.AddThemeFontSizeOverride("font_size", 16);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         header.AddChild(title);
 
         var badge = new Label { Text = category };
-        badge.AddThemeFontSizeOverride("font_size", 11);
+        badge.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         badge.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
         header.AddChild(badge);
 
         var text = new Label { Text = description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        text.AddThemeFontSizeOverride("font_size", 12);
+        text.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         text.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         box.AddChild(text);
 
-        var bar = new ProgressBar { MinValue = 0, MaxValue = 100, Value = progress * 100, ShowPercentage = false, CustomMinimumSize = new Vector2(0, 7) };
+        var bar = new ProgressBar { MinValue = 0, MaxValue = 100, Value = progress * 100, ShowPercentage = false, CustomMinimumSize = UiMetrics.Size(0, 7) };
         box.AddChild(bar);
 
         return panel;
@@ -472,7 +472,7 @@ public sealed partial class EvolutionPanel : Control
         valueLabel.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(valueLabel);
 
-        var bar = new ProgressBar { MinValue = 0, MaxValue = 100, Value = value, ShowPercentage = false, CustomMinimumSize = new Vector2(0, 8) };
+        var bar = new ProgressBar { MinValue = 0, MaxValue = 100, Value = value, ShowPercentage = false, CustomMinimumSize = UiMetrics.Size(0, 8) };
         box.AddChild(bar);
         return panel;
     }
@@ -499,12 +499,12 @@ public sealed partial class EvolutionPanel : Control
         text.AddChild(title);
 
         var source = new Label { Text = line };
-        source.AddThemeFontSizeOverride("font_size", 11);
+        source.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         source.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(source);
 
         var change = new Label { Text = delta };
-        change.AddThemeFontSizeOverride("font_size", 18);
+        change.AddThemeFontSizeOverride("font_size", UiMetrics.Font(18));
         change.AddThemeColorOverride("font_color", positive ? EvolitPalette.YoungLeaf : EvolitPalette.WarmAlert);
         row.AddChild(change);
 
@@ -515,7 +515,7 @@ public sealed partial class EvolutionPanel : Control
     {
         var row = new HBoxContainer();
         var label = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(label);
 
@@ -528,7 +528,7 @@ public sealed partial class EvolutionPanel : Control
     private static Label SectionLabel(string text)
     {
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 16);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         return label;
     }
@@ -536,7 +536,7 @@ public sealed partial class EvolutionPanel : Control
     private static Label Hint(string text)
     {
         var label = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         return label;
     }

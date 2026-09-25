@@ -31,17 +31,17 @@ public sealed partial class SelectionPanel : PanelContainer
         root.AddChild(header);
 
         _kind = new Label { Text = "ОБЪЕКТ", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        _kind.AddThemeFontSizeOverride("font_size", 10);
+        _kind.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         _kind.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
         header.AddChild(_kind);
 
         var liveBadge = new Label { Text = "LIVE" };
-        liveBadge.AddThemeFontSizeOverride("font_size", 9);
+        liveBadge.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         liveBadge.AddThemeColorOverride("font_color", EvolitPalette.YoungLeaf);
         header.AddChild(liveBadge);
 
         _title = new Label();
-        _title.AddThemeFontSizeOverride("font_size", 21);
+        _title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(21));
         root.AddChild(_title);
 
         root.AddChild(new HSeparator());
@@ -61,7 +61,7 @@ public sealed partial class SelectionPanel : PanelContainer
 
         content.AddChild(SectionTitle("Популяция"));
 
-        _graph = new PopulationGraph { CustomMinimumSize = new Vector2(0, 112) };
+        _graph = new PopulationGraph { CustomMinimumSize = UiMetrics.Size(0, 112) };
         content.AddChild(_graph);
 
         content.AddChild(SectionTitle("Генетика"));
@@ -82,7 +82,7 @@ public sealed partial class SelectionPanel : PanelContainer
             Text = "Геном появится после подключения настоящей симуляции. Сейчас отображается только связанный demo-вид.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        geneticsText.AddThemeFontSizeOverride("font_size", 11);
+        geneticsText.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         geneticsText.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         geneticsMargin.AddChild(geneticsText);
     }
@@ -196,7 +196,7 @@ public sealed partial class SelectionPanel : PanelContainer
         panel.AddChild(margin);
 
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         label.AddThemeColorOverride("font_color", color);
         margin.AddChild(label);
         return panel;
@@ -207,14 +207,14 @@ public sealed partial class SelectionPanel : PanelContainer
         if (_details is null)
             return;
 
-        var row = new HBoxContainer { CustomMinimumSize = new Vector2(0, 27) };
+        var row = new HBoxContainer { CustomMinimumSize = UiMetrics.Size(0, 27) };
         var label = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(label);
 
         var data = new Label { Text = value };
-        data.AddThemeFontSizeOverride("font_size", 12);
+        data.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         row.AddChild(data);
         _details.AddChild(row);
@@ -232,12 +232,12 @@ public sealed partial class SelectionPanel : PanelContainer
         block.AddChild(row);
 
         var label = new Label { Text = name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         label.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(label);
 
         var percent = new Label { Text = $"{value * 100f:0}%" };
-        percent.AddThemeFontSizeOverride("font_size", 12);
+        percent.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         percent.AddThemeColorOverride("font_color", accent);
         row.AddChild(percent);
 
@@ -247,7 +247,7 @@ public sealed partial class SelectionPanel : PanelContainer
             MaxValue = 100,
             Value = value * 100f,
             ShowPercentage = false,
-            CustomMinimumSize = new Vector2(0, 7)
+            CustomMinimumSize = UiMetrics.Size(0, 7)
         };
         block.AddChild(bar);
         _details.AddChild(block);
@@ -256,7 +256,7 @@ public sealed partial class SelectionPanel : PanelContainer
     private static Label SectionTitle(string text)
     {
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 13);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         return label;
     }

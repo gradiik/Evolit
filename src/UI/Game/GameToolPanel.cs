@@ -12,7 +12,10 @@ public sealed partial class GameToolPanel : Control
     private string _subtitle = string.Empty;
     private IReadOnlyList<string> _lines = Array.Empty<string>();
 
-    public void Configure(string title, string subtitle, IReadOnlyList<string> lines)
+    public void Configure(
+        string title,
+        string subtitle,
+        IReadOnlyList<string> lines)
     {
         _title = title;
         _subtitle = subtitle;
@@ -31,34 +34,43 @@ public sealed partial class GameToolPanel : Control
         dim.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(dim);
 
-        var center = new CenterContainer();
-        center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        AddChild(center);
+        var outer = new MarginContainer();
+        outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        outer.AddThemeConstantOverride("margin_left", UiMetrics.Space(72));
+        outer.AddThemeConstantOverride("margin_right", UiMetrics.Space(72));
+        outer.AddThemeConstantOverride("margin_top", UiMetrics.Space(54));
+        outer.AddThemeConstantOverride("margin_bottom", UiMetrics.Space(64));
+        AddChild(outer);
 
-        var card = new PanelContainer { CustomMinimumSize = new Vector2(760, 500) };
-        card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.98f));
-        center.AddChild(card);
+        var card = new PanelContainer();
+        card.AddThemeStyleboxOverride(
+            "panel",
+            NatureTechTheme.CardStyle(0.98f));
+        outer.AddChild(card);
 
         var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 28);
-        margin.AddThemeConstantOverride("margin_right", 28);
-        margin.AddThemeConstantOverride("margin_top", 24);
-        margin.AddThemeConstantOverride("margin_bottom", 24);
+        margin.AddThemeConstantOverride("margin_left", UiMetrics.Space(24));
+        margin.AddThemeConstantOverride("margin_right", UiMetrics.Space(24));
+        margin.AddThemeConstantOverride("margin_top", UiMetrics.Space(20));
+        margin.AddThemeConstantOverride("margin_bottom", UiMetrics.Space(20));
         card.AddChild(margin);
 
         var root = new VBoxContainer();
+        root.AddThemeConstantOverride("separation", UiMetrics.Space(9));
         margin.AddChild(root);
 
         var header = new HBoxContainer();
         root.AddChild(header);
 
-        var title = new Label { Text = _title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        title.AddThemeFontSizeOverride("font_size", 28);
-        header.AddChild(title);
+        var titles = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        header.AddChild(titles);
 
-        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg") };
-        close.Pressed += () => CloseRequested?.Invoke();
-        header.AddChild(close);
+        var title = new Label { Text = _title };
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(27));
+        titles.AddChild(title);
 
         if (!string.IsNullOrWhiteSpace(_subtitle))
         {
@@ -67,17 +79,37 @@ public sealed partial class GameToolPanel : Control
                 Text = _subtitle,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart
             };
-            subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-            root.AddChild(subtitle);
+            subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
+            subtitle.AddThemeColorOverride(
+                "font_color",
+                EvolitPalette.FogBlue);
+            titles.AddChild(subtitle);
         }
+
+        var close = new Button
+        {
+            Text = "Закрыть",
+            Icon = EvolitIcons.Load("actions/close.svg"),
+            CustomMinimumSize = UiMetrics.Size(108, 38)
+        };
+        close.Pressed += () => CloseRequested?.Invoke();
+        UiMotion.BindButton(close);
+        header.AddChild(close);
 
         root.AddChild(new HSeparator());
 
-        var scroll = new ScrollContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        var scroll = new ScrollContainer
+        {
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled
+        };
         root.AddChild(scroll);
 
-        var content = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        content.AddThemeConstantOverride("separation", 12);
+        var content = new VBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        content.AddThemeConstantOverride("separation", UiMetrics.Space(10));
         scroll.AddChild(content);
 
         foreach (var line in _lines)
@@ -87,11 +119,14 @@ public sealed partial class GameToolPanel : Control
                 Text = line,
                 AutowrapMode = TextServer.AutowrapMode.WordSmart
             };
-            label.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
+            label.AddThemeColorOverride(
+                "font_color",
+                EvolitPalette.MistWhite);
             content.AddChild(label);
         }
 
-        Modulate = new Color(1, 1, 1, 0);
-        CreateTween().TweenProperty(this, "modulate", Colors.White, 0.15);
+        UiMotion.FadeIn(
+            card,
+            new Vector2(0, UiMetrics.Px(8)));
     }
 }

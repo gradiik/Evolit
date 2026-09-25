@@ -104,11 +104,11 @@ public sealed partial class WorldStatisticsPanel : Control
         header.AddChild(titles);
 
         var title = new Label { Text = "Статистика мира" };
-        title.AddThemeFontSizeOverride("font_size", 30);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(30));
         titles.AddChild(title);
 
         var subtitle = new Label { Text = "Популяции и разнообразие мира во времени." };
-        subtitle.AddThemeFontSizeOverride("font_size", 13);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
@@ -116,7 +116,7 @@ public sealed partial class WorldStatisticsPanel : Control
         {
             Text = "Закрыть",
             Icon = EvolitIcons.Load("actions/close.svg"),
-            CustomMinimumSize = new Vector2(112, 40)
+            CustomMinimumSize = UiMetrics.Size(112, 40)
         };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
@@ -143,7 +143,7 @@ public sealed partial class WorldStatisticsPanel : Control
         rangeLabel.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         rangeRow.AddChild(rangeLabel);
 
-        _range = new OptionButton { CustomMinimumSize = new Vector2(170, 34) };
+        _range = new OptionButton { CustomMinimumSize = UiMetrics.Size(170, 34) };
         _range.ItemSelected += index =>
         {
             if (index >= 0 && index < _rangeOptions.Count)
@@ -158,7 +158,7 @@ public sealed partial class WorldStatisticsPanel : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             HorizontalAlignment = HorizontalAlignment.Right
         };
-        rangeHint.AddThemeFontSizeOverride("font_size", 11);
+        rangeHint.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         rangeHint.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.78f));
         rangeRow.AddChild(rangeHint);
 
@@ -174,7 +174,7 @@ public sealed partial class WorldStatisticsPanel : Control
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 64),
+            CustomMinimumSize = UiMetrics.Size(0, 64),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
@@ -191,12 +191,12 @@ public sealed partial class WorldStatisticsPanel : Control
         margin.AddChild(box);
 
         var cap = new Label { Text = caption };
-        cap.AddThemeFontSizeOverride("font_size", 10);
+        cap.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         cap.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         box.AddChild(cap);
 
         var value = new Label { Text = "—" };
-        value.AddThemeFontSizeOverride("font_size", 18);
+        value.AddThemeFontSizeOverride("font_size", UiMetrics.Font(18));
         value.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         box.AddChild(value);
 
@@ -230,7 +230,7 @@ public sealed partial class WorldStatisticsPanel : Control
         box.AddChild(header);
 
         var label = new Label { Text = title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        label.AddThemeFontSizeOverride("font_size", 16);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         label.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         header.AddChild(label);
 
@@ -254,13 +254,13 @@ public sealed partial class WorldStatisticsPanel : Control
         var dot = new ColorRect
         {
             Color = color,
-            CustomMinimumSize = new Vector2(9, 9),
+            CustomMinimumSize = UiMetrics.Size(9, 9),
             MouseFilter = MouseFilterEnum.Ignore
         };
         row.AddChild(dot);
 
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 11);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         label.AddThemeColorOverride("font_color", new Color(color, 0.92f));
         row.AddChild(label);
         return row;

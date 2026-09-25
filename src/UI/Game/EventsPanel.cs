@@ -82,15 +82,15 @@ public sealed partial class EventsPanel : Control
         header.AddChild(titles);
 
         var title = new Label { Text = "События" };
-        title.AddThemeFontSizeOverride("font_size", 30);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(30));
         titles.AddChild(title);
 
         var subtitle = new Label { Text = "Живой feed недавних событий мира, системы и эволюционного слоя." };
-        subtitle.AddThemeFontSizeOverride("font_size", 13);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
-        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = new Vector2(112, 40) };
+        var close = new Button { Text = "Закрыть", Icon = EvolitIcons.Load("actions/close.svg"), CustomMinimumSize = UiMetrics.Size(112, 40) };
         close.Pressed += () => CloseRequested?.Invoke();
         header.AddChild(close);
 
@@ -109,13 +109,13 @@ public sealed partial class EventsPanel : Control
         tools.AddThemeConstantOverride("separation", 7);
         root.AddChild(tools);
 
-        _severity = new OptionButton { CustomMinimumSize = new Vector2(145, 34) };
+        _severity = new OptionButton { CustomMinimumSize = UiMetrics.Size(145, 34) };
         foreach (var item in new[] { "Любая важность", "Обычные", "Предупреждения", "Важные" })
             _severity.AddItem(item);
         _severity.ItemSelected += _ => Refresh();
         tools.AddChild(_severity);
 
-        _kind = new OptionButton { CustomMinimumSize = new Vector2(150, 34) };
+        _kind = new OptionButton { CustomMinimumSize = UiMetrics.Size(150, 34) };
         foreach (var item in new[] { "Любой тип", "Наблюдения", "Ветвления", "Новые виды", "Вымирания", "Катастрофы", "Сохранения", "Время", "Runtime" })
             _kind.AddItem(item);
         _kind.ItemSelected += _ => Refresh();
@@ -127,11 +127,11 @@ public sealed partial class EventsPanel : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center
         };
-        _resultCount.AddThemeFontSizeOverride("font_size", 11);
+        _resultCount.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         _resultCount.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         tools.AddChild(_resultCount);
 
-        _search = new LineEdit { PlaceholderText = "Поиск событий…", ClearButtonEnabled = true, CustomMinimumSize = new Vector2(250, 36) };
+        _search = new LineEdit { PlaceholderText = "Поиск событий…", ClearButtonEnabled = true, CustomMinimumSize = UiMetrics.Size(250, 36) };
         _search.TextChanged += _ => Refresh();
         tools.AddChild(_search);
 
@@ -153,7 +153,7 @@ public sealed partial class EventsPanel : Control
         {
             Text = name,
             ToggleMode = true,
-            CustomMinimumSize = new Vector2(108, 36)
+            CustomMinimumSize = UiMetrics.Size(108, 36)
         };
         button.Pressed += () =>
         {
@@ -230,7 +230,7 @@ public sealed partial class EventsPanel : Control
             var empty = new Label
             {
                 Text = "По текущим фильтрам событий нет.",
-                CustomMinimumSize = new Vector2(0, 72),
+                CustomMinimumSize = UiMetrics.Size(0, 72),
                 VerticalAlignment = VerticalAlignment.Center
             };
             empty.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
@@ -244,7 +244,7 @@ public sealed partial class EventsPanel : Control
 
     private static Control BuildEvent(DemoEventEntry entry)
     {
-        var panel = new PanelContainer { CustomMinimumSize = new Vector2(0, 66) };
+        var panel = new PanelContainer { CustomMinimumSize = UiMetrics.Size(0, 66) };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
 
         var margin = new MarginContainer();
@@ -261,7 +261,7 @@ public sealed partial class EventsPanel : Control
         var icon = new TextureRect
         {
             Texture = EvolitIcons.Load(entry.IconPath),
-            CustomMinimumSize = new Vector2(28, 28),
+            CustomMinimumSize = UiMetrics.Size(28, 28),
             Modulate = accent,
             MouseFilter = MouseFilterEnum.Ignore
         };
@@ -274,7 +274,7 @@ public sealed partial class EventsPanel : Control
         text.AddChild(titleRow);
 
         var title = new Label { Text = entry.Title, SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        title.AddThemeFontSizeOverride("font_size", 16);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         titleRow.AddChild(title);
 
         titleRow.AddChild(Badge(KindLabel(entry.Kind), accent));
@@ -282,7 +282,7 @@ public sealed partial class EventsPanel : Control
             titleRow.AddChild(Badge(SeverityLabel(entry.Severity), SeverityColor(entry.Severity)));
 
         var description = new Label { Text = entry.Description, AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        description.AddThemeFontSizeOverride("font_size", 12);
+        description.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         description.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(description);
 
@@ -290,7 +290,7 @@ public sealed partial class EventsPanel : Control
         row.AddChild(meta);
 
         var time = new Label { Text = $"День {entry.Day}\n{entry.Time}", HorizontalAlignment = HorizontalAlignment.Right };
-        time.AddThemeFontSizeOverride("font_size", 11);
+        time.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         time.AddThemeColorOverride("font_color", accent);
         meta.AddChild(time);
 
@@ -322,7 +322,7 @@ public sealed partial class EventsPanel : Control
         panel.AddChild(margin);
 
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         label.AddThemeColorOverride("font_color", color);
         margin.AddChild(label);
         return panel;

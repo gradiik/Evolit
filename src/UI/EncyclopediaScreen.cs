@@ -78,14 +78,14 @@ public sealed partial class EncyclopediaScreen : Control
         header.AddChild(titles);
 
         var title = new Label { Text = "Энциклопедия Evolit" };
-        title.AddThemeFontSizeOverride("font_size", 32);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(32));
         titles.AddChild(title);
 
         var subtitle = new Label
         {
             Text = "Каталог известных линий · портреты помогают различать родственные формы."
         };
-        subtitle.AddThemeFontSizeOverride("font_size", 12);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
@@ -93,7 +93,7 @@ public sealed partial class EncyclopediaScreen : Control
         {
             Text = "Назад",
             Icon = EvolitIcons.Load("actions/back.svg"),
-            CustomMinimumSize = new Vector2(110, 40)
+            CustomMinimumSize = UiMetrics.Size(110, 40)
         };
         back.Pressed += () => BackRequested?.Invoke();
         header.AddChild(back);
@@ -111,7 +111,7 @@ public sealed partial class EncyclopediaScreen : Control
             Text = "Лаборатория форм",
             ToggleMode = true,
             TooltipText = "Тестовая выборка процедурных портретов без добавления видов в мир.",
-            CustomMinimumSize = new Vector2(150, 34)
+            CustomMinimumSize = UiMetrics.Size(150, 34)
         };
         _labButton.Pressed += () =>
         {
@@ -126,7 +126,7 @@ public sealed partial class EncyclopediaScreen : Control
             Text = "Новая выборка",
             Visible = false,
             TooltipText = "Создать новую тестовую комбинацию visual seeds.",
-            CustomMinimumSize = new Vector2(122, 34)
+            CustomMinimumSize = UiMetrics.Size(122, 34)
         };
         _rerollButton.Pressed += () =>
         {
@@ -138,7 +138,7 @@ public sealed partial class EncyclopediaScreen : Control
         tools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
         _resultCount = new Label { Text = "0 записей", VerticalAlignment = VerticalAlignment.Center };
-        _resultCount.AddThemeFontSizeOverride("font_size", 11);
+        _resultCount.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         _resultCount.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         tools.AddChild(_resultCount);
 
@@ -146,7 +146,7 @@ public sealed partial class EncyclopediaScreen : Control
         {
             PlaceholderText = "Поиск по названию…",
             ClearButtonEnabled = true,
-            CustomMinimumSize = new Vector2(260, 36)
+            CustomMinimumSize = UiMetrics.Size(260, 36)
         };
         _search.TextChanged += _ => Refresh();
         tools.AddChild(_search);
@@ -186,7 +186,7 @@ public sealed partial class EncyclopediaScreen : Control
 
         _inspector = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(342, 0),
+            CustomMinimumSize = UiMetrics.Size(342, 0),
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         _inspector.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
@@ -220,7 +220,7 @@ public sealed partial class EncyclopediaScreen : Control
         {
             Text = name,
             ToggleMode = true,
-            CustomMinimumSize = new Vector2(98, 34)
+            CustomMinimumSize = UiMetrics.Size(98, 34)
         };
         button.Pressed += () =>
         {
@@ -312,11 +312,12 @@ public sealed partial class EncyclopediaScreen : Control
             Text = string.Empty,
             ToggleMode = true,
             ButtonPressed = species.Id == _selectedId,
-            CustomMinimumSize = new Vector2(270, 132),
+            CustomMinimumSize = UiMetrics.Size(250, 116),
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             TooltipText = $"Открыть запись: {species.Name}"
         };
         button.Pressed += () => SelectSpecies(species);
+        UiMotion.BindButton(button);
         _cards[species.Id] = button;
 
         var margin = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
@@ -333,7 +334,7 @@ public sealed partial class EncyclopediaScreen : Control
 
         var portrait = new SpeciesPortrait
         {
-            CustomMinimumSize = new Vector2(82, 82),
+            CustomMinimumSize = UiMetrics.Size(70, 70),
             MouseFilter = MouseFilterEnum.Ignore
         };
         portrait.Configure(species, _species);
@@ -348,7 +349,7 @@ public sealed partial class EncyclopediaScreen : Control
         row.AddChild(text);
 
         var name = new Label { Text = species.Name, MouseFilter = MouseFilterEnum.Ignore };
-        name.AddThemeFontSizeOverride("font_size", 17);
+        name.AddThemeFontSizeOverride("font_size", UiMetrics.Font(17));
         text.AddChild(name);
 
         var type = new Label
@@ -356,7 +357,7 @@ public sealed partial class EncyclopediaScreen : Control
             Text = species.Kind == DemoSpeciesKind.Plant ? "Растительная линия" : "Подвижная линия",
             MouseFilter = MouseFilterEnum.Ignore
         };
-        type.AddThemeFontSizeOverride("font_size", 11);
+        type.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         type.AddThemeColorOverride("font_color", species.Kind == DemoSpeciesKind.Plant ? EvolitPalette.YoungLeaf : EvolitPalette.SoftAqua);
         text.AddChild(type);
 
@@ -365,17 +366,17 @@ public sealed partial class EncyclopediaScreen : Control
             Text = species.Status == DemoSpeciesStatus.Extinct ? "ВЫМЕРШИЙ" : "АКТИВНЫЙ",
             MouseFilter = MouseFilterEnum.Ignore
         };
-        status.AddThemeFontSizeOverride("font_size", 10);
+        status.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         status.AddThemeColorOverride("font_color", species.Status == DemoSpeciesStatus.Extinct ? EvolitPalette.WarmAlert : EvolitPalette.FogBlue);
         text.AddChild(status);
 
         var population = new Label { Text = $"Популяция  {species.Population}", MouseFilter = MouseFilterEnum.Ignore };
-        population.AddThemeFontSizeOverride("font_size", 10);
+        population.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         population.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         text.AddChild(population);
 
         var adaptability = new Label { Text = $"Адаптивность  {species.Adaptability * 100:0}%", MouseFilter = MouseFilterEnum.Ignore };
-        adaptability.AddThemeFontSizeOverride("font_size", 10);
+        adaptability.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         adaptability.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         text.AddChild(adaptability);
         return button;
@@ -411,19 +412,19 @@ public sealed partial class EncyclopediaScreen : Control
         _inspector.Visible = true;
         var portrait = new SpeciesPortrait
         {
-            CustomMinimumSize = new Vector2(0, 126),
+            CustomMinimumSize = UiMetrics.Size(0, 126),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         portrait.Configure(species, _species);
         _inspectorContent.AddChild(portrait);
 
         var title = new Label { Text = species.Name };
-        title.AddThemeFontSizeOverride("font_size", 23);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(23));
         _inspectorContent.AddChild(title);
 
         var accent = species.Kind == DemoSpeciesKind.Plant ? EvolitPalette.YoungLeaf : EvolitPalette.SoftAqua;
         var type = new Label { Text = species.Kind == DemoSpeciesKind.Plant ? "РАСТИТЕЛЬНАЯ ЛИНИЯ" : "ПОДВИЖНАЯ ЛИНИЯ" };
-        type.AddThemeFontSizeOverride("font_size", 10);
+        type.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         type.AddThemeColorOverride("font_color", accent);
         _inspectorContent.AddChild(type);
         _inspectorContent.AddChild(new HSeparator());
@@ -470,7 +471,7 @@ public sealed partial class EncyclopediaScreen : Control
         ClearChildren(_inspectorContent);
 
         var title = new Label { Text = "Карточка линии" };
-        title.AddThemeFontSizeOverride("font_size", 20);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(20));
         title.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         _inspectorContent.AddChild(title);
 
@@ -511,7 +512,7 @@ public sealed partial class EncyclopediaScreen : Control
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(230, 150),
+            CustomMinimumSize = UiMetrics.Size(220, 132),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.70f));
@@ -527,7 +528,7 @@ public sealed partial class EncyclopediaScreen : Control
         root.AddThemeConstantOverride("separation", 12);
         margin.AddChild(root);
 
-        var portrait = new SpeciesPortrait { CustomMinimumSize = new Vector2(96, 96) };
+        var portrait = new SpeciesPortrait { CustomMinimumSize = UiMetrics.Size(82, 82) };
         portrait.Configure(descriptor);
         root.AddChild(portrait);
 
@@ -540,11 +541,11 @@ public sealed partial class EncyclopediaScreen : Control
                 ? $"Тест-существо {index}"
                 : $"Тест-растение {index}"
         };
-        title.AddThemeFontSizeOverride("font_size", 15);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(15));
         meta.AddChild(title);
 
         var family = new Label { Text = $"Семейство {familyIndex}" };
-        family.AddThemeFontSizeOverride("font_size", 10);
+        family.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         family.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         meta.AddChild(family);
 
@@ -553,7 +554,7 @@ public sealed partial class EncyclopediaScreen : Control
             Text = "Только visual seed. Запись не добавлена в мир.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        note.AddThemeFontSizeOverride("font_size", 10);
+        note.AddThemeFontSizeOverride("font_size", UiMetrics.Font(10));
         note.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.72f));
         meta.AddChild(note);
 
@@ -568,7 +569,7 @@ public sealed partial class EncyclopediaScreen : Control
         ClearChildren(_inspectorContent);
 
         var title = new Label { Text = "Лаборатория форм" };
-        title.AddThemeFontSizeOverride("font_size", 21);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(21));
         title.AddThemeColorOverride("font_color", EvolitPalette.EvolutionCyan);
         _inspectorContent.AddChild(title);
 
@@ -587,7 +588,7 @@ public sealed partial class EncyclopediaScreen : Control
             Text = "Нажми «Новая выборка», чтобы получить другой набор seeds. Формы одного семейства должны сохранять общий визуальный характер.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        hint.AddThemeFontSizeOverride("font_size", 11);
+        hint.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         hint.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         _inspectorContent.AddChild(hint);
     }
@@ -596,7 +597,7 @@ public sealed partial class EncyclopediaScreen : Control
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(320, 110),
+            CustomMinimumSize = UiMetrics.Size(320, 110),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.55f));
@@ -612,7 +613,7 @@ public sealed partial class EncyclopediaScreen : Control
         margin.AddChild(root);
 
         var heading = new Label { Text = title };
-        heading.AddThemeFontSizeOverride("font_size", 17);
+        heading.AddThemeFontSizeOverride("font_size", UiMetrics.Font(17));
         root.AddChild(heading);
 
         var description = new Label
@@ -637,8 +638,8 @@ public sealed partial class EncyclopediaScreen : Control
     private static Control Detail(string caption, string value, bool wrap = false)
     {
         var row = new HBoxContainer();
-        var name = new Label { Text = caption, CustomMinimumSize = new Vector2(104, 0) };
-        name.AddThemeFontSizeOverride("font_size", 11);
+        var name = new Label { Text = caption, CustomMinimumSize = UiMetrics.Size(104, 0) };
+        name.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         row.AddChild(name);
 
@@ -648,7 +649,7 @@ public sealed partial class EncyclopediaScreen : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             AutowrapMode = wrap ? TextServer.AutowrapMode.WordSmart : TextServer.AutowrapMode.Off
         };
-        data.AddThemeFontSizeOverride("font_size", 11);
+        data.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         row.AddChild(data);
         return row;
@@ -660,7 +661,7 @@ public sealed partial class EncyclopediaScreen : Control
             return;
 
         _grid.Columns = _labMode
-            ? (Size.X >= 1550 ? 3 : 2)
-            : (Size.X >= 1550 ? 3 : Size.X >= 1120 ? 2 : 1);
+            ? (Size.X >= 1500 ? 3 : 2)
+            : (Size.X >= 1480 ? 3 : Size.X >= 1080 ? 2 : 1);
     }
 }

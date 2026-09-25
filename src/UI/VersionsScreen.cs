@@ -52,16 +52,16 @@ public sealed partial class VersionsScreen : Control
         header.AddChild(titles);
 
         var eyebrow = new Label { Text = "DEVELOPMENT  ·  CHECKPOINTS" };
-        eyebrow.AddThemeFontSizeOverride("font_size", 11);
+        eyebrow.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         eyebrow.AddThemeColorOverride("font_color", new Color(EvolitPalette.EvolutionCyan, 0.82f));
         titles.AddChild(eyebrow);
 
         var title = new Label { Text = "Версии Evolit" };
-        title.AddThemeFontSizeOverride("font_size", 34);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(34));
         titles.AddChild(title);
 
         var subtitle = new Label { Text = "Контрольные состояния разработки" };
-        subtitle.AddThemeFontSizeOverride("font_size", 14);
+        subtitle.AddThemeFontSizeOverride("font_size", UiMetrics.Font(14));
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         titles.AddChild(subtitle);
 
@@ -69,7 +69,7 @@ public sealed partial class VersionsScreen : Control
         {
             Text = "Назад",
             Icon = EvolitIcons.Load("actions/back.svg"),
-            CustomMinimumSize = new Vector2(120, 44)
+            CustomMinimumSize = UiMetrics.Size(120, 44)
         };
         back.Pressed += () => BackRequested?.Invoke();
         header.AddChild(back);
@@ -98,7 +98,7 @@ public sealed partial class VersionsScreen : Control
             Text = "Откат исходного кода выполняется через Git/Codex после явного подтверждения. Evolit не изменяет рабочую Git директорию самостоятельно.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        note.AddThemeFontSizeOverride("font_size", 12);
+        note.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         note.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.88f));
         root.AddChild(note);
     }
@@ -107,7 +107,7 @@ public sealed partial class VersionsScreen : Control
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 118),
+            CustomMinimumSize = UiMetrics.Size(0, 118),
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride(
@@ -132,7 +132,7 @@ public sealed partial class VersionsScreen : Control
         details.AddChild(top);
 
         var version = new Label { Text = record.Version };
-        version.AddThemeFontSizeOverride("font_size", 24);
+        version.AddThemeFontSizeOverride("font_size", UiMetrics.Font(24));
         version.AddThemeColorOverride(
             "font_color",
             record.IsCurrent ? EvolitPalette.EvolutionCyan : EvolitPalette.MistWhite);
@@ -142,7 +142,7 @@ public sealed partial class VersionsScreen : Control
         {
             Text = record.IsCurrent ? "  ·  Текущая версия" : "  ·  Контрольная версия"
         };
-        status.AddThemeFontSizeOverride("font_size", 12);
+        status.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         status.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         top.AddChild(status);
 
@@ -151,14 +151,14 @@ public sealed partial class VersionsScreen : Control
             Text = record.Description,
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        description.AddThemeFontSizeOverride("font_size", 14);
+        description.AddThemeFontSizeOverride("font_size", UiMetrics.Font(14));
         details.AddChild(description);
 
         var metadata = new Label
         {
             Text = $"{record.Date}  ·  commit: {ShortCommit(record.Commit)}"
         };
-        metadata.AddThemeFontSizeOverride("font_size", 11);
+        metadata.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         metadata.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.82f));
         details.AddChild(metadata);
 
@@ -169,7 +169,7 @@ public sealed partial class VersionsScreen : Control
             {
                 Text = selected ? "Выбрано для отката" : "Подготовить откат",
                 Icon = EvolitIcons.Load(selected ? "actions/apply.svg" : "simulation/history.svg"),
-                CustomMinimumSize = new Vector2(190, 44),
+                CustomMinimumSize = UiMetrics.Size(190, 44),
                 Disabled = selected
             };
             button.Pressed += () => RollbackRequested?.Invoke(record);

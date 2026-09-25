@@ -75,7 +75,7 @@ public sealed partial class SpeciesPortrait : Control
 
     public SpeciesPortrait()
     {
-        CustomMinimumSize = new Vector2(64, 64);
+        CustomMinimumSize = UiMetrics.Size(64, 64);
         MouseFilter = MouseFilterEnum.Ignore;
         Resized += QueueRedraw;
     }

@@ -38,7 +38,7 @@ public sealed partial class WorldStatsGraph : Control
 
     public WorldStatsGraph()
     {
-        CustomMinimumSize = new Vector2(0, 145);
+        CustomMinimumSize = UiMetrics.Size(0, 145);
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.None;
     }
@@ -376,7 +376,7 @@ public sealed partial class WorldStatsGraph : Control
         _tooltip.AddChild(margin);
 
         _tooltipLabel = new Label { MouseFilter = MouseFilterEnum.Ignore };
-        _tooltipLabel.AddThemeFontSizeOverride("font_size", 11);
+        _tooltipLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(11));
         _tooltipLabel.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         margin.AddChild(_tooltipLabel);
     }
@@ -389,7 +389,7 @@ public sealed partial class WorldStatsGraph : Control
             HorizontalAlignment = alignment,
             VerticalAlignment = VerticalAlignment.Center
         };
-        label.AddThemeFontSizeOverride("font_size", 9);
+        label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         label.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.82f));
         return label;
     }

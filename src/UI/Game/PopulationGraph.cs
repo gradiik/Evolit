@@ -10,7 +10,7 @@ public sealed partial class PopulationGraph : Control
 
     public PopulationGraph()
     {
-        CustomMinimumSize = new Vector2(0, 120);
+        CustomMinimumSize = UiMetrics.Size(0, 120);
         MouseFilter = MouseFilterEnum.Ignore;
     }
 

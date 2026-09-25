@@ -475,7 +475,7 @@ public sealed partial class DemoWorldView : Control
             Visible = false,
             MouseFilter = MouseFilterEnum.Ignore,
             ZIndex = 15,
-            CustomMinimumSize = new Vector2(268, 0)
+            CustomMinimumSize = UiMetrics.Size(268, 0)
         };
         _inspectorPanel.AddThemeStyleboxOverride(
             "panel",
@@ -498,7 +498,7 @@ public sealed partial class DemoWorldView : Control
             MouseFilter = MouseFilterEnum.Ignore,
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        _inspectorLabel.AddThemeFontSizeOverride("font_size", 12);
+        _inspectorLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
         _inspectorLabel.AddThemeColorOverride(
             "font_color",
             EvolitPalette.MistWhite);

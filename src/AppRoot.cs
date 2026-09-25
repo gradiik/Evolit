@@ -30,14 +30,20 @@ public sealed partial class AppRoot : Control
 
     private GameFlowState _returnFromSettings = GameFlowState.MainMenu;
     private GameFlowState _returnFromSaves = GameFlowState.MainMenu;
+    private AppSettings _currentSettings = AppSettings.Default();
     private int _cachedSaveCount;
     private double _debugTimer;
 
     public override void _Ready()
     {
-        Theme = NatureTechTheme.Create();
+        _currentSettings = _settings.Load();
+        UiMetrics.Configure(_currentSettings);
+        UiMotion.Configure(_currentSettings);
+        Theme = NatureTechTheme.Create(_currentSettings);
+
         InputBindings.EnsureDefaults();
-        SettingsRuntime.Apply(_settings.Load());
+        InputBindings.ApplyOverrides(_currentSettings.KeyBindings);
+        SettingsRuntime.Apply(_currentSettings);
 
         _screenHost = new Control { Name = "ScreenHost" };
         _screenHost.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -78,6 +84,23 @@ public sealed partial class AppRoot : Control
             _debug?.Toggle();
             GetViewport().SetInputAsHandled();
             return;
+        }
+
+        if (@event.IsActionPressed("cancel"))
+        {
+            switch (_flow.Current)
+            {
+                case GameFlowState.NewGame:
+                case GameFlowState.Encyclopedia:
+                case GameFlowState.Versions:
+                    ShowMainMenu();
+                    GetViewport().SetInputAsHandled();
+                    return;
+                case GameFlowState.Saves:
+                    ReturnFromSaves();
+                    GetViewport().SetInputAsHandled();
+                    return;
+            }
         }
 
         if (!@event.IsActionPressed("game_pause"))
@@ -293,7 +316,7 @@ public sealed partial class AppRoot : Control
             return;
 
         var game = new GameScreen();
-        game.Configure(_session, _settings.Load(), _simulationSpeed, _gameTime, _demoWorld);
+        game.Configure(_session, _currentSettings.Clone(), _simulationSpeed, _gameTime, _demoWorld);
         game.SaveRequested += SaveCurrentManual;
         game.SettingsRequested += () => ShowSettings(GameFlowState.Game);
         game.PauseRequested += ShowPause;
@@ -339,9 +362,27 @@ public sealed partial class AppRoot : Control
 
         var settings = new SettingsMenu();
         settings.Configure(_settings);
-        settings.NotificationRequested += (message, kind) => _toasts?.ShowToast(message, kind);
+        settings.NotificationRequested += (message, kind) =>
+            _toasts?.ShowToast(message, kind);
+        settings.SettingsApplied += ApplyCurrentSettings;
         settings.BackRequested += ReturnFromSettings;
         SwitchScreen(settings, GameFlowState.Settings);
+    }
+
+    private void ApplyCurrentSettings(AppSettings settings)
+    {
+        _currentSettings = settings.Clone();
+        UiMetrics.Configure(_currentSettings);
+        UiMotion.Configure(_currentSettings);
+        Theme = NatureTechTheme.Create(_currentSettings);
+        InputBindings.ApplyOverrides(_currentSettings.KeyBindings);
+        SettingsRuntime.Apply(_currentSettings);
+
+        if (_screenHost is not null && !_currentSettings.Tooltips)
+        {
+            foreach (var child in _screenHost.GetChildren())
+                ApplyTooltipPreference(child);
+        }
     }
 
     private void ReturnFromSettings()
@@ -434,16 +475,24 @@ public sealed partial class AppRoot : Control
         if (_screenHost is null)
             return;
 
-        foreach (var child in _screenHost.GetChildren())
-        {
-            _screenHost.RemoveChild(child);
-            child.QueueFree();
-        }
-
         screen.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _screenHost.AddChild(screen);
+        UiMotion.ReplaceScreen(_screenHost, screen);
+        UiMotion.BindTree(screen);
+        ApplyTooltipPreference(screen);
         _flow.Transition(state);
         RefreshDebugOverlay();
+    }
+
+    private void ApplyTooltipPreference(Node node)
+    {
+        if (_currentSettings.Tooltips)
+            return;
+
+        if (node is Control control)
+            control.TooltipText = string.Empty;
+
+        foreach (var child in node.GetChildren())
+            ApplyTooltipPreference(child);
     }
 
     private void RefreshSaveCount()

@@ -38,29 +38,45 @@ public static class SettingsRuntime
         ApplyAudio(settings);
     }
 
+    public static bool HasAudioBus(string name)
+    {
+        return AudioServer.GetBusIndex(name) >= 0;
+    }
+
     private static void ApplyDisplay(AppSettings settings)
     {
         var displayMode = Math.Clamp(settings.DisplayMode, 0, 2);
         switch (displayMode)
         {
             case 2:
-                DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Borderless, false);
-                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+                DisplayServer.WindowSetFlag(
+                    DisplayServer.WindowFlags.Borderless,
+                    false);
+                DisplayServer.WindowSetMode(
+                    DisplayServer.WindowMode.Fullscreen);
                 break;
             case 1:
-                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
-                DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Borderless, true);
+                DisplayServer.WindowSetMode(
+                    DisplayServer.WindowMode.Windowed);
+                DisplayServer.WindowSetFlag(
+                    DisplayServer.WindowFlags.Borderless,
+                    true);
                 ApplyResolution(settings.Resolution);
                 break;
             default:
-                DisplayServer.WindowSetMode(DisplayServer.WindowMode.Windowed);
-                DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Borderless, false);
+                DisplayServer.WindowSetMode(
+                    DisplayServer.WindowMode.Windowed);
+                DisplayServer.WindowSetFlag(
+                    DisplayServer.WindowFlags.Borderless,
+                    false);
                 ApplyResolution(settings.Resolution);
                 break;
         }
 
         DisplayServer.WindowSetVsyncMode(
-            settings.VSync ? DisplayServer.VSyncMode.Enabled : DisplayServer.VSyncMode.Disabled);
+            settings.VSync
+                ? DisplayServer.VSyncMode.Enabled
+                : DisplayServer.VSyncMode.Disabled);
     }
 
     private static void ApplyResolution(int resolutionIndex)
@@ -71,9 +87,21 @@ public static class SettingsRuntime
 
     private static void ApplyAudio(AppSettings settings)
     {
-        var linear = (float)Math.Clamp(settings.MasterVolume / 100.0, 0.0, 1.0);
+        SetBus("Master", settings.MasterVolume, settings.Mute);
+        SetBus("Music", settings.MusicVolume, settings.Mute);
+        SetBus("Effects", settings.EffectsVolume, settings.Mute);
+        SetBus("UI", settings.UiVolume, settings.Mute);
+    }
+
+    private static void SetBus(string name, double volume, bool mute)
+    {
+        var index = AudioServer.GetBusIndex(name);
+        if (index < 0)
+            return;
+
+        var linear = (float)Math.Clamp(volume / 100.0, 0.0, 1.0);
         var db = linear <= 0.0001f ? -80f : Mathf.LinearToDb(linear);
-        AudioServer.SetBusVolumeDb(0, db);
-        AudioServer.SetBusMute(0, settings.Mute);
+        AudioServer.SetBusVolumeDb(index, db);
+        AudioServer.SetBusMute(index, mute);
     }
 }

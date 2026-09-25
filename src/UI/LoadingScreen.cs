@@ -18,7 +18,7 @@ public sealed partial class LoadingScreen : Control
         center.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(center);
 
-        var card = new PanelContainer { CustomMinimumSize = new Vector2(520, 0) };
+        var card = new PanelContainer { CustomMinimumSize = UiMetrics.Size(520, 0) };
         card.AddThemeStyleboxOverride("panel", NatureTechTheme.CardStyle(0.96f));
         center.AddChild(card);
 
@@ -33,7 +33,7 @@ public sealed partial class LoadingScreen : Control
         margin.AddChild(root);
 
         var title = new Label { Text = "Evolit" };
-        title.AddThemeFontSizeOverride("font_size", 38);
+        title.AddThemeFontSizeOverride("font_size", UiMetrics.Font(38));
         root.AddChild(title);
 
         var operation = new Label { Text = Operation };
@@ -46,12 +46,12 @@ public sealed partial class LoadingScreen : Control
             MaxValue = 100,
             Value = 35,
             ShowPercentage = false,
-            CustomMinimumSize = new Vector2(0, 10)
+            CustomMinimumSize = UiMetrics.Size(0, 10)
         };
         root.AddChild(_progress);
 
         var hint = new Label { Text = "Системная оболочка готовит игровую сессию." };
-        hint.AddThemeFontSizeOverride("font_size", 13);
+        hint.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         hint.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         root.AddChild(hint);
     }

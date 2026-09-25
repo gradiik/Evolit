@@ -30,7 +30,7 @@ public sealed partial class DebugOverlay : PanelContainer
         {
             MouseFilter = MouseFilterEnum.Ignore
         };
-        _label.AddThemeFontSizeOverride("font_size", 13);
+        _label.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         _label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         margin.AddChild(_label);
     }

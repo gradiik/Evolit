@@ -53,6 +53,15 @@ public sealed partial class GameHud : Control
 
     public bool HasActiveTool => _activeTool is not null;
 
+    public bool CloseActiveToolIfAny()
+    {
+        if (_activeTool is null)
+            return false;
+
+        CloseActiveToolAnimated();
+        return true;
+    }
+
     public void Configure(
         ISimulationStatsProvider statsProvider,
         DemoWorldDataProvider world,
@@ -144,7 +153,7 @@ public sealed partial class GameHud : Control
 
         var stats = new HBoxContainer
         {
-            CustomMinimumSize = new Vector2(360, 0)
+            CustomMinimumSize = UiMetrics.Size(360, 0)
         };
         stats.AddThemeConstantOverride("separation", 4);
         row.AddChild(stats);
@@ -189,7 +198,7 @@ public sealed partial class GameHud : Control
 
         var speedPanel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(286, 0)
+            CustomMinimumSize = UiMetrics.Size(286, 0)
         };
         speedPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(speedPanel);
@@ -251,7 +260,7 @@ public sealed partial class GameHud : Control
             HorizontalAlignment = HorizontalAlignment.Right,
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
-        _realSpeed.AddThemeFontSizeOverride("font_size", 9);
+        _realSpeed.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         _realSpeed.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         speedRoot.AddChild(_realSpeed);
     }
@@ -308,7 +317,7 @@ public sealed partial class GameHud : Control
 
         var camera = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(272, 0)
+            CustomMinimumSize = UiMetrics.Size(272, 0)
         };
         camera.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         centerZone.AddChild(camera);
@@ -331,9 +340,9 @@ public sealed partial class GameHud : Control
         {
             Text = "Камера",
             VerticalAlignment = VerticalAlignment.Center,
-            CustomMinimumSize = new Vector2(48, 0)
+            CustomMinimumSize = UiMetrics.Size(48, 0)
         };
-        cameraLabel.AddThemeFontSizeOverride("font_size", 9);
+        cameraLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(9));
         cameraLabel.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         cameraRow.AddChild(cameraLabel);
 
@@ -360,7 +369,7 @@ public sealed partial class GameHud : Control
 
         var tech = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(142, 0)
+            CustomMinimumSize = UiMetrics.Size(142, 0)
         };
         tech.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         centerZone.AddChild(tech);
@@ -433,7 +442,7 @@ public sealed partial class GameHud : Control
     {
         var box = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(52, 0),
+            CustomMinimumSize = UiMetrics.Size(52, 0),
             Alignment = BoxContainer.AlignmentMode.Center
         };
         box.AddThemeConstantOverride("separation", 0);
@@ -443,7 +452,7 @@ public sealed partial class GameHud : Control
             Text = caption,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        name.AddThemeFontSizeOverride("font_size", 8);
+        name.AddThemeFontSizeOverride("font_size", UiMetrics.Font(8));
         name.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.86f));
         box.AddChild(name);
 
@@ -452,7 +461,7 @@ public sealed partial class GameHud : Control
             Text = value,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        data.AddThemeFontSizeOverride("font_size", 16);
+        data.AddThemeFontSizeOverride("font_size", UiMetrics.Font(16));
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         box.AddChild(data);
 
@@ -464,19 +473,19 @@ public sealed partial class GameHud : Control
     {
         var box = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(40, 0),
+            CustomMinimumSize = UiMetrics.Size(40, 0),
             Alignment = BoxContainer.AlignmentMode.Center
         };
         box.AddThemeConstantOverride("separation", 0);
         boxControl = box;
 
         var name = new Label { Text = caption, HorizontalAlignment = HorizontalAlignment.Center };
-        name.AddThemeFontSizeOverride("font_size", 8);
+        name.AddThemeFontSizeOverride("font_size", UiMetrics.Font(8));
         name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         box.AddChild(name);
 
         var value = new Label { Text = "0", HorizontalAlignment = HorizontalAlignment.Center };
-        value.AddThemeFontSizeOverride("font_size", 13);
+        value.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
         value.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         box.AddChild(value);
 
@@ -502,6 +511,7 @@ public sealed partial class GameHud : Control
             CustomMinimumSize = new Vector2(width, 34)
         };
         button.Pressed += callback;
+        UiMotion.BindButton(button);
         return button;
     }
 
@@ -543,6 +553,7 @@ public sealed partial class GameHud : Control
             CustomMinimumSize = new Vector2(width, 38)
         };
         button.Pressed += callback;
+        UiMotion.BindButton(button);
         return button;
     }
 
@@ -561,6 +572,7 @@ public sealed partial class GameHud : Control
             CustomMinimumSize = new Vector2(width, 32)
         };
         button.Pressed += callback;
+        UiMotion.BindButton(button);
         return button;
     }
 
@@ -569,7 +581,7 @@ public sealed partial class GameHud : Control
         return new ColorRect
         {
             Color = new Color(EvolitPalette.FogBlue, 0.16f),
-            CustomMinimumSize = new Vector2(1, 30),
+            CustomMinimumSize = UiMetrics.Size(1, 30),
             MouseFilter = MouseFilterEnum.Ignore
         };
     }
@@ -734,14 +746,12 @@ public sealed partial class GameHud : Control
 
         configure(panel);
         panel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        panel.Modulate = new Color(1, 1, 1, 0);
         AddChild(panel);
         _activeTool = panel;
-
-        CreateTween()
-            .SetEase(Tween.EaseType.Out)
-            .SetTrans(Tween.TransitionType.Quad)
-            .TweenProperty(panel, "modulate", Colors.White, 0.16);
+        UiMotion.BindTree(panel);
+        UiMotion.FadeIn(
+            panel,
+            new Vector2(0, UiMetrics.Px(8)));
     }
 
     private void CloseActiveToolAnimated()
@@ -753,10 +763,25 @@ public sealed partial class GameHud : Control
         _activeTool = null;
         RefreshToolSelection(null);
 
+        if (UiMotion.Mode == UiMotionMode.Off)
+        {
+            if (IsInstanceValid(old))
+            {
+                RemoveChild(old);
+                old.QueueFree();
+            }
+            return;
+        }
+
+        old.MouseFilter = MouseFilterEnum.Ignore;
         var tween = CreateTween()
             .SetEase(Tween.EaseType.In)
             .SetTrans(Tween.TransitionType.Quad);
-        tween.TweenProperty(old, "modulate", new Color(1, 1, 1, 0), 0.12);
+        tween.TweenProperty(
+            old,
+            "modulate",
+            new Color(1, 1, 1, 0),
+            UiMotion.Fast);
         tween.TweenCallback(Callable.From(() =>
         {
             if (!IsInstanceValid(old))
