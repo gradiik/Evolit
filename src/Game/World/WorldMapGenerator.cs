@@ -28,7 +28,7 @@ public static class WorldMapGenerator
         CarveLakes(cells, lookup, radius, seedValue);
         ClassifyWaterBodies(cells, lookup, radius);
         EnsureInlandLakes(cells, lookup, radius, seedValue);
-        CreateRivers(cells, lookup, seedValue);
+        CreateRivers(cells, lookup, radius, seedValue);
         FinalizeTerrain(cells, lookup);
 
         return new WorldMap(seed, sizeName, radius, HexSize, cells);
@@ -140,13 +140,17 @@ public static class WorldMapGenerator
 
         var candidates = cells
             .Where(cell =>
-                cell.Coord.DistanceTo(new HexCoord(0, 0)) < radius * 0.58f
-                && cell.Elevation > 0.03f
-                && cell.Elevation < 0.42f)
-            .OrderBy(cell => Hash01(
-                cell.Coord.Q,
-                cell.Coord.R,
-                seed ^ 0x8F27C1u))
+                cell.Coord.DistanceTo(new HexCoord(0, 0)) < radius * 0.64f
+                && cell.Elevation > 0.015f
+                && cell.Elevation < 0.30f
+                && cell.Humidity > 0.38f
+                && cell.Coord.Neighbors().Count(coord =>
+                    lookup.TryGetValue(coord, out var neighbor)
+                    && neighbor.Elevation >= cell.Elevation) >= 4)
+            .OrderBy(cell =>
+                cell.Elevation * 1.6f
+                - cell.Humidity * 0.35f
+                + Hash01(cell.Coord.Q, cell.Coord.R, seed ^ 0x8F27C1u) * 0.16f)
             .ToList();
 
         var centers = new List<HexCoord>();
@@ -155,27 +159,89 @@ public static class WorldMapGenerator
             if (centers.Count >= targetCount)
                 break;
 
-            if (centers.Any(center => center.DistanceTo(candidate.Coord) < 7))
+            if (centers.Any(center => center.DistanceTo(candidate.Coord) < 8))
+                continue;
+
+            var basin = CarveIrregularBasin(
+                candidate,
+                lookup,
+                seed ^ (uint)(centers.Count * 0x45D9F3B),
+                markAsLake: false);
+
+            if (basin.Count < 4)
                 continue;
 
             centers.Add(candidate.Coord);
-            var lakeRadius = Hash01(
-                candidate.Coord.Q,
-                candidate.Coord.R,
-                seed ^ 0xD3A14Bu) > 0.55f
-                ? 3
-                : 2;
+        }
+    }
 
-            foreach (var cell in cells)
+    private static List<WorldHexCell> CarveIrregularBasin(
+        WorldHexCell center,
+        IReadOnlyDictionary<HexCoord, WorldHexCell> lookup,
+        uint seed,
+        bool markAsLake)
+    {
+        var desiredCells = 6 + (int)MathF.Round(
+            Hash01(center.Coord.Q, center.Coord.R, seed ^ 0xD3A14Bu) * 12f);
+        var basin = new List<WorldHexCell>(desiredCells);
+        var visited = new HashSet<HexCoord> { center.Coord };
+        var frontier = new PriorityQueue<WorldHexCell, float>();
+        frontier.Enqueue(center, center.Elevation);
+
+        while (basin.Count < desiredCells
+               && frontier.TryDequeue(out var current, out _))
+        {
+            if (markAsLake && current.WaterKind == HexWaterKind.Ocean)
+                continue;
+
+            var distance = center.Coord.DistanceTo(current.Coord);
+            if (distance > 5)
+                continue;
+
+            var depthNoise = Hash01(
+                current.Coord.Q,
+                current.Coord.R,
+                seed ^ 0xB7412Du);
+            var centerWeight = 1f - Mathf.Clamp(distance / 5f, 0f, 1f);
+            var targetElevation =
+                -0.025f
+                - centerWeight * 0.070f
+                - depthNoise * 0.030f;
+
+            current.Elevation = Math.Min(current.Elevation, targetElevation);
+            if (markAsLake)
+                current.WaterKind = HexWaterKind.Lake;
+            basin.Add(current);
+
+            foreach (var coord in current.Coord.Neighbors())
             {
-                var distance = candidate.Coord.DistanceTo(cell.Coord);
-                if (distance > lakeRadius)
+                if (!visited.Add(coord)
+                    || !lookup.TryGetValue(coord, out var neighbor)
+                    || neighbor.WaterKind == HexWaterKind.Ocean)
+                {
                     continue;
+                }
 
-                var targetElevation = -0.10f + distance * 0.020f;
-                cell.Elevation = Math.Min(cell.Elevation, targetElevation);
+                var nextDistance = center.Coord.DistanceTo(coord);
+                if (nextDistance > 5
+                    || (nextDistance > 1
+                        && neighbor.Elevation > center.Elevation + 0.24f))
+                {
+                    continue;
+                }
+
+                var irregularity =
+                    (Hash01(coord.Q, coord.R, seed ^ 0x51AF91u) - 0.5f)
+                    * 0.22f;
+                var priority =
+                    neighbor.Elevation * 1.8f
+                    + nextDistance * 0.045f
+                    + irregularity;
+                frontier.Enqueue(neighbor, priority);
             }
         }
+
+        return basin;
     }
 
     private static void ClassifyWaterBodies(
@@ -248,14 +314,16 @@ public static class WorldMapGenerator
         var candidates = cells
             .Where(cell =>
                 cell.WaterKind == HexWaterKind.None
-                && cell.Coord.DistanceTo(new HexCoord(0, 0)) < radius * 0.58f
+                && cell.Coord.DistanceTo(new HexCoord(0, 0)) < radius * 0.62f
+                && cell.Elevation < 0.26f
+                && cell.Humidity > 0.34f
                 && !cell.Coord.Neighbors().Any(coord =>
                     lookup.TryGetValue(coord, out var neighbor)
                     && neighbor.WaterKind == HexWaterKind.Ocean))
-            .OrderBy(cell => Hash01(
-                cell.Coord.Q,
-                cell.Coord.R,
-                seed ^ 0x4B119Du))
+            .OrderBy(cell =>
+                cell.Elevation
+                - cell.Humidity * 0.28f
+                + Hash01(cell.Coord.Q, cell.Coord.R, seed ^ 0x4B119Du) * 0.20f)
             .ToList();
 
         foreach (var candidate in candidates)
@@ -263,22 +331,16 @@ public static class WorldMapGenerator
             if (existing.Count >= targetCount)
                 break;
 
-            if (occupiedCenters.Any(center => center.DistanceTo(candidate.Coord) < 7))
+            if (occupiedCenters.Any(center => center.DistanceTo(candidate.Coord) < 8))
                 continue;
 
-            var component = new List<WorldHexCell>();
-            foreach (var cell in cells)
-            {
-                var distance = candidate.Coord.DistanceTo(cell.Coord);
-                if (distance > 2 || cell.WaterKind == HexWaterKind.Ocean)
-                    continue;
+            var component = CarveIrregularBasin(
+                candidate,
+                lookup,
+                seed ^ (uint)(existing.Count * 0x9E3779B),
+                markAsLake: true);
 
-                cell.WaterKind = HexWaterKind.Lake;
-                cell.Elevation = Math.Min(cell.Elevation, -0.065f + distance * 0.018f);
-                component.Add(cell);
-            }
-
-            if (component.Count == 0)
+            if (component.Count < 4)
                 continue;
 
             existing.Add(component);
@@ -289,34 +351,57 @@ public static class WorldMapGenerator
     private static void CreateRivers(
         IReadOnlyList<WorldHexCell> cells,
         IReadOnlyDictionary<HexCoord, WorldHexCell> lookup,
+        int radius,
         uint seed)
     {
-        var components = FindLakeComponents(cells, lookup)
-            .OrderByDescending(component => component.Count)
-            .ThenBy(component => Hash01(
-                component[0].Coord.Q,
-                component[0].Coord.R,
-                seed ^ 0x9A731Fu))
-            .Take(3)
+        var targetCount = radius switch
+        {
+            <= 28 => 4,
+            >= 49 => 8,
+            _ => 6
+        };
+
+        var candidates = cells
+            .Where(cell =>
+                cell.WaterKind == HexWaterKind.None
+                && cell.Elevation > 0.25f
+                && cell.Humidity > 0.42f)
+            .OrderByDescending(cell =>
+                cell.Elevation * 0.58f
+                + cell.Humidity * 0.32f
+                + Hash01(cell.Coord.Q, cell.Coord.R, seed ^ 0x9A731Fu) * 0.10f)
             .ToList();
 
-        foreach (var component in components)
+        var sources = new List<HexCoord>();
+        foreach (var source in candidates)
         {
-            var path = FindPathToOcean(component, lookup);
-            if (path.Count < 2)
+            if (sources.Count >= targetCount)
+                break;
+
+            if (sources.Any(existing => existing.DistanceTo(source.Coord) < 7))
                 continue;
 
+            var path = FindPathToWater(source.Coord, lookup);
+            if (path.Count < 4)
+                continue;
+
+            var riverCells = 0;
             foreach (var coord in path)
             {
-                if (!lookup.TryGetValue(coord, out var cell)
-                    || cell.WaterKind is HexWaterKind.Ocean or HexWaterKind.Lake)
-                {
+                if (!lookup.TryGetValue(coord, out var cell))
                     continue;
-                }
+
+                if (cell.WaterKind != HexWaterKind.None)
+                    break;
 
                 cell.WaterKind = HexWaterKind.River;
-                cell.Elevation = Math.Min(cell.Elevation, -0.015f);
+                riverCells++;
             }
+
+            if (riverCells < 3)
+                continue;
+
+            sources.Add(source.Coord);
         }
     }
 
@@ -360,20 +445,14 @@ public static class WorldMapGenerator
         return result;
     }
 
-    private static List<HexCoord> FindPathToOcean(
-        IReadOnlyList<WorldHexCell> sourceLake,
+    private static List<HexCoord> FindPathToWater(
+        HexCoord source,
         IReadOnlyDictionary<HexCoord, WorldHexCell> lookup)
     {
         var queue = new PriorityQueue<HexCoord, float>();
-        var costs = new Dictionary<HexCoord, float>();
+        var costs = new Dictionary<HexCoord, float> { [source] = 0f };
         var previous = new Dictionary<HexCoord, HexCoord>();
-        var sourceCoords = sourceLake.Select(cell => cell.Coord).ToHashSet();
-
-        foreach (var source in sourceLake)
-        {
-            costs[source.Coord] = 0f;
-            queue.Enqueue(source.Coord, 0f);
-        }
+        queue.Enqueue(source, 0f);
 
         HexCoord? goal = null;
 
@@ -386,8 +465,8 @@ public static class WorldMapGenerator
                 continue;
             }
 
-            if (!sourceCoords.Contains(currentCoord)
-                && current.WaterKind == HexWaterKind.Ocean)
+            if (currentCoord != source
+                && current.WaterKind != HexWaterKind.None)
             {
                 goal = currentCoord;
                 break;
@@ -399,15 +478,22 @@ public static class WorldMapGenerator
                     continue;
 
                 var uphill = Math.Max(0f, next.Elevation - current.Elevation);
-                var terrainPenalty = next.Elevation > 0.58f
-                    ? 4.5f
-                    : next.Elevation > 0.40f
-                        ? 1.4f
+                var downhill = Math.Max(0f, current.Elevation - next.Elevation);
+                var ridgePenalty = next.Elevation > 0.68f
+                    ? 5.0f
+                    : next.Elevation > 0.50f
+                        ? 1.6f
                         : 0f;
-                var waterBonus = next.WaterKind == HexWaterKind.Ocean ? -0.55f : 0f;
+                var waterBonus =
+                    next.WaterKind != HexWaterKind.None ? -0.75f : 0f;
+                var downhillBonus = Math.Min(0.45f, downhill * 2.5f);
                 var stepCost = Math.Max(
-                    0.15f,
-                    1f + uphill * 12f + terrainPenalty + waterBonus);
+                    0.12f,
+                    1f
+                    + uphill * 36f
+                    + ridgePenalty
+                    - downhillBonus
+                    + waterBonus);
                 var nextCost = knownCost + stepCost;
 
                 if (costs.TryGetValue(nextCoord, out var oldCost)
@@ -428,10 +514,10 @@ public static class WorldMapGenerator
         var path = new List<HexCoord> { goal.Value };
         var cursor = goal.Value;
 
-        while (!sourceCoords.Contains(cursor))
+        while (cursor != source)
         {
             if (!previous.TryGetValue(cursor, out var parent))
-                break;
+                return [];
 
             cursor = parent;
             path.Add(cursor);
@@ -447,9 +533,15 @@ public static class WorldMapGenerator
     {
         foreach (var cell in cells)
         {
+            cell.Elevation = Mathf.Clamp(cell.Elevation, -0.85f, 0.95f);
+            cell.ElevationMeters = cell.Elevation >= 0f
+                ? cell.Elevation * 3200f
+                : cell.Elevation * 700f;
+
             if (cell.WaterKind == HexWaterKind.Ocean)
             {
                 cell.WaterDepth = Math.Max(0.04f, -cell.Elevation);
+                cell.WaterDepthMeters = Math.Max(4f, cell.WaterDepth * 850f);
                 cell.Terrain = cell.WaterDepth > 0.24f
                     ? HexTerrainType.DeepWater
                     : HexTerrainType.ShallowWater;
@@ -457,29 +549,54 @@ public static class WorldMapGenerator
             else if (cell.WaterKind == HexWaterKind.Lake)
             {
                 cell.WaterDepth = Math.Max(0.05f, -cell.Elevation + 0.03f);
+                cell.WaterDepthMeters = 4f + cell.WaterDepth * 120f;
                 cell.Terrain = HexTerrainType.Lake;
             }
             else if (cell.WaterKind == HexWaterKind.River)
             {
                 cell.WaterDepth = 0.08f;
+                cell.WaterDepthMeters = 2.5f + cell.WaterDepth * 18f;
                 cell.Terrain = HexTerrainType.River;
             }
             else
             {
                 cell.WaterDepth = 0f;
-                var touchesWater = cell.Coord.Neighbors()
-                    .Any(coord =>
+                cell.WaterDepthMeters = 0f;
+
+                var waterNeighbors = cell.Coord.Neighbors()
+                    .Count(coord =>
                         lookup.TryGetValue(coord, out var neighbor)
                         && neighbor.IsWater);
+                var touchesWater = waterNeighbors > 0;
+                var nearWater = touchesWater || cell.Coord.Neighbors()
+                    .Any(coord =>
+                        lookup.TryGetValue(coord, out var neighbor)
+                        && neighbor.Coord.Neighbors().Any(second =>
+                            lookup.TryGetValue(second, out var secondNeighbor)
+                            && secondNeighbor.IsWater));
 
                 if (touchesWater)
                     cell.Humidity = Mathf.Clamp(cell.Humidity + 0.18f, 0f, 1f);
+                else if (nearWater)
+                    cell.Humidity = Mathf.Clamp(cell.Humidity + 0.07f, 0f, 1f);
 
-                if (cell.Elevation > 0.61f)
+                var primaryBeach =
+                    touchesWater
+                    && cell.Elevation < 0.18f
+                    && (cell.VisualVariation > 0.18f
+                        || cell.Humidity < 0.68f);
+                var secondaryBeach =
+                    !touchesWater
+                    && nearWater
+                    && cell.Elevation < 0.11f
+                    && cell.Humidity < 0.52f
+                    && cell.VisualVariation > 0.72f;
+
+                if (cell.Elevation > 0.47f)
                     cell.Terrain = HexTerrainType.Mountain;
-                else if (cell.Elevation > 0.41f)
+                else if (cell.Elevation > 0.33f)
                     cell.Terrain = HexTerrainType.Rocky;
-                else if (touchesWater && cell.Elevation < 0.18f)
+                else if (primaryBeach || secondaryBeach)
                     cell.Terrain = HexTerrainType.Sand;
                 else if (cell.Humidity < 0.30f
                          && cell.TemperatureCelsius >= 23f
@@ -513,13 +630,7 @@ public static class WorldMapGenerator
         if (!cell.IsWater)
             return atmosphere;
 
-        var depthMeters = cell.Terrain switch
-        {
-            HexTerrainType.River => 2.5f + cell.WaterDepth * 18f,
-            HexTerrainType.Lake => 6f + cell.WaterDepth * 120f,
-            _ => cell.WaterDepth * 850f
-        };
-        return atmosphere + depthMeters * 9.80665f;
+        return atmosphere + Math.Max(0f, cell.WaterDepthMeters) * 9.80665f;
     }
 
     private static float Fbm(float x, float y, uint seed, int octaves)

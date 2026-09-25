@@ -62,6 +62,7 @@ public sealed class WorldHexCell
     public HexWaterKind WaterKind { get; set; }
     public float Elevation { get; set; }
     public float WaterDepth { get; set; }
+    public float WaterDepthMeters { get; set; }
     public float Humidity { get; set; }
     public float TemperatureCelsius { get; set; }
     public float ElevationMeters { get; set; }
@@ -109,6 +110,40 @@ public sealed class WorldMap
     {
         var coord = WorldToHex(worldPosition, HexSize);
         return _lookup.GetValueOrDefault(coord);
+    }
+
+    public IEnumerable<WorldHexCell> GetCellsInWorldRect(Rect2 worldRect, int padding = 2)
+    {
+        var topLeft = WorldToHex(worldRect.Position, HexSize);
+        var topRight = WorldToHex(
+            new Vector2(worldRect.End.X, worldRect.Position.Y),
+            HexSize);
+        var bottomLeft = WorldToHex(
+            new Vector2(worldRect.Position.X, worldRect.End.Y),
+            HexSize);
+        var bottomRight = WorldToHex(worldRect.End, HexSize);
+
+        var qMin = Math.Min(
+            Math.Min(topLeft.Q, topRight.Q),
+            Math.Min(bottomLeft.Q, bottomRight.Q)) - padding;
+        var qMax = Math.Max(
+            Math.Max(topLeft.Q, topRight.Q),
+            Math.Max(bottomLeft.Q, bottomRight.Q)) + padding;
+        var rMin = Math.Min(
+            Math.Min(topLeft.R, topRight.R),
+            Math.Min(bottomLeft.R, bottomRight.R)) - padding;
+        var rMax = Math.Max(
+            Math.Max(topLeft.R, topRight.R),
+            Math.Max(bottomLeft.R, bottomRight.R)) + padding;
+
+        for (var q = qMin; q <= qMax; q++)
+        {
+            for (var r = rMin; r <= rMax; r++)
+            {
+                if (_lookup.TryGetValue(new HexCoord(q, r), out var cell))
+                    yield return cell;
+            }
+        }
     }
 
     public Vector2 FindNearestLandPosition(Vector2 desired)

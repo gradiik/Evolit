@@ -139,14 +139,14 @@ public sealed partial class GameHud : Control
         top.AddChild(margin);
 
         var row = new HBoxContainer();
-        row.AddThemeConstantOverride("separation", 10);
+        row.AddThemeConstantOverride("separation", 9);
         margin.AddChild(row);
 
         var stats = new HBoxContainer
         {
-            CustomMinimumSize = new Vector2(410, 0)
+            CustomMinimumSize = new Vector2(360, 0)
         };
-        stats.AddThemeConstantOverride("separation", 6);
+        stats.AddThemeConstantOverride("separation", 4);
         row.AddChild(stats);
 
         _day = AddStat(stats, "ДЕНЬ", "1");
@@ -163,42 +163,81 @@ public sealed partial class GameHud : Control
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             Alignment = BoxContainer.AlignmentMode.Center
         };
-        primary.AddThemeConstantOverride("separation", 8);
+        primary.AddThemeConstantOverride("separation", 7);
         row.AddChild(primary);
 
-        AddGameTool(primary, "Эволюция", "biology/evolution.svg", ShowEvolution, 170, true);
-        AddGameTool(primary, "Древо", "biology/lineage.svg", ShowLineage, 170, true);
-        AddGameTool(primary, "Статистика", "settings/performance.svg", ShowWorldStats, 170, true);
+        AddGameTool(
+            primary,
+            "Эволюция",
+            "biology/evolution.svg",
+            ShowEvolution,
+            132);
+        AddGameTool(
+            primary,
+            "Древо",
+            "biology/lineage.svg",
+            ShowLineage,
+            112);
+        AddGameTool(
+            primary,
+            "Статистика",
+            "settings/performance.svg",
+            ShowWorldStats,
+            136);
 
         row.AddChild(Separator());
 
         var speedPanel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(304, 0)
+            CustomMinimumSize = new Vector2(286, 0)
         };
         speedPanel.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
         row.AddChild(speedPanel);
 
         var speedMargin = new MarginContainer();
-        speedMargin.AddThemeConstantOverride("margin_left", 8);
-        speedMargin.AddThemeConstantOverride("margin_right", 8);
+        speedMargin.AddThemeConstantOverride("margin_left", 7);
+        speedMargin.AddThemeConstantOverride("margin_right", 7);
         speedMargin.AddThemeConstantOverride("margin_top", 4);
         speedMargin.AddThemeConstantOverride("margin_bottom", 4);
         speedPanel.AddChild(speedMargin);
 
         var speedRoot = new VBoxContainer();
-        speedRoot.AddThemeConstantOverride("separation", 2);
+        speedRoot.AddThemeConstantOverride("separation", 1);
         speedMargin.AddChild(speedRoot);
 
-        var speedRow = new HBoxContainer();
-        speedRow.AddThemeConstantOverride("separation", 5);
+        var speedRow = new HBoxContainer
+        {
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        speedRow.AddThemeConstantOverride("separation", 4);
         speedRoot.AddChild(speedRow);
 
-        _pauseSpeed = SpeedButton("", "Остановить игровое время", ToggleSimulationPause, 40, "simulation/pause.svg");
-        _speed1 = SpeedButton("1×", "Скорость времени 1×", () => SetSimulationSpeed(1), 46);
-        _speed4 = SpeedButton("4×", "Скорость времени 4×", () => SetSimulationSpeed(4), 46);
-        _speed16 = SpeedButton("16×", "Скорость времени 16×", () => SetSimulationSpeed(16), 50);
-        _speedMax = SpeedButton("MAX", $"Максимальная скорость {SimulationSpeedState.MaxMultiplier}×", () => SetSimulationSpeed(SimulationSpeedState.MaxMultiplier), 58);
+        _pauseSpeed = SpeedButton(
+            "",
+            "Остановить игровое время",
+            ToggleSimulationPause,
+            38,
+            "simulation/pause.svg");
+        _speed1 = SpeedButton(
+            "1×",
+            "Скорость времени 1×",
+            () => SetSimulationSpeed(1),
+            43);
+        _speed4 = SpeedButton(
+            "4×",
+            "Скорость времени 4×",
+            () => SetSimulationSpeed(4),
+            43);
+        _speed16 = SpeedButton(
+            "16×",
+            "Скорость времени 16×",
+            () => SetSimulationSpeed(16),
+            47);
+        _speedMax = SpeedButton(
+            "MAX",
+            $"Максимальная скорость {SimulationSpeedState.MaxMultiplier}×",
+            () => SetSimulationSpeed(SimulationSpeedState.MaxMultiplier),
+            55);
 
         speedRow.AddChild(_pauseSpeed);
         speedRow.AddChild(_speed1);
@@ -212,7 +251,7 @@ public sealed partial class GameHud : Control
             HorizontalAlignment = HorizontalAlignment.Right,
             SizeFlagsHorizontal = SizeFlags.ExpandFill
         };
-        _realSpeed.AddThemeFontSizeOverride("font_size", 10);
+        _realSpeed.AddThemeFontSizeOverride("font_size", 9);
         _realSpeed.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         speedRoot.AddChild(_realSpeed);
     }
@@ -238,80 +277,136 @@ public sealed partial class GameHud : Control
         row.AddThemeConstantOverride("separation", 8);
         margin.AddChild(row);
 
-        var secondary = new HBoxContainer();
-        secondary.AddThemeConstantOverride("separation", 7);
-        row.AddChild(secondary);
+        var leftZone = new HBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.Begin
+        };
+        leftZone.AddThemeConstantOverride("separation", 7);
+        row.AddChild(leftZone);
 
-        AddGameTool(secondary, "Летопись", "simulation/history.svg", ShowChronicle, 155);
-        AddGameTool(secondary, "События", "simulation/event.svg", ShowEvents, 155);
+        AddGameTool(
+            leftZone,
+            "Летопись",
+            "simulation/history.svg",
+            ShowChronicle,
+            116);
+        AddGameTool(
+            leftZone,
+            "События",
+            "simulation/event.svg",
+            ShowEvents,
+            108);
 
-        row.AddChild(Separator());
+        var centerZone = new HBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        centerZone.AddThemeConstantOverride("separation", 8);
+        row.AddChild(centerZone);
 
         var camera = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(320, 0)
+            CustomMinimumSize = new Vector2(272, 0)
         };
         camera.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
-        row.AddChild(camera);
+        centerZone.AddChild(camera);
 
         var cameraMargin = new MarginContainer();
-        cameraMargin.AddThemeConstantOverride("margin_left", 8);
-        cameraMargin.AddThemeConstantOverride("margin_right", 8);
+        cameraMargin.AddThemeConstantOverride("margin_left", 7);
+        cameraMargin.AddThemeConstantOverride("margin_right", 7);
         cameraMargin.AddThemeConstantOverride("margin_top", 4);
         cameraMargin.AddThemeConstantOverride("margin_bottom", 4);
         camera.AddChild(cameraMargin);
 
-        var cameraRow = new HBoxContainer();
-        cameraRow.AddThemeConstantOverride("separation", 5);
+        var cameraRow = new HBoxContainer
+        {
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        cameraRow.AddThemeConstantOverride("separation", 4);
         cameraMargin.AddChild(cameraRow);
 
         var cameraLabel = new Label
         {
             Text = "Камера",
             VerticalAlignment = VerticalAlignment.Center,
-            CustomMinimumSize = new Vector2(54, 0)
+            CustomMinimumSize = new Vector2(48, 0)
         };
-        cameraLabel.AddThemeFontSizeOverride("font_size", 10);
+        cameraLabel.AddThemeFontSizeOverride("font_size", 9);
         cameraLabel.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         cameraRow.AddChild(cameraLabel);
 
-        cameraRow.AddChild(ActionButton("−", "Отдалить", () => CameraZoomOutRequested?.Invoke(), 36));
-        cameraRow.AddChild(ActionButton("+", "Приблизить", () => CameraZoomInRequested?.Invoke(), 36));
-        cameraRow.AddChild(ActionButton("Центр", "Вернуть камеру к центру", () => CameraCenterRequested?.Invoke(), 64));
-        cameraRow.AddChild(ActionButton("Сброс", "Сбросить положение и масштаб", () => CameraResetRequested?.Invoke(), 64));
+        cameraRow.AddChild(ActionButton(
+            "−",
+            "Отдалить",
+            () => CameraZoomOutRequested?.Invoke(),
+            34));
+        cameraRow.AddChild(ActionButton(
+            "+",
+            "Приблизить",
+            () => CameraZoomInRequested?.Invoke(),
+            34));
+        cameraRow.AddChild(ActionButton(
+            "Центр",
+            "Вернуть камеру к центру",
+            () => CameraCenterRequested?.Invoke(),
+            58));
+        cameraRow.AddChild(ActionButton(
+            "Сброс",
+            "Сбросить положение и масштаб",
+            () => CameraResetRequested?.Invoke(),
+            58));
 
         var tech = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(160, 0)
+            CustomMinimumSize = new Vector2(142, 0)
         };
         tech.AddThemeStyleboxOverride("panel", NatureTechTheme.SectionStyle());
-        row.AddChild(tech);
+        centerZone.AddChild(tech);
         _techPanel = tech;
 
         var techMargin = new MarginContainer();
-        techMargin.AddThemeConstantOverride("margin_left", 8);
-        techMargin.AddThemeConstantOverride("margin_right", 8);
+        techMargin.AddThemeConstantOverride("margin_left", 7);
+        techMargin.AddThemeConstantOverride("margin_right", 7);
         techMargin.AddThemeConstantOverride("margin_top", 4);
         techMargin.AddThemeConstantOverride("margin_bottom", 4);
         tech.AddChild(techMargin);
 
-        var techRow = new HBoxContainer();
-        techRow.AddThemeConstantOverride("separation", 8);
+        var techRow = new HBoxContainer
+        {
+            Alignment = BoxContainer.AlignmentMode.Center
+        };
+        techRow.AddThemeConstantOverride("separation", 5);
         techMargin.AddChild(techRow);
 
         _fps = AddTechStat(techRow, "FPS", out _fpsBox);
         _tps = AddTechStat(techRow, "TPS", out _tpsBox);
         _tick = AddTechStat(techRow, "TICK", out _tickBox);
 
-        row.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        var rightZone = new HBoxContainer
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Alignment = BoxContainer.AlignmentMode.End
+        };
+        rightZone.AddThemeConstantOverride("separation", 6);
+        row.AddChild(rightZone);
 
-        var systemTools = new HBoxContainer();
-        systemTools.AddThemeConstantOverride("separation", 6);
-        row.AddChild(systemTools);
-
-        systemTools.AddChild(ToolButton("Сохранить", "actions/apply.svg", () => SaveRequested?.Invoke(), 118));
-        systemTools.AddChild(ToolButton("Настройки", "menu/settings.svg", () => SettingsRequested?.Invoke(), 126));
-        systemTools.AddChild(ToolButton("Меню", "actions/more.svg", () => PauseRequested?.Invoke(), 92));
+        rightZone.AddChild(ToolButton(
+            "Сохранить",
+            "actions/apply.svg",
+            () => SaveRequested?.Invoke(),
+            104));
+        rightZone.AddChild(ToolButton(
+            "Настройки",
+            "menu/settings.svg",
+            () => SettingsRequested?.Invoke(),
+            116));
+        rightZone.AddChild(ToolButton(
+            "Меню",
+            "actions/more.svg",
+            () => PauseRequested?.Invoke(),
+            84));
     }
 
     private void BuildSelectionPanel()
@@ -338,7 +433,7 @@ public sealed partial class GameHud : Control
     {
         var box = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(58, 0),
+            CustomMinimumSize = new Vector2(52, 0),
             Alignment = BoxContainer.AlignmentMode.Center
         };
         box.AddThemeConstantOverride("separation", 0);
@@ -403,7 +498,8 @@ public sealed partial class GameHud : Control
             TooltipText = tooltip,
             ToggleMode = true,
             Alignment = HorizontalAlignment.Center,
-            CustomMinimumSize = new Vector2(width, 36)
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(width, 34)
         };
         button.Pressed += callback;
         return button;
@@ -443,7 +539,8 @@ public sealed partial class GameHud : Control
             Icon = EvolitIcons.Load(icon),
             TooltipText = text,
             Alignment = HorizontalAlignment.Center,
-            CustomMinimumSize = new Vector2(width, 42)
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(width, 38)
         };
         button.Pressed += callback;
         return button;
@@ -460,7 +557,8 @@ public sealed partial class GameHud : Control
             Text = text,
             TooltipText = tooltip,
             Alignment = HorizontalAlignment.Center,
-            CustomMinimumSize = new Vector2(width, 34)
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(width, 32)
         };
         button.Pressed += callback;
         return button;

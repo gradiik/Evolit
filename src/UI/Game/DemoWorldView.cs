@@ -12,6 +12,16 @@ public sealed partial class DemoWorldView : Control
     private const float MinZoom = 0.10f;
     private const float MaxZoom = 3.0f;
 
+    private static readonly Vector2[] UnitHexPoints =
+    [
+        new(0.8660254f, 0.5f),
+        new(0f, 1f),
+        new(-0.8660254f, 0.5f),
+        new(-0.8660254f, -0.5f),
+        new(0f, -1f),
+        new(0.8660254f, -0.5f)
+    ];
+
     private readonly Vector2[] _hexPoints = new Vector2[6];
     private readonly Vector2[] _hexOutline = new Vector2[7];
 
@@ -29,6 +39,11 @@ public sealed partial class DemoWorldView : Control
     private Vector2 _zoomAnchorScreen;
     private Vector2 _zoomAnchorWorld;
     private bool _hasZoomAnchor;
+
+    private PanelContainer? _inspectorPanel;
+    private Label? _inspectorLabel;
+    private WorldHexCell? _inspectedCell;
+    private bool _inspectorActive;
 
     public void Configure(
         DemoWorldDataProvider world,
@@ -51,6 +66,7 @@ public sealed partial class DemoWorldView : Control
         if (_world is not null)
             _world.DataChanged += QueueRedraw;
 
+        BuildInspectorPanel();
         ApplyFitView();
         QueueRedraw();
     }
@@ -108,6 +124,8 @@ public sealed partial class DemoWorldView : Control
             _hasZoomAnchor = false;
             QueueRedraw();
         }
+
+        UpdateInspector();
     }
 
     public override void _GuiInput(InputEvent @event)
@@ -177,19 +195,33 @@ public sealed partial class DemoWorldView : Control
 
         foreach (var entity in _world.Entities)
             DrawEntity(entity);
+
+        DrawInspectorHighlight();
     }
 
     private void DrawWorldMap(WorldMap map)
     {
         var radius = map.HexSize * _zoom;
-        var cullMargin = radius * 1.5f;
+        var cullMargin = radius * 1.7f;
         var viewport = new Rect2(
             -cullMargin,
             -cullMargin,
             Size.X + cullMargin * 2f,
             Size.Y + cullMargin * 2f);
 
-        foreach (var cell in map.Cells)
+        var worldTopLeft = ScreenToWorld(
+            new Vector2(-cullMargin, -cullMargin));
+        var worldBottomRight = ScreenToWorld(
+            new Vector2(Size.X + cullMargin, Size.Y + cullMargin));
+        var worldRect = new Rect2(
+            new Vector2(
+                Math.Min(worldTopLeft.X, worldBottomRight.X),
+                Math.Min(worldTopLeft.Y, worldBottomRight.Y)),
+            new Vector2(
+                Math.Abs(worldBottomRight.X - worldTopLeft.X),
+                Math.Abs(worldBottomRight.Y - worldTopLeft.Y)));
+
+        foreach (var cell in map.GetCellsInWorldRect(worldRect, 2))
         {
             var center = WorldToScreen(cell.WorldCenter);
             if (!viewport.HasPoint(center))
@@ -220,6 +252,16 @@ public sealed partial class DemoWorldView : Control
         Vector2 center,
         float radius)
     {
+        if (cell.Terrain == HexTerrainType.River && radius >= 3f)
+        {
+            DrawLine(
+                center + new Vector2(-radius * 0.55f, radius * 0.24f),
+                center + new Vector2(radius * 0.58f, -radius * 0.22f),
+                new Color(0.48f, 0.88f, 0.86f, 0.64f),
+                Math.Max(1.2f, radius * 0.18f),
+                true);
+        }
+
         if (_quality.DetailLevel == 0 || radius < 8f)
             return;
 
@@ -227,10 +269,22 @@ public sealed partial class DemoWorldView : Control
         {
             case HexTerrainType.Mountain:
             {
-                FillHexPoints(center, radius * 0.57f, _hexPoints);
+                FillHexPoints(center, radius * 0.62f, _hexPoints);
                 DrawColoredPolygon(
                     _hexPoints,
-                    new Color(0.40f, 0.43f, 0.39f, 0.28f));
+                    new Color(0.46f, 0.49f, 0.45f, 0.26f));
+                DrawLine(
+                    center + new Vector2(-radius * 0.34f, radius * 0.18f),
+                    center + new Vector2(0, -radius * 0.42f),
+                    new Color(0.70f, 0.75f, 0.70f, 0.34f),
+                    Math.Max(1f, radius * 0.07f),
+                    true);
+                DrawLine(
+                    center + new Vector2(0, -radius * 0.42f),
+                    center + new Vector2(radius * 0.34f, radius * 0.22f),
+                    new Color(0.10f, 0.16f, 0.15f, 0.42f),
+                    Math.Max(1f, radius * 0.08f),
+                    true);
                 break;
             }
             case HexTerrainType.Rocky:
@@ -241,7 +295,13 @@ public sealed partial class DemoWorldView : Control
                 DrawCircle(
                     center + offset,
                     Math.Max(1.5f, radius * 0.10f),
-                    new Color(0.58f, 0.58f, 0.50f, 0.20f));
+                    new Color(0.62f, 0.63f, 0.55f, 0.24f));
+                DrawLine(
+                    center + new Vector2(-radius * 0.34f, radius * 0.28f),
+                    center + new Vector2(radius * 0.28f, -radius * 0.22f),
+                    new Color(0.72f, 0.74f, 0.64f, 0.12f),
+                    Math.Max(0.8f, radius * 0.04f),
+                    true);
                 break;
             }
             case HexTerrainType.DeepWater:
@@ -275,14 +335,6 @@ public sealed partial class DemoWorldView : Control
                 }
                 break;
             }
-            case HexTerrainType.River:
-            {
-                DrawCircle(
-                    center,
-                    Math.Max(2f, radius * 0.12f),
-                    new Color(0.42f, 0.82f, 0.79f, 0.26f));
-                break;
-            }
         }
     }
 
@@ -304,8 +356,8 @@ public sealed partial class DemoWorldView : Control
 
         var variation = (cell.VisualVariation - 0.5f) * 0.10f;
         var elevationLight = cell.IsWater
-            ? -Mathf.Clamp(cell.WaterDepth * 0.32f, 0f, 0.24f)
-            : Mathf.Clamp(cell.Elevation * 0.20f, -0.06f, 0.18f);
+            ? -Mathf.Clamp(cell.WaterDepth * 0.36f, 0f, 0.27f)
+            : Mathf.Clamp((cell.Elevation - 0.05f) * 0.28f, -0.07f, 0.22f);
         var factor = Mathf.Clamp(1f + variation + elevationLight, 0.68f, 1.22f);
 
         return new Color(
@@ -321,12 +373,7 @@ public sealed partial class DemoWorldView : Control
         Vector2[] target)
     {
         for (var i = 0; i < 6; i++)
-        {
-            var angle = Mathf.DegToRad(30f + i * 60f);
-            target[i] = center + new Vector2(
-                Mathf.Cos(angle),
-                Mathf.Sin(angle)) * radius;
-        }
+            target[i] = center + UnitHexPoints[i] * radius;
     }
 
     private void DrawEntity(DemoEntity entity)
@@ -418,6 +465,145 @@ public sealed partial class DemoWorldView : Control
                 8f * visualScale,
                 new Color(0.59f, 0.70f, 0.36f));
         }
+    }
+
+
+    private void BuildInspectorPanel()
+    {
+        _inspectorPanel = new PanelContainer
+        {
+            Visible = false,
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 15,
+            CustomMinimumSize = new Vector2(268, 0)
+        };
+        _inspectorPanel.AddThemeStyleboxOverride(
+            "panel",
+            NatureTechTheme.CardStyle(0.98f));
+        AddChild(_inspectorPanel);
+
+        var margin = new MarginContainer
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        margin.AddThemeConstantOverride("margin_left", 12);
+        margin.AddThemeConstantOverride("margin_right", 12);
+        margin.AddThemeConstantOverride("margin_top", 9);
+        margin.AddThemeConstantOverride("margin_bottom", 9);
+        _inspectorPanel.AddChild(margin);
+
+        _inspectorLabel = new Label
+        {
+            Text = string.Empty,
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        _inspectorLabel.AddThemeFontSizeOverride("font_size", 12);
+        _inspectorLabel.AddThemeColorOverride(
+            "font_color",
+            EvolitPalette.MistWhite);
+        margin.AddChild(_inspectorLabel);
+    }
+
+    private void UpdateInspector()
+    {
+        if (_world is null || _inspectorPanel is null)
+            return;
+
+        var active = Input.IsActionPressed("terrain_inspect");
+        var mouse = GetLocalMousePosition();
+        var inside = new Rect2(Vector2.Zero, Size).HasPoint(mouse);
+        var nextCell = active && inside
+            ? _world.Map.GetCellAtWorld(ScreenToWorld(mouse))
+            : null;
+
+        if (!active || nextCell is null)
+        {
+            if (_inspectorActive || _inspectedCell is not null)
+            {
+                _inspectorActive = false;
+                _inspectedCell = null;
+                _inspectorPanel.Visible = false;
+                QueueRedraw();
+            }
+            return;
+        }
+
+        _inspectorActive = true;
+        _inspectorPanel.Visible = true;
+        _inspectorPanel.Position = new Vector2(
+            Math.Max(8f, Math.Min(Size.X - 284f, mouse.X + 18f)),
+            Math.Max(8f, Math.Min(Size.Y - 176f, mouse.Y + 18f)));
+
+        if (!ReferenceEquals(_inspectedCell, nextCell))
+        {
+            _inspectedCell = nextCell;
+            if (_inspectorLabel is not null)
+                _inspectorLabel.Text = FormatInspectorText(nextCell);
+            QueueRedraw();
+        }
+    }
+
+    private void DrawInspectorHighlight()
+    {
+        if (!_inspectorActive || _inspectedCell is null)
+            return;
+
+        var center = WorldToScreen(_inspectedCell.WorldCenter);
+        var radius = _world?.Map.HexSize * _zoom ?? 0f;
+        if (radius <= 0f)
+            return;
+
+        FillHexPoints(center, radius * 0.96f, _hexPoints);
+        DrawColoredPolygon(
+            _hexPoints,
+            new Color(EvolitPalette.EvolutionCyan, 0.08f));
+
+        for (var i = 0; i < 6; i++)
+            _hexOutline[i] = _hexPoints[i];
+        _hexOutline[6] = _hexPoints[0];
+
+        DrawPolyline(
+            _hexOutline,
+            EvolitPalette.EvolutionCyan,
+            Math.Max(1.5f, 2.2f * _zoom),
+            true);
+    }
+
+    private static string FormatInspectorText(WorldHexCell cell)
+    {
+        var location = $"Гекс {cell.Coord.Q}:{cell.Coord.R}";
+        var terrain = $"Тип: {TerrainLabel(cell.Terrain)}";
+        var vertical = cell.IsWater
+            ? $"Глубина: {cell.WaterDepthMeters:0} м"
+            : $"Высота: {cell.ElevationMeters:0} м";
+
+        return
+            $"{location}\n" +
+            $"{terrain}\n" +
+            $"{vertical}\n" +
+            $"Температура: {cell.TemperatureCelsius:0.0} °C\n" +
+            $"Влажность: {cell.Humidity * 100f:0}%\n" +
+            $"Давление: {cell.PressureKPa:0.0} кПа\n" +
+            $"Движение: ×{cell.MovementSpeedMultiplier:0.00} " +
+            $"(стоимость {cell.MovementCost:0.00})";
+    }
+
+    private static string TerrainLabel(HexTerrainType terrain)
+    {
+        return terrain switch
+        {
+            HexTerrainType.DeepWater => "Глубокий океан",
+            HexTerrainType.ShallowWater => "Мелководье",
+            HexTerrainType.Lake => "Озеро",
+            HexTerrainType.River => "Река",
+            HexTerrainType.Sand => "Песчаный берег",
+            HexTerrainType.Desert => "Пустыня",
+            HexTerrainType.Grassland => "Равнина",
+            HexTerrainType.Rocky => "Каменистая возвышенность",
+            HexTerrainType.Mountain => "Горы",
+            _ => terrain.ToString()
+        };
     }
 
     private void ZoomAt(Vector2 screenPoint, float factor)
