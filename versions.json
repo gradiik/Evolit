@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.6",
-  "development_branch": "feature/evolit-core-0.0.6",
+  "current": "0.0.7",
+  "development_branch": "feature/evolit-0.0.7-physical-world",
   "protocol": "VERSIONING.md",
   "versions": [
     {
-      "version": "0.0.6",
+      "version": "0.0.7",
       "status": "development",
-      "branch": "feature/evolit-core-0.0.6",
+      "branch": "feature/evolit-0.0.7-physical-world",
       "tag": null,
       "commit": null,
-      "note": "Evolit Core foundation development. No release/tag until explicit approval after audit."
+      "note": "Physical World & Dynamic Environment development. No release/tag until explicit approval after audit."
+    },
+    {
+      "version": "0.0.6",
+      "status": "checkpoint",
+      "branch": "feature/evolit-core-0.0.6",
+      "tag": null,
+      "commit": "e6c8407ac642cf79cfcd3d711fcd24a96ef3beae",
+      "note": "Final 0.0.6 Core foundation checkpoint before Physical World work. Release/tag not created."
     },
     {
       "version": "0.0.5",

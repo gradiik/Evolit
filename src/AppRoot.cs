@@ -555,7 +555,7 @@ public sealed partial class AppRoot : Control
         var core = _coreRuntime?.GetDiagnostics();
         var coreText = core.HasValue
             ? $"\nCore: tick {core.Value.Tick} · t={core.Value.SimulationSeconds:0.0}s · org {core.Value.OrganismCount} · genomes {core.Value.GenomeCount} · lineages {core.Value.LineageCount}" +
-              $"\nCore cells {core.Value.CellCount} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · alloc/tick {core.Value.AllocatedBytesPerTick:0} B"
+              $"\nCore cells {core.Value.CellCount} · mode {core.Value.Mode} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · alloc/tick {core.Value.AllocatedBytesPerTick:0} B"
             : string.Empty;
 
         _debug.SetData(

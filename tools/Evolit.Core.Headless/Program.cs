@@ -23,6 +23,26 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
+        if (string.Equals(args[0], "environment-verify", StringComparison.OrdinalIgnoreCase))
+        {
+            RunEnvironmentVerification();
+            return 0;
+        }
+
+        if (string.Equals(args[0], "bootstrap-test", StringComparison.OrdinalIgnoreCase))
+        {
+            RunBootstrapTest();
+            return 0;
+        }
+
+        if (string.Equals(args[0], "environment-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            var ticks = args.Length >= 2 ? int.Parse(args[1]) : 1000;
+            foreach (var radius in new[] { 18, 40, 58, 80 })
+                RunEnvironmentBenchmark(radius, ticks, "environment-benchmark");
+            return 0;
+        }
+
         if (string.Equals(args[0], "benchmark", StringComparison.OrdinalIgnoreCase))
         {
             var count = args.Length >= 2 ? int.Parse(args[1]) : 10_000;
@@ -32,7 +52,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | environment-verify | bootstrap-test | environment-benchmark [ticks] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -50,6 +70,7 @@ static void RunVerification()
     AssertGeneticDeterminism();
     AssertOrganismStore();
     AssertEnvironment();
+    RunEnvironmentVerification();
     Console.WriteLine("VERIFY PASS");
 }
 
@@ -189,6 +210,101 @@ static void AssertEnvironment()
     }
 }
 
+
+static void RunEnvironmentVerification()
+{
+    var a = ScenarioFactory.Create("physical-environment", 0, 24);
+    var b = ScenarioFactory.Create("physical-environment", 0, 24);
+    var different = ScenarioFactory.Create("physical-environment-other", 0, 24);
+    a.Step(2_000);
+    b.Step(2_000);
+    different.Step(2_000);
+
+    var aJson = CoreSnapshotSerializer.Serialize(a.CaptureSnapshot());
+    var bJson = CoreSnapshotSerializer.Serialize(b.CaptureSnapshot());
+    var differentJson = CoreSnapshotSerializer.Serialize(different.CaptureSnapshot());
+    if (!string.Equals(aJson, bJson, StringComparison.Ordinal))
+        throw new InvalidOperationException("Physical environment replay is not deterministic.");
+    if (string.Equals(aJson, differentJson, StringComparison.Ordinal))
+        throw new InvalidOperationException("Different seeds produced identical physical environments.");
+
+    AssertPhysicalBounds(a);
+
+    var checkpoint = CoreSnapshotSerializer.Deserialize(CoreSnapshotSerializer.Serialize(a.CaptureSnapshot()));
+    a.Step(1_000);
+    var expected = CoreSnapshotSerializer.Serialize(a.CaptureSnapshot());
+    var restored = CoreSimulation.Restore(checkpoint);
+    restored.Step(1_000);
+    if (!string.Equals(expected, CoreSnapshotSerializer.Serialize(restored.CaptureSnapshot()), StringComparison.Ordinal))
+        throw new InvalidOperationException("Physical environment save/restore continuation diverged.");
+
+    Console.WriteLine("ENVIRONMENT VERIFY PASS");
+}
+
+static void RunBootstrapTest()
+{
+    var a = ScenarioFactory.Create("bootstrap", 0, 32);
+    var b = ScenarioFactory.Create("bootstrap", 0, 32);
+    a.Mode = SimulationMode.Bootstrap;
+    b.Mode = SimulationMode.Bootstrap;
+    var before = a.Environment.CaptureSnapshot();
+    a.Step(2_500);
+    b.Step(2_500);
+    var middle = a.Environment.CaptureSnapshot();
+    var firstChange = a.Environment.MeasureChange(before);
+    a.Step(2_500);
+    b.Step(2_500);
+    var secondChange = a.Environment.MeasureChange(middle);
+    if (!string.Equals(CoreSnapshotSerializer.Serialize(a.CaptureSnapshot()), CoreSnapshotSerializer.Serialize(b.CaptureSnapshot()), StringComparison.Ordinal))
+        throw new InvalidOperationException("Bootstrap replay diverged.");
+    AssertPhysicalBounds(a);
+    if (!double.IsFinite(firstChange) || !double.IsFinite(secondChange))
+        throw new InvalidOperationException("Bootstrap stabilization metric is not finite.");
+    Console.WriteLine($"BOOTSTRAP PASS first_change={firstChange:0.######} second_change={secondChange:0.######} decreasing={secondChange <= firstChange} final_cells={a.Topology.Count}");
+}
+
+static void AssertPhysicalBounds(CoreSimulation sim)
+{
+    foreach (var id in sim.Topology.Cells)
+    {
+        var cell = sim.Environment.Get(id);
+        var physical = sim.Environment.GetPhysical(id);
+        if (!float.IsFinite(cell.TemperatureCelsius) || cell.TemperatureCelsius is < -80f or > 65f ||
+            !float.IsFinite(cell.Humidity) || cell.Humidity is < 0f or > 1f ||
+            !float.IsFinite(cell.PressureKPa) || cell.PressureKPa is < 0f or > 115f ||
+            !float.IsFinite(cell.WaterDepthMeters) || cell.WaterDepthMeters < 0f ||
+            !float.IsFinite(physical.WindX) || !float.IsFinite(physical.WindY) ||
+            physical.WaterAvailability is < 0f or > 1f ||
+            cell.NutrientPotential is < 0f or > 1f ||
+            cell.SubstrateDevelopment is < 0f or > 1f)
+            throw new InvalidOperationException($"Physical environment invariant failed in {id}.");
+    }
+}
+
+static void RunEnvironmentBenchmark(int radius, int ticks, string seed)
+{
+    var initStart = Stopwatch.GetTimestamp();
+    var sim = ScenarioFactory.Create(seed + radius, 0, radius);
+    var initMs = Stopwatch.GetElapsedTime(initStart).TotalMilliseconds;
+    sim.Step(100);
+    var samples = new double[ticks];
+    GC.Collect();
+    var beforeMemory = GC.GetTotalMemory(true);
+    var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+    var totalStart = Stopwatch.GetTimestamp();
+    for (var i = 0; i < ticks; i++)
+    {
+        var start = Stopwatch.GetTimestamp();
+        sim.Step();
+        samples[i] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+    }
+    var totalMs = Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds;
+    var allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAllocated;
+    var memory = Math.Max(0, GC.GetTotalMemory(false) - beforeMemory);
+    Array.Sort(samples);
+    Console.WriteLine($"ENV_BENCH cells={sim.Topology.Count} ticks={ticks} init_ms={initMs:0.###} avg_ms={(totalMs/ticks):0.######} p50_ms={Percentile(samples,0.5):0.######} p95_ms={Percentile(samples,0.95):0.######} p99_ms={Percentile(samples,0.99):0.######} alloc_per_tick={(allocated/(double)ticks):0.##} memory_delta={memory} cells_per_sec={(sim.Topology.Count*ticks/Math.Max(0.000001,totalMs/1000.0)):0.##}");
+}
+
 static void RunBenchmark(int organismCount, int ticks, string seed)
 {
     if (organismCount <= 0 || ticks <= 0)
@@ -244,9 +360,8 @@ static double Percentile(double[] sorted, double p)
 
 static class ScenarioFactory
 {
-    public static CoreSimulation Create(string seedText, int organismCount)
+    public static CoreSimulation Create(string seedText, int organismCount, int radius = 40)
     {
-        const int radius = 40;
         var topologyBuilder = new WorldTopologyBuilder();
         var cells = new List<CellId>();
         var set = new HashSet<CellId>();

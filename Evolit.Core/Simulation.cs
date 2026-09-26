@@ -68,20 +68,56 @@ public sealed class OrganismFoundationSystem : ISimulationSystem
     }
 }
 
-public sealed class EnvironmentFoundationSystem : ISimulationSystem
+public static class EnvironmentSchedule
 {
-    public string Name => "environment.foundation";
-    public int IntervalTicks => 10;
+    public const int ClimateTicks = 2;
+    public const int AtmosphereTicks = 4;
+    public const int HumidityTicks = 5;
+    public const int HydrologyTicks = 10;
+    public const int ResourceTicks = 20;
+    public const int LightTicks = 10;
+}
 
-    public void Execute(CoreSimulation simulation)
-    {
-        simulation.Environment.FoundationUpdate(1f);
-    }
+public sealed class ClimateSystem : ISimulationSystem
+{
+    public string Name => "environment.climate";
+    public int IntervalTicks => EnvironmentSchedule.ClimateTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateClimate(simulation.Clock.SimulationSeconds, simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+}
+public sealed class AtmosphereSystem : ISimulationSystem
+{
+    public string Name => "environment.atmosphere";
+    public int IntervalTicks => EnvironmentSchedule.AtmosphereTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateAtmosphere(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+}
+public sealed class HumiditySystem : ISimulationSystem
+{
+    public string Name => "environment.humidity";
+    public int IntervalTicks => EnvironmentSchedule.HumidityTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHumidity(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+}
+public sealed class HydrologySystem : ISimulationSystem
+{
+    public string Name => "environment.hydrology";
+    public int IntervalTicks => EnvironmentSchedule.HydrologyTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHydrology(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+}
+public sealed class ResourceSystem : ISimulationSystem
+{
+    public string Name => "environment.resources";
+    public int IntervalTicks => EnvironmentSchedule.ResourceTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateResources(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+}
+public sealed class LightSystem : ISimulationSystem
+{
+    public string Name => "environment.light";
+    public int IntervalTicks => EnvironmentSchedule.LightTicks;
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateLight(simulation.Clock.SimulationSeconds);
 }
 
 public sealed class CoreSimulation
 {
-    public const int SnapshotVersion = 1;
+    public const int SnapshotVersion = 2;
 
     public CoreSimulation(
         WorldTopology topology,
@@ -178,7 +214,7 @@ public sealed class CoreSimulation
     public static CoreSimulation Restore(CoreSimulationSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        if (snapshot.Version != SnapshotVersion)
+        if (snapshot.Version is < 1 or > SnapshotVersion)
             throw new InvalidOperationException($"Unsupported Core snapshot version {snapshot.Version}.");
 
         var topology = WorldTopology.Restore(snapshot.Topology ?? new WorldTopologySnapshot());
@@ -206,7 +242,12 @@ public sealed class CoreSimulation
     {
         var scheduler = new SimulationScheduler();
         scheduler.Register(new OrganismFoundationSystem());
-        scheduler.Register(new EnvironmentFoundationSystem());
+        scheduler.Register(new ClimateSystem());
+        scheduler.Register(new AtmosphereSystem());
+        scheduler.Register(new HumiditySystem());
+        scheduler.Register(new HydrologySystem());
+        scheduler.Register(new ResourceSystem());
+        scheduler.Register(new LightSystem());
         return scheduler;
     }
 }

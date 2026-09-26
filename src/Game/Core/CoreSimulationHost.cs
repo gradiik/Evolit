@@ -14,7 +14,8 @@ public readonly record struct CoreRuntimeDiagnostics(
     int CellCount,
     double LastTickMilliseconds,
     double AverageTickMilliseconds,
-    double AllocatedBytesPerTick);
+    double AllocatedBytesPerTick,
+    SimulationMode Mode);
 
 public sealed class CoreSimulationHost
 {
@@ -80,6 +81,20 @@ public sealed class CoreSimulationHost
 
     public CoreSimulationSnapshot CaptureSnapshot() => Simulation.CaptureSnapshot();
 
+    public bool TryGetEnvironment(int q, int r, out EnvironmentCellState environment, out PhysicalEnvironmentState physical)
+    {
+        var id = CellId.FromAxial(q, r);
+        if (!Simulation.Topology.TryGetIndex(id, out _))
+        {
+            environment = default;
+            physical = default;
+            return false;
+        }
+        environment = Simulation.Environment.Get(id);
+        physical = Simulation.Environment.GetPhysical(id);
+        return true;
+    }
+
     public CoreRuntimeDiagnostics GetDiagnostics()
     {
         return new CoreRuntimeDiagnostics(
@@ -91,7 +106,8 @@ public sealed class CoreSimulationHost
             Simulation.Topology.Count,
             _lastTickMilliseconds,
             _averageTickMilliseconds,
-            _allocatedBytesPerTick);
+            _allocatedBytesPerTick,
+            Simulation.Mode);
     }
 
     private static WorldTopology BuildTopology(WorldMap map)
@@ -142,18 +158,22 @@ public sealed class CoreSimulationHost
 
     private static void SeedFoundationOrganisms(CoreSimulation simulation, DemoWorldDataProvider world)
     {
+        var plantGenome = simulation.Genomes.Add(Genome.Create(0.45f, 0.35f, 0.05f, 0.55f, 0.58f, 0.78f, 0.72f));
+        var creatureGenome = simulation.Genomes.Add(Genome.Create(0.52f, 0.58f, 0.55f, 0.52f, 0.62f, 0.58f, 0.42f));
+        var plantLineage = simulation.Lineages.CreateFounder(plantGenome, simulation.Clock.TickCount);
+        var creatureLineage = simulation.Lineages.CreateFounder(creatureGenome, simulation.Clock.TickCount);
+
         foreach (var entity in world.Entities)
         {
             var cell = world.Map.GetCellAtWorld(entity.WorldPosition);
             if (cell is null)
                 continue;
 
-            var genome = entity.Kind == DemoEntityKind.Plant
-                ? Genome.Create(0.45f, 0.35f, 0.05f, 0.55f, 0.58f, 0.78f, 0.72f)
-                : Genome.Create(0.52f, 0.58f, 0.55f, 0.52f, 0.62f, 0.58f, 0.42f);
-            simulation.CreateFounder(
+            var isPlant = entity.Kind == DemoEntityKind.Plant;
+            simulation.Organisms.Create(
                 CellId.FromAxial(cell.Coord.Q, cell.Coord.R),
-                genome,
+                isPlant ? plantGenome : creatureGenome,
+                isPlant ? plantLineage : creatureLineage,
                 Math.Clamp(entity.Energy <= 0 ? 0.8f : entity.Energy, 0f, 1f),
                 Math.Clamp(entity.Health, 0f, 1f));
         }

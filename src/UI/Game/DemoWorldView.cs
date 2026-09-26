@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Evolit.Game;
+using Evolit.Game.Core;
 using Evolit.Settings;
 using Godot;
 
@@ -44,6 +45,7 @@ public sealed partial class DemoWorldView : Control
     ];
 
     private DemoWorldDataProvider? _world;
+    private CoreSimulationHost? _core;
     private DemoEntity? _selected;
     private Vector2 _cameraPosition;
     private float _zoom = 0.6f;
@@ -80,11 +82,13 @@ public sealed partial class DemoWorldView : Control
 
     public void Configure(
         DemoWorldDataProvider world,
+        CoreSimulationHost core,
         double cameraSpeed,
         bool smoothZoom,
         GraphicsQualityProfile quality)
     {
         _world = world;
+        _core = core;
         _cameraSpeed = (float)Math.Clamp(cameraSpeed, 1, 10);
         _smoothZoom = smoothZoom;
         _quality = quality;
@@ -486,13 +490,12 @@ public sealed partial class DemoWorldView : Control
             Math.Max(8f, Math.Min(Size.X - 284f, mouse.X + 18f)),
             Math.Max(8f, Math.Min(Size.Y - 176f, mouse.Y + 18f)));
 
-        if (!ReferenceEquals(_inspectedCell, nextCell))
-        {
-            _inspectedCell = nextCell;
-            if (_inspectorLabel is not null)
-                _inspectorLabel.Text = FormatInspectorText(nextCell);
+        var changedCell = !ReferenceEquals(_inspectedCell, nextCell);
+        _inspectedCell = nextCell;
+        if (_inspectorLabel is not null)
+            _inspectorLabel.Text = FormatInspectorText(nextCell);
+        if (changedCell)
             QueueRedraw();
-        }
     }
 
     private void DrawInspectorHighlight()
@@ -521,23 +524,26 @@ public sealed partial class DemoWorldView : Control
             true);
     }
 
-    private static string FormatInspectorText(WorldHexCell cell)
+    private string FormatInspectorText(WorldHexCell cell)
     {
         var location = $"Гекс {cell.Coord.Q}:{cell.Coord.R}";
-        var terrain = $"Тип: {TerrainLabel(cell.Terrain)}";
-        var vertical = cell.IsWater
-            ? $"Глубина: {WaterDepthMeters(cell):0} м"
-            : $"Высота: {cell.ElevationMeters:0} м";
+        var terrain = $"Рельеф: {TerrainLabel(cell.Terrain)}";
+        if (_core is null || !_core.TryGetEnvironment(cell.Coord.Q, cell.Coord.R, out var env, out var physical))
+            return $"{location}\n{terrain}\nCore environment: недоступен";
+
+        var vertical = env.WaterDepthMeters > 0.01f
+            ? $"Вода: {env.WaterDepthMeters:0.0} м"
+            : $"Высота: {env.ElevationMeters:0} м";
+        var wind = MathF.Sqrt(physical.WindX * physical.WindX + physical.WindY * physical.WindY);
 
         return
-            $"{location}\n" +
-            $"{terrain}\n" +
-            $"{vertical}\n" +
-            $"Температура: {cell.TemperatureCelsius:0.0} °C\n" +
-            $"Влажность: {cell.Humidity * 100f:0}%\n" +
-            $"Давление: {cell.PressureKPa:0.0} кПа\n" +
-            $"Движение: ×{cell.MovementSpeedMultiplier:0.00} " +
-            $"(стоимость {cell.MovementCost:0.00})";
+            $"{location}\n{terrain}\n{vertical}\n" +
+            $"Климат: {env.TemperatureCelsius:0.0} °C · {env.Humidity * 100f:0}% · {env.PressureKPa:0.0} кПа\n" +
+            $"Ветер: {wind:0.000} ({physical.WindX:0.000}, {physical.WindY:0.000})\n" +
+            $"Свет: {env.LightAvailability * 100f:0}% · вода {physical.WaterAvailability * 100f:0}%\n" +
+            $"Минералы: {env.MineralPotential * 100f:0}% · nutrients {env.NutrientPotential * 100f:0}%\n" +
+            $"Органика: {env.OrganicMatter:0.000} · substrate dev {env.SubstrateDevelopment * 100f:0}%\n" +
+            $"Субстрат: {env.Substrate} · регион: {physical.Region}";
     }
 
     private static float WaterDepthMeters(WorldHexCell cell)

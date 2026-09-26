@@ -14,9 +14,9 @@ public sealed record AppVersionRecord(
 
 public static class AppVersionCatalog
 {
-    public const string CurrentVersion = "0.0.6";
-    public const string PreviousVersion = "0.0.5";
-    public const string PreviousCommit = "d8a0280ec7293931842049e0f51bef18860e5fad";
+    public const string CurrentVersion = "0.0.7";
+    public const string PreviousVersion = "0.0.6";
+    public const string PreviousCommit = "e6c8407ac642cf79cfcd3d711fcd24a96ef3beae";
     public const string BaselineVersion = "0.0.4";
     public const string BaselineCommit = "268fce1dd4d1d4b9f4d644a789e3110868201ff6";
     public const string LegacyVersion = "0.0.3";
@@ -28,14 +28,20 @@ public static class AppVersionCatalog
         new(
             CurrentVersion,
             "26 сентября 2026",
-            "0.0.6: Evolit Core foundation — deterministic fixed-step simulation, Godot-independent topology/environment, data-oriented organisms, genetics, lineages, snapshots и headless benchmark.",
+            "0.0.7: dynamic physical environment, hydrology, atmosphere/climate foundation, resources/substrate, derived environmental regions и bootstrap stabilization.",
             "Текущая разработка",
             true),
         new(
             PreviousVersion,
             "26 сентября 2026",
-            "0.0.5: гексагональная карта и климатические данные, оптимизированный chunk renderer, terrain inspector на T, исправленные save/load и UI-flow.",
+            "0.0.6: Evolit Core foundation, deterministic fixed-step simulation, Godot-independent topology/environment, data-oriented organisms, genetics, lineages, snapshots и headless benchmark.",
             PreviousCommit,
+            false),
+        new(
+            "0.0.5",
+            "26 сентября 2026",
+            "0.0.5: гексагональная карта и климатические данные, оптимизированный chunk renderer, terrain inspector на T, исправленные save/load и UI-flow.",
+            "d8a0280ec7293931842049e0f51bef18860e5fad",
             false),
         new(
             BaselineVersion,

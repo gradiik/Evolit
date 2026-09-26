@@ -141,7 +141,7 @@ public readonly record struct EnvironmentCellState(
     float GeothermalPotential,
     SubstrateKind Substrate);
 
-public sealed class EnvironmentStore
+public sealed partial class EnvironmentStore
 {
     private readonly WorldTopology _topology;
     private readonly float[] _elevationMeters;
@@ -212,7 +212,7 @@ public sealed class EnvironmentStore
 
     public EnvironmentSnapshot CaptureSnapshot()
     {
-        return new EnvironmentSnapshot
+        var snapshot = new EnvironmentSnapshot
         {
             ElevationMeters = (float[])_elevationMeters.Clone(),
             WaterDepthMeters = (float[])_waterDepthMeters.Clone(),
@@ -227,12 +227,15 @@ public sealed class EnvironmentStore
             GeothermalPotential = (float[])_geothermalPotential.Clone(),
             Substrate = (SubstrateKind[])_substrate.Clone()
         };
+        CapturePhysical(snapshot);
+        return snapshot;
     }
 
     public static EnvironmentStore Restore(WorldTopology topology, EnvironmentSnapshot snapshot)
     {
         var store = new EnvironmentStore(topology);
         store.CopyFrom(snapshot);
+        store.RestorePhysical(snapshot);
         return store;
     }
 
@@ -305,7 +308,7 @@ public sealed class EnvironmentStore
     }
 }
 
-public sealed class EnvironmentSnapshot
+public sealed partial class EnvironmentSnapshot
 {
     public float[] ElevationMeters { get; set; } = Array.Empty<float>();
     public float[] WaterDepthMeters { get; set; } = Array.Empty<float>();

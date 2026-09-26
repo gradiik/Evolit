@@ -54,7 +54,7 @@ public sealed partial class GameScreen : Control
 
         _worldView = new DemoWorldView();
         _worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom, quality);
+        _worldView.Configure(_world, _core!, _settings.CameraSpeed, _settings.SmoothZoom, quality);
         AddChild(_worldView);
 
         _hud = new GameHud();

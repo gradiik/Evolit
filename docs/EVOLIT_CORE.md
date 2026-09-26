@@ -1,4 +1,4 @@
-# Evolit Core — 0.0.6 foundation
+# Evolit Core, 0.0.6 foundation and 0.0.7 physical world
 
 ## Responsibility boundary
 
@@ -52,9 +52,9 @@ Genomes are immutable value records stored once in `GenomeStore`; organisms refe
 
 The headless runner contains deterministic replay, save/restore continuation, genetics, organism-store and environment checks plus 1k/5k/10k/25k/50k benchmark scenarios.
 
-## 0.0.7 boundary
+## 0.0.7 physical-world boundary
 
-0.0.6 is foundation only. 0.0.7 should build the physical planet/environment on this base: geology, substrate dynamics, volcanism, climate, water chemistry, nutrients, organic matter, atmosphere foundation, microbial/plankton biomass and derived ecosystem/biome classification.
+0.0.7 builds the deterministic physical environment on the 0.0.6 foundation: geology/substrate separation, hydrology, atmosphere/climate, light, resources, bootstrap stabilization and derived environmental-region classification. Biology is deliberately outside this version. See `docs/PHYSICAL_WORLD.md`.
 
 The intended long-term flow is:
 
