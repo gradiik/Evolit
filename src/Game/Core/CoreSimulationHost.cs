@@ -171,31 +171,27 @@ public sealed class CoreSimulationHost
 
     private static BootstrapDiagnostics StabilizeEnvironment(CoreSimulation simulation)
     {
-        const int minimumTicks = 200;
-        const int maximumTicks = 2_000;
-        const int checkInterval = 100;
-        const double convergenceThreshold = 0.0025;
-
         var previous = simulation.Environment.CaptureSnapshot();
         var finalChange = double.PositiveInfinity;
         var ticks = 0;
         var converged = false;
 
-        for (; ticks < maximumTicks; ticks += checkInterval)
+        for (; ticks < BootstrapPolicy.MaximumTicks; ticks += BootstrapPolicy.CheckIntervalTicks)
         {
-            simulation.Step(checkInterval);
+            simulation.Step(BootstrapPolicy.CheckIntervalTicks);
             finalChange = simulation.Environment.MeasureChange(previous);
             ValidateEnvironment(simulation);
             previous = simulation.Environment.CaptureSnapshot();
-            if (ticks + checkInterval >= minimumTicks && finalChange <= convergenceThreshold)
+            if (ticks + BootstrapPolicy.CheckIntervalTicks >= BootstrapPolicy.MinimumTicks &&
+                finalChange <= BootstrapPolicy.ConvergenceThreshold)
             {
-                ticks += checkInterval;
+                ticks += BootstrapPolicy.CheckIntervalTicks;
                 converged = true;
                 break;
             }
         }
 
-        return new BootstrapDiagnostics(Math.Min(ticks, maximumTicks), converged, finalChange);
+        return new BootstrapDiagnostics(Math.Min(ticks, BootstrapPolicy.MaximumTicks), converged, finalChange);
     }
 
     private static void ValidateEnvironment(CoreSimulation simulation)

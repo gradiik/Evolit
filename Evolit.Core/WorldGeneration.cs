@@ -81,7 +81,40 @@ public static class ProceduralWorldGenerator
 
     public static GeneratedWorld Generate(WorldGenerationSettings settings)
     {
-        if (settings.Radius < 4) throw new ArgumentOutOfRangeException(nameof(settings.Radius));
+        if (settings.Radius < 4)
+            throw new ArgumentOutOfRangeException(nameof(settings.Radius));
+
+        var baseSeed = SeedMixer.FromString(settings.Seed ?? string.Empty);
+        GeneratedWorld? best = null;
+        var bestScore = double.NegativeInfinity;
+
+        const int maxAttempts = 2;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var attemptSeed = attempt == 0
+                ? baseSeed
+                : SeedMixer.Combine(baseSeed, 9_000UL + (ulong)attempt);
+            var candidate = GenerateCandidate(settings, attemptSeed);
+            ValidatePhysical(candidate);
+
+            var score = ScoreQuality(candidate, out var accepted);
+            if (best is null || score > bestScore)
+            {
+                best = candidate;
+                bestScore = score;
+            }
+
+            if (accepted)
+                return candidate;
+        }
+
+        // Visual-quality constraints are not allowed to make New Game fail.
+        // Headless verification remains strict and will report seeds that need tuning.
+        return best ?? throw new InvalidOperationException("World generation produced no candidate.");
+    }
+
+    private static GeneratedWorld GenerateCandidate(WorldGenerationSettings settings, ulong seed)
+    {
         var totalStart = Stopwatch.GetTimestamp();
 
         var stageStart = Stopwatch.GetTimestamp();
@@ -105,8 +138,6 @@ public static class ProceduralWorldGenerator
         var rivers = new bool[ids.Length];
         var lakes = new bool[ids.Length];
         Array.Fill(drainage,-1);
-
-        var seed = SeedMixer.FromString(settings.Seed ?? string.Empty);
 
         stageStart = Stopwatch.GetTimestamp();
         GenerateElevation(settings, ids, seed, elevation);
@@ -179,37 +210,18 @@ public static class ProceduralWorldGenerator
                 environmentBuildMs,
                 Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds)
         };
-        Validate(generated);
         return generated;
     }
 
-    private static void Validate(GeneratedWorld world)
+    private static void ValidatePhysical(GeneratedWorld world)
     {
         var summary = world.Summary;
         if (summary.Cells <= 0)
             throw new InvalidOperationException("World generation produced no cells.");
-        if (summary.LandRatio is < 0.20f or > 0.75f)
-            throw new InvalidOperationException($"Generated land ratio {summary.LandRatio:0.###} is outside safe bounds.");
+        if (summary.LandRatio <= 0f || summary.LandRatio >= 1f)
+            throw new InvalidOperationException("Generated world must contain both land and water.");
         if (summary.LargestContinentCells <= 0 || summary.LargestContinentCells >= summary.Cells)
-            throw new InvalidOperationException("Generated world must contain both coherent land and water.");
-        var landCells = Math.Max(1, (int)MathF.Round(summary.Cells * summary.LandRatio));
-        if (summary.LargestContinentCells < landCells * 0.16f)
-            throw new InvalidOperationException("Generated land is too fragmented to contain a readable major landmass.");
-        if (summary.IslandCount > Math.Max(16, summary.Cells / 600))
-            throw new InvalidOperationException("Generated world contains an excessive number of tiny land components.");
-
-        var boundaryCells = 0;
-        var boundaryLand = 0;
-        for (var i = 0; i < world.Cells.Length; i++)
-        {
-            if (world.Topology.GetNeighbors(world.Cells[i].Id).Length >= 6)
-                continue;
-            boundaryCells++;
-            if (world.Cells[i].ElevationMeters >= 0f)
-                boundaryLand++;
-        }
-        if (boundaryCells > 0 && boundaryLand > boundaryCells * 0.10f)
-            throw new InvalidOperationException("Generated land reaches too much of the finite world boundary.");
+            throw new InvalidOperationException("Generated world must contain coherent land and water.");
 
         for (var i = 0; i < world.Cells.Length; i++)
         {
@@ -241,6 +253,49 @@ public static class ProceduralWorldGenerator
                     throw new InvalidOperationException($"Generated lake {cell.Id} does not drain within its basin.");
             }
         }
+    }
+
+    private static double ScoreQuality(GeneratedWorld world, out bool accepted)
+    {
+        var summary = world.Summary;
+        var landCells = Math.Max(1, (int)MathF.Round(summary.Cells * summary.LandRatio));
+        var largestLandShare = summary.LargestContinentCells / (double)landCells;
+
+        var boundaryCells = 0;
+        var boundaryLand = 0;
+        for (var i = 0; i < world.Cells.Length; i++)
+        {
+            if (world.Topology.GetNeighbors(world.Cells[i].Id).Length >= 6)
+                continue;
+            boundaryCells++;
+            if (world.Cells[i].ElevationMeters >= 0f)
+                boundaryLand++;
+        }
+
+        var boundaryLandShare = boundaryCells == 0 ? 0d : boundaryLand / (double)boundaryCells;
+        var islandLimit = Math.Max(16, summary.Cells / 600);
+        var targetLand = world.Settings.LandAmount switch
+        {
+            WorldLandAmount.Low => 0.28,
+            WorldLandAmount.High => 0.52,
+            _ => 0.40
+        };
+
+        accepted =
+            summary.LandRatio is >= 0.20f and <= 0.75f &&
+            largestLandShare >= 0.16 &&
+            summary.IslandCount <= islandLimit &&
+            boundaryLandShare <= 0.10 &&
+            summary.MountainCells > 0 &&
+            summary.RiverCells > 0;
+
+        return
+            largestLandShare * 4.0 -
+            Math.Abs(summary.LandRatio - targetLand) * 3.0 -
+            Math.Min(2.0, summary.IslandCount / (double)Math.Max(1, islandLimit)) -
+            boundaryLandShare * 4.0 +
+            (summary.MountainCells > 0 ? 0.25 : -1.0) +
+            (summary.RiverCells > 0 ? 0.25 : -1.0);
     }
 
     private static CellId[] BuildCells(int radius)

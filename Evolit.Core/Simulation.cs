@@ -68,6 +68,17 @@ public sealed class OrganismFoundationSystem : ISimulationSystem
     }
 }
 
+public static class BootstrapPolicy
+{
+    // Bootstrap runs the exact same Core systems as live simulation at 4x relaxation.
+    // Keep the bounded work small enough that 0.0.8's doubled maps cannot lock the UI
+    // for tens of seconds before the first frame.
+    public const int MinimumTicks = 100;
+    public const int MaximumTicks = 600;
+    public const int CheckIntervalTicks = 100;
+    public const double ConvergenceThreshold = 0.0035;
+}
+
 public static class EnvironmentSchedule
 {
     public const int ClimateTicks = 2;

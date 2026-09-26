@@ -196,10 +196,6 @@ public sealed partial class AppRoot : Control
                     return;
                 }
 
-                var autosave = _saves.CreateAutosave(_session, _gameTime, _simulationSpeed, _demoWorld, _coreRuntime?.CaptureSnapshot());
-                if (!autosave.Success)
-                    _toasts?.ShowToast("Первый autosave не создан, manual save сохранён.", ToastKind.Warning);
-
                 RefreshSaveCount();
             },
             ShowGame);
@@ -325,6 +321,7 @@ public sealed partial class AppRoot : Control
                     }
                     catch (Exception ex)
                     {
+                        GD.PushError($"World preparation failed: {ex}");
                         loading.SetStage("Ошибка", 100, "Не удалось подготовить мир.");
                         _toasts?.ShowToast($"Ошибка подготовки мира: {ex.Message}", ToastKind.Error);
                         Callable.From(ShowMainMenu).CallDeferred();
@@ -334,8 +331,17 @@ public sealed partial class AppRoot : Control
                     loading.SetStage("Подготовка интерфейса", 85, "Связываем runtime с игровым экраном.");
                     Callable.From(() =>
                     {
-                        loading.SetStage("Готово", 100, "Мир готов к наблюдению.");
-                        Callable.From(next).CallDeferred();
+                        try
+                        {
+                            loading.SetStage("Готово", 100, "Мир готов к наблюдению.");
+                            next();
+                        }
+                        catch (Exception ex)
+                        {
+                            GD.PushError($"World UI initialization failed: {ex}");
+                            _toasts?.ShowToast($"Ошибка открытия мира: {ex.Message}", ToastKind.Error);
+                            ShowMainMenu();
+                        }
                     }).CallDeferred();
                 }).CallDeferred();
             }).CallDeferred();

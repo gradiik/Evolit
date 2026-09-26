@@ -402,11 +402,6 @@ static void ValidateGeneratedWorld(GeneratedWorld world)
 
 static (string Snapshot, int Ticks, bool Converged, double FinalChange, double CoreConstructionMs, double BootstrapMs) BootstrapGeneratedWorld(GeneratedWorld world, string seed)
 {
-    const int minimumTicks = 200;
-    const int maximumTicks = 2_000;
-    const int checkInterval = 100;
-    const double threshold = 0.0025;
-
     var coreStart = Stopwatch.GetTimestamp();
     var simulation = new CoreSimulation(
         world.Topology,
@@ -420,15 +415,16 @@ static (string Snapshot, int Ticks, bool Converged, double FinalChange, double C
     var ticks = 0;
     var converged = false;
 
-    for (; ticks < maximumTicks; ticks += checkInterval)
+    for (; ticks < BootstrapPolicy.MaximumTicks; ticks += BootstrapPolicy.CheckIntervalTicks)
     {
-        simulation.Step(checkInterval);
+        simulation.Step(BootstrapPolicy.CheckIntervalTicks);
         finalChange = simulation.Environment.MeasureChange(previous);
         AssertPhysicalBounds(simulation);
         previous = simulation.Environment.CaptureSnapshot();
-        if (ticks + checkInterval >= minimumTicks && finalChange <= threshold)
+        if (ticks + BootstrapPolicy.CheckIntervalTicks >= BootstrapPolicy.MinimumTicks &&
+            finalChange <= BootstrapPolicy.ConvergenceThreshold)
         {
-            ticks += checkInterval;
+            ticks += BootstrapPolicy.CheckIntervalTicks;
             converged = true;
             break;
         }
@@ -438,7 +434,7 @@ static (string Snapshot, int Ticks, bool Converged, double FinalChange, double C
     var bootstrapMs = Stopwatch.GetElapsedTime(bootstrapStart).TotalMilliseconds;
     return (
         CoreSnapshotSerializer.Serialize(simulation.CaptureSnapshot()),
-        Math.Min(ticks, maximumTicks),
+        Math.Min(ticks, BootstrapPolicy.MaximumTicks),
         converged,
         finalChange,
         coreConstructionMs,

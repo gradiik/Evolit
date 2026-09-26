@@ -22,7 +22,7 @@ public sealed class SaveManager
     private readonly string _saveDirectory;
     private readonly JsonSerializerOptions _json = new()
     {
-        WriteIndented = true,
+        WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
@@ -132,9 +132,12 @@ public sealed class SaveManager
     private SaveOperationResult WriteDocument(string path, SaveDocument document)
     {
         document.SavedAt = DateTimeOffset.UtcNow;
-        var json = JsonSerializer.Serialize(document, _json);
 
-        return AtomicFile.Write(path, json, true, out var error)
+        return AtomicFile.Write(
+                path,
+                stream => JsonSerializer.Serialize(stream, document, _json),
+                true,
+                out var error)
             ? SaveOperationResult.Ok(path)
             : SaveOperationResult.Fail(error);
     }
@@ -231,14 +234,14 @@ public sealed class SaveManager
                 return false;
             }
 
-            var json = File.ReadAllText(path);
-            if (string.IsNullOrWhiteSpace(json))
+            if (new FileInfo(path).Length == 0)
             {
                 error = "Файл пуст.";
                 return false;
             }
 
-            var parsed = JsonSerializer.Deserialize<SaveDocument>(json, _json);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var parsed = JsonSerializer.Deserialize<SaveDocument>(stream, _json);
             if (parsed is null)
             {
                 error = "JSON не содержит сохранение.";
