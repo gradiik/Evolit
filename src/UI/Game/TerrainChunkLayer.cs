@@ -149,7 +149,7 @@ internal sealed partial class TerrainChunkLayer : Control
                 }
                 break;
             case HexTerrainType.River:
-                DrawCircle(center, _hexSize * 0.12f, new Color(0.42f, 0.82f, 0.79f, 0.26f));
+                DrawCircle(center, _hexSize * 0.18f, new Color(0.48f, 0.88f, 0.86f, 0.34f));
                 break;
         }
     }
@@ -270,6 +270,36 @@ internal sealed partial class TerrainChunkLayer : Control
             : new Color(0.60f, 0.66f, 0.34f);
     }
 
+    private static Color SurfaceClimateColor(WorldHexCell cell)
+    {
+        var moisture = Math.Clamp((cell.Humidity - 0.12f) / 0.62f, 0f, 1f);
+        var dry = new Color(0.53f, 0.44f, 0.25f);
+        var humid = new Color(0.20f, 0.43f, 0.24f);
+        var cold = Math.Clamp((8f - cell.TemperatureCelsius) / 28f, 0f, 0.28f);
+
+        var r = dry.R + (humid.R - dry.R) * moisture;
+        var g = dry.G + (humid.G - dry.G) * moisture;
+        var b = dry.B + (humid.B - dry.B) * moisture;
+        var average = (r + g + b) / 3f;
+        return new Color(
+            r + (average - r) * cold,
+            g + (average - g) * cold,
+            b + (average - b) * cold,
+            1f);
+    }
+
+    private static Color DeepWaterColor(WorldHexCell cell)
+    {
+        var depth = Math.Clamp(cell.WaterDepthMeters / 2200f, 0f, 1f);
+        var shallow = new Color(0.035f, 0.145f, 0.205f);
+        var abyss = new Color(0.012f, 0.058f, 0.072f);
+        return new Color(
+            shallow.R + (abyss.R - shallow.R) * depth,
+            shallow.G + (abyss.G - shallow.G) * depth,
+            shallow.B + (abyss.B - shallow.B) * depth,
+            1f);
+    }
+
     private static Color TerrainColor(WorldHexCell cell, GenerationDebugMode debugMode)
     {
         if (debugMode != GenerationDebugMode.None)
@@ -277,13 +307,13 @@ internal sealed partial class TerrainChunkLayer : Control
 
         var baseColor = cell.Terrain switch
         {
-            HexTerrainType.DeepWater => new Color(0.035f, 0.145f, 0.205f),
+            HexTerrainType.DeepWater => DeepWaterColor(cell),
             HexTerrainType.ShallowWater => new Color(0.055f, 0.255f, 0.300f),
             HexTerrainType.Lake => new Color(0.060f, 0.305f, 0.325f),
-            HexTerrainType.River => new Color(0.080f, 0.370f, 0.385f),
+            HexTerrainType.River => new Color(0.070f, 0.420f, 0.455f),
             HexTerrainType.Sand => new Color(0.49f, 0.45f, 0.29f),
-            HexTerrainType.Desert => new Color(0.60f, 0.49f, 0.25f),
-            HexTerrainType.Grassland => new Color(0.235f, 0.405f, 0.225f),
+            HexTerrainType.Desert => SurfaceClimateColor(cell),
+            HexTerrainType.Grassland => SurfaceClimateColor(cell),
             HexTerrainType.Rocky => new Color(0.335f, 0.365f, 0.315f),
             HexTerrainType.Mountain => new Color(0.285f, 0.315f, 0.300f),
             _ => new Color(0.23f, 0.38f, 0.22f)

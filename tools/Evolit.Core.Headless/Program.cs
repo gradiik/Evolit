@@ -235,14 +235,21 @@ static void AssertEnvironment()
 
 static void RunWorldgenVerification()
 {
-    var settings = new WorldGenerationSettings("worldgen-determinism", 28);
+    if (WorldGenerationScale.SmallRadius < WorldGenerationScale.LegacySmallRadius * 2 ||
+        WorldGenerationScale.MediumRadius < WorldGenerationScale.LegacyMediumRadius * 2 ||
+        WorldGenerationScale.LargeRadius < WorldGenerationScale.LegacyLargeRadius * 2)
+    {
+        throw new InvalidOperationException("0.0.8 world-size presets are not at least 2x their legacy linear extent.");
+    }
+
+    var settings = new WorldGenerationSettings("worldgen-determinism", WorldGenerationScale.SmallRadius);
     var a = ProceduralWorldGenerator.Generate(settings);
     var b = ProceduralWorldGenerator.Generate(settings);
     var other = ProceduralWorldGenerator.Generate(settings with { Seed = "worldgen-other" });
 
     if (!GeneratedWorldEquivalent(a, b))
         throw new InvalidOperationException("Same seed/settings produced different generated cell state.");
-    if (GeneratedWorldEquivalent(a, other))
+    if (GeneratedWorldEquivalent(a, other, compareSettings: false))
         throw new InvalidOperationException("Different seeds produced identical generated cell state.");
 
     var aBootstrap = BootstrapGeneratedWorld(a, settings.Seed);
@@ -255,12 +262,24 @@ static void RunWorldgenVerification()
         throw new InvalidOperationException("Different worldgen seeds produced identical stabilized snapshots.");
     ValidateGeneratedWorld(a);
     ValidateGeneratedWorld(other);
+
+    var edgeSettings = new[]
+    {
+        new WorldGenerationSettings("edge-low-cold-calm", WorldGenerationScale.SmallRadius, WorldLandAmount.Low, WorldClimate.Cold, GeologicalActivity.Calm),
+        new WorldGenerationSettings("edge-high-warm-active", WorldGenerationScale.SmallRadius, WorldLandAmount.High, WorldClimate.Warm, GeologicalActivity.Active),
+        new WorldGenerationSettings("edge-medium-active", WorldGenerationScale.MediumRadius, WorldLandAmount.Normal, WorldClimate.Temperate, GeologicalActivity.Active)
+    };
+    foreach (var edge in edgeSettings)
+        ValidateGeneratedWorld(ProceduralWorldGenerator.Generate(edge));
+
     Console.WriteLine($"WORLDGEN VERIFY PASS bootstrap_ticks={aBootstrap.Ticks} converged={aBootstrap.Converged}");
 }
 
-static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b)
+static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b, bool compareSettings = true)
 {
-    if (a.Cells.Length != b.Cells.Length || !a.Settings.Equals(b.Settings))
+    if (a.Cells.Length != b.Cells.Length)
+        return false;
+    if (compareSettings && !a.Settings.Equals(b.Settings))
         return false;
 
     for (var i = 0; i < a.Cells.Length; i++)
@@ -293,7 +312,13 @@ static void RunWorldgenSeeds()
     for (var i = 0; i < 20; i++)
     {
         var seed = $"seed-{i:00}";
-        var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, 28));
+        var radius = i switch
+        {
+            < 12 => WorldGenerationScale.SmallRadius,
+            < 18 => WorldGenerationScale.MediumRadius,
+            _ => WorldGenerationScale.LargeRadius
+        };
+        var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, radius));
         ValidateGeneratedWorld(world);
         var bootstrap = BootstrapGeneratedWorld(world, seed);
         PrintWorldgenSummary(seed, world, bootstrap);
@@ -303,7 +328,7 @@ static void RunWorldgenSeeds()
 
 static void RunWorldgenSummary(string seed)
 {
-    var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, 38));
+    var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, WorldGenerationScale.MediumRadius));
     ValidateGeneratedWorld(world);
     var bootstrap = BootstrapGeneratedWorld(world, seed);
     PrintWorldgenSummary(seed, world, bootstrap);
@@ -311,7 +336,7 @@ static void RunWorldgenSummary(string seed)
 
 static void RunWorldgenBenchmark()
 {
-    foreach (var radius in new[] { 28, 38, 49 })
+    foreach (var radius in new[] { WorldGenerationScale.SmallRadius, WorldGenerationScale.MediumRadius, WorldGenerationScale.LargeRadius })
     {
         GC.Collect();
         var before = GC.GetTotalMemory(true);
@@ -337,6 +362,26 @@ static void ValidateGeneratedWorld(GeneratedWorld world)
         throw new InvalidOperationException($"Invalid land ratio {s.LandRatio:0.###}.");
     if (s.LargestContinentCells <= 0)
         throw new InvalidOperationException("World lacks coherent land.");
+    var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
+    if (s.LargestContinentCells < landCells * 0.16)
+        throw new InvalidOperationException("World land is excessively fragmented.");
+    if (s.MountainCells <= 0)
+        throw new InvalidOperationException("World has no mountain/highland structure.");
+    if (s.RiverCells <= 0)
+        throw new InvalidOperationException("World has no readable river network.");
+
+    var boundaryCells = 0;
+    var boundaryLand = 0;
+    foreach (var cell in world.Cells)
+    {
+        if (world.Topology.GetNeighbors(cell.Id).Length >= 6)
+            continue;
+        boundaryCells++;
+        if (cell.ElevationMeters >= 0f)
+            boundaryLand++;
+    }
+    if (boundaryCells > 0 && boundaryLand > boundaryCells * 0.10)
+        throw new InvalidOperationException("Too much land reaches the finite world boundary.");
 
     foreach (var cell in world.Cells)
     {
@@ -408,7 +453,7 @@ static void PrintWorldgenSummary(
     var s = world.Summary;
     var largestPct = s.Cells == 0 ? 0 : s.LargestContinentCells * 100.0 / s.Cells;
     Console.WriteLine(
-        $"WORLDGEN seed={seed} cells={s.Cells} land={s.LandRatio:P1} water={(1f-s.LandRatio):P1} " +
+        $"WORLDGEN seed={seed} radius={world.Settings.Radius} cells={s.Cells} land={s.LandRatio:P1} water={(1f-s.LandRatio):P1} " +
         $"components={s.LandComponents} largest={largestPct:0.0}% islands={s.IslandCount} " +
         $"mountains={s.MountainCells} rivers={s.RiverCells} lakes={s.LakeCells} " +
         $"elevation={s.MinElevationMeters:0}..{s.MaxElevationMeters:0}m max_water={s.MaxWaterDepthMeters:0}m " +

@@ -60,3 +60,16 @@ The headless world-generation commands report land/water percentages, components
 ## In-game generation diagnostics
 
 Hold T over a cell to inspect live Core environment plus generation flow/slope/geothermal/mineral seed data. F4 cycles developer-only terrain layers for elevation, water depth, flow accumulation, temperature, humidity, substrate, minerals and the initial derived environmental region. Detail/fine terrain decoration is hidden while a diagnostic layer is active so the field remains readable.
+
+
+## 0.0.8 visual-quality pass
+
+The original 0.0.8 generator produced overly porous, blob-like land with noisy inland holes and weak terrain hierarchy. The quality pass changes macro geography to domain-warped, deliberately separated continental anchors. Continental structure dominates regional/local noise; deterministic component cleanup removes tiny land fragments and small enclosed water holes while keeping meaningful islands and larger inland seas.
+
+New-world radii are now 56 / 76 / 98 for Small / Medium / Large, exactly 2x the previous linear radii 28 / 38 / 49. Approximate cell counts are 9,577 / 17,557 / 29,107, about 4x the previous cell counts. Metadata-only legacy saves still use the historical radii; saves with map/Core state restore their actual saved topology.
+
+Mountain relief is now applied as deterministic elongated belts after coastline cleanup, producing ranges and highland halos instead of isolated noise blobs. River visibility uses a lower scale-aware accumulation threshold on the larger worlds. Climate humidity is based on graph distance to real water plus river moisture and a small deterministic west-to-east rain-shadow foundation.
+
+Sand is restricted to actual low coastal cells. Interior dry/humid terrain rendering now blends continuously by physical humidity/temperature instead of switching between two flat colors. Very deep ocean visually approaches the game background so the finite hex world boundary is less prominent.
+
+Renderer chunk span is increased from 8 to 12 cells and minimum camera zoom is reduced so doubled Large worlds can still be framed at low display resolutions.

@@ -64,7 +64,13 @@ public sealed class DemoWorldDataProvider
             ? WorldMapGenerator.Restore(session.Seed, session.WorldSize, savedState.Map)
             : coreSnapshot?.Topology?.Cells.Length > 0
                 ? WorldMapGenerator.RestoreFromCore(session.Seed, session.WorldSize, coreSnapshot)
-                : WorldMapGenerator.Generate(session.Seed, session.WorldSize, session.LandAmount, session.Climate, session.Geology);
+                : WorldMapGenerator.Generate(
+                    session.Seed,
+                    session.WorldSize,
+                    session.LandAmount,
+                    session.Climate,
+                    session.Geology,
+                    legacyScale: !session.WasCreatedNew && savedState?.Map is null && coreSnapshot is null);
         _species = SpeciesDemoData.CreateSpecies();
         _chronicle = SpeciesDemoData.CreateChronicle();
         _events = SpeciesDemoData.CreateEvents(session.WorldName);

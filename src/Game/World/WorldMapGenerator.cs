@@ -15,9 +15,10 @@ public static class WorldMapGenerator
         string sizeName,
         WorldLandAmount landAmount = WorldLandAmount.Normal,
         WorldClimate climate = WorldClimate.Temperate,
-        GeologicalActivity geology = GeologicalActivity.Normal)
+        GeologicalActivity geology = GeologicalActivity.Normal,
+        bool legacyScale = false)
     {
-        var radius = RadiusFor(sizeName);
+        var radius = RadiusFor(sizeName, legacyScale);
         var generated = ProceduralWorldGenerator.Generate(
             new WorldGenerationSettings(seed, radius, landAmount, climate, geology));
 
@@ -80,7 +81,9 @@ public static class WorldMapGenerator
         if (ids.Length == 0 || environment.ElevationMeters.Length != ids.Length)
             throw new InvalidOperationException("Core snapshot cannot reconstruct a world map.");
 
-        var radius = RadiusFor(sizeName);
+        var radius = 0;
+        for (var i = 0; i < ids.Length; i++)
+            radius = Math.Max(radius, (Math.Abs(ids[i].Q) + Math.Abs(ids[i].R) + Math.Abs(-ids[i].Q - ids[i].R)) / 2);
         var cells = new List<WorldHexCell>(ids.Length);
         for (var i = 0; i < ids.Length; i++)
         {
@@ -200,12 +203,27 @@ public static class WorldMapGenerator
         _ => 0f
     };
 
-    private static int RadiusFor(string sizeName) => sizeName switch
+    private static int RadiusFor(string sizeName, bool legacyScale = false)
     {
-        "Маленький" => 28,
-        "Большой" => 49,
-        _ => 38
-    };
+        if (legacyScale)
+        {
+            return sizeName switch
+            {
+                "Маленький" => WorldGenerationScale.LegacySmallRadius,
+                "Большой" => WorldGenerationScale.LegacyLargeRadius,
+                _ => WorldGenerationScale.LegacyMediumRadius
+            };
+        }
+
+        // 0.0.8 quality pass: double linear world extent from the original
+        // 28 / 38 / 49 radii. Cell counts grow by roughly 4x.
+        return sizeName switch
+        {
+            "Маленький" => WorldGenerationScale.SmallRadius,
+            "Большой" => WorldGenerationScale.LargeRadius,
+            _ => WorldGenerationScale.MediumRadius
+        };
+    }
 
     private static float VisualVariation(CellId id, string seed)
     {

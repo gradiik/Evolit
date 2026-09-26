@@ -132,7 +132,7 @@ public sealed partial class NewGameScreen : Control
 
         var hint = new Label
         {
-            Text = "Размер определяет радиус гексагонального мира. Один и тот же seed и размер воспроизводят ту же карту.",
+            Text = "Размеры 0.0.8 увеличены минимум вдвое по линейному охвату. Один и тот же seed и набор параметров воспроизводят тот же стартовый мир.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         hint.AddThemeFontSizeOverride("font_size", 13);

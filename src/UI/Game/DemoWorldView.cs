@@ -39,9 +39,9 @@ public sealed partial class DemoWorldView : Control
 {
     public event Action<DemoEntity?>? SelectionChanged;
 
-    private const float MinZoom = 0.10f;
+    private const float MinZoom = 0.035f;
     private const float MaxZoom = 3.0f;
-    private const int ChunkHexSpan = 8;
+    private const int ChunkHexSpan = 12;
     private const float DetailShowZoom = 0.22f;
     private const float DetailHideZoom = 0.18f;
     private const float FineShowZoom = 0.46f;
