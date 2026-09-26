@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.5",
-  "development_branch": "main",
+  "current": "0.0.6",
+  "development_branch": "feature/evolit-core-0.0.6",
   "protocol": "VERSIONING.md",
   "versions": [
     {
-      "version": "0.0.5",
+      "version": "0.0.6",
       "status": "development",
-      "branch": null,
+      "branch": "feature/evolit-core-0.0.6",
       "tag": null,
       "commit": null,
-      "note": "Current 0.0.5 development on main. Freeze checkpoint/tag only when this version is explicitly completed/released."
+      "note": "Evolit Core foundation development. No release/tag until explicit approval after audit."
+    },
+    {
+      "version": "0.0.5",
+      "status": "checkpoint",
+      "branch": null,
+      "tag": null,
+      "commit": "d8a0280ec7293931842049e0f51bef18860e5fad",
+      "note": "Final 0.0.5 development checkpoint before Evolit Core work. Release/tag not created."
     },
     {
       "version": "0.0.4",

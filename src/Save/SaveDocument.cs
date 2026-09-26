@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Evolit.Core;
 
 namespace Evolit.Save;
 
@@ -28,6 +29,7 @@ public sealed class GameRuntimeSaveState
     public GameTimeSaveState Time { get; set; } = new();
     public SimulationSpeedSaveState Speed { get; set; } = new();
     public DemoWorldSaveState World { get; set; } = new();
+    public CoreSimulationSnapshot? Core { get; set; }
 }
 
 public sealed class GameTimeSaveState

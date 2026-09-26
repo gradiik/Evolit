@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Evolit.Core;
 using Evolit.Game;
 using Evolit.Session;
 using Evolit.Storage;
@@ -35,9 +36,10 @@ public sealed class SaveManager
         GameSession session,
         GameTimeController? time = null,
         SimulationSpeedState? speed = null,
-        DemoWorldDataProvider? world = null)
+        DemoWorldDataProvider? world = null,
+        CoreSimulationSnapshot? core = null)
     {
-        var document = BuildDocument(session, ManualType, null, time, speed, world);
+        var document = BuildDocument(session, ManualType, null, time, speed, world, core);
         var path = Path.Combine(_saveDirectory, $"manual_{session.SaveId}.json");
         return WriteDocument(path, document);
     }
@@ -46,7 +48,8 @@ public sealed class SaveManager
         GameSession session,
         GameTimeController? time = null,
         SimulationSpeedState? speed = null,
-        DemoWorldDataProvider? world = null)
+        DemoWorldDataProvider? world = null,
+        CoreSimulationSnapshot? core = null)
     {
         var slots = ListSaves()
             .Where(slot => slot.Document?.SaveType == AutosaveType && slot.Document.AutosaveIndex.HasValue)
@@ -57,7 +60,7 @@ public sealed class SaveManager
             ? 1
             : (slots[0].Document!.AutosaveIndex!.Value % AutosaveSlots) + 1;
 
-        var document = BuildDocument(session, AutosaveType, nextIndex, time, speed, world);
+        var document = BuildDocument(session, AutosaveType, nextIndex, time, speed, world, core);
         var path = Path.Combine(_saveDirectory, $"autosave_{nextIndex}.json");
         return WriteDocument(path, document);
     }
@@ -142,7 +145,8 @@ public sealed class SaveManager
         int? autosaveIndex,
         GameTimeController? time,
         SimulationSpeedState? speed,
-        DemoWorldDataProvider? world)
+        DemoWorldDataProvider? world,
+        CoreSimulationSnapshot? core)
     {
         return new SaveDocument
         {
@@ -172,7 +176,8 @@ public sealed class SaveManager
                         Paused = speed.Paused,
                         Multiplier = speed.Multiplier
                     },
-                    World = world.CaptureSaveState()
+                    World = world.CaptureSaveState(),
+                    Core = core
                 }
                 : null
         };
@@ -297,6 +302,21 @@ public sealed class SaveManager
             {
                 error = "Runtime-состояние не содержит обязательные данные мира.";
                 return false;
+            }
+
+            if (document.Runtime.Core is not null)
+            {
+                if (document.Runtime.Core.Version != CoreSimulation.SnapshotVersion)
+                {
+                    error = $"Неподдерживаемая версия Evolit Core snapshot: {document.Runtime.Core.Version}.";
+                    return false;
+                }
+
+                if (document.Runtime.Core.Topology?.Cells.Length is null or 0)
+                {
+                    error = "Evolit Core snapshot не содержит topology.";
+                    return false;
+                }
             }
         }
 

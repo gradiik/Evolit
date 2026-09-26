@@ -1,5 +1,6 @@
 using System;
 using Evolit.Game;
+using Evolit.Game.Core;
 using Evolit.Session;
 using Evolit.Settings;
 using Evolit.UI.Game;
@@ -18,6 +19,7 @@ public sealed partial class GameScreen : Control
     private SimulationSpeedState? _speed;
     private GameTimeController? _time;
     private DemoWorldDataProvider? _world;
+    private CoreSimulationHost? _core;
     private DemoSimulationController? _demoSimulation;
     private GameHud? _hud;
     private DemoWorldView? _worldView;
@@ -29,6 +31,7 @@ public sealed partial class GameScreen : Control
         SimulationSpeedState speed,
         GameTimeController time,
         DemoWorldDataProvider world,
+        CoreSimulationHost core,
         GameViewState? initialViewState = null)
     {
         _session = session;
@@ -36,6 +39,7 @@ public sealed partial class GameScreen : Control
         _speed = speed;
         _time = time;
         _world = world;
+        _core = core;
         _initialViewState = initialViewState;
     }
 
@@ -74,6 +78,8 @@ public sealed partial class GameScreen : Control
     public override void _Process(double delta)
     {
         _time?.Advance(delta);
+        if (_core is not null && _speed is not null)
+            _core.AdvanceFrame(delta, _speed);
         _demoSimulation?.Tick();
     }
 

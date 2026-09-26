@@ -4,4 +4,9 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>Evolit</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Evolit.Core/**/*.cs" />
+    <Compile Remove="tools/Evolit.Core.Headless/**/*.cs" />
+    <ProjectReference Include="Evolit.Core/Evolit.Core.csproj" />
+  </ItemGroup>
 </Project>
