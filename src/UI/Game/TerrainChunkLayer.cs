@@ -52,6 +52,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private float _hexSize;
     private GraphicsQualityProfile _quality = GraphicsQualityProfile.From(AppSettings.Default());
     private TerrainLayerKind _kind;
+    private GenerationDebugMode _debugMode;
     private readonly Vector2[] _hexPoints = new Vector2[6];
     private readonly Vector2[] _hexOutline = new Vector2[7];
 
@@ -78,6 +79,14 @@ internal sealed partial class TerrainChunkLayer : Control
         QueueRedraw();
     }
 
+    public void SetDebugMode(GenerationDebugMode mode)
+    {
+        if (_kind != TerrainLayerKind.Base || _debugMode == mode)
+            return;
+        _debugMode = mode;
+        QueueRedraw();
+    }
+
     public override void _Draw()
     {
         foreach (var cell in _cells)
@@ -101,7 +110,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private void DrawBase(WorldHexCell cell, Vector2 center)
     {
         FillHexPoints(center, _hexSize, _hexPoints);
-        DrawColoredPolygon(_hexPoints, TerrainColor(cell));
+        DrawColoredPolygon(_hexPoints, TerrainColor(cell, _debugMode));
     }
 
     private void DrawDetail(WorldHexCell cell, Vector2 center)
@@ -212,8 +221,60 @@ internal sealed partial class TerrainChunkLayer : Control
             target[i] = center + UnitHex[i] * radius;
     }
 
-    private static Color TerrainColor(WorldHexCell cell)
+    private static Color DebugColor(WorldHexCell cell, GenerationDebugMode mode)
     {
+        static Color Ramp(float value)
+        {
+            value = Math.Clamp(value, 0f, 1f);
+            return new Color(value, 0.28f + (1f - value) * 0.42f, 1f - value * 0.78f, 1f);
+        }
+
+        return mode switch
+        {
+            GenerationDebugMode.Elevation => Ramp((cell.ElevationMeters + 4000f) / 7500f),
+            GenerationDebugMode.WaterDepth => cell.WaterDepthMeters > 0f
+                ? new Color(0.05f, Math.Clamp(0.28f + cell.WaterDepthMeters / 6000f, 0.28f, 0.62f), 0.92f, 1f)
+                : new Color(0.08f, 0.10f, 0.10f, 1f),
+            GenerationDebugMode.FlowAccumulation => Ramp(MathF.Log10(1f + cell.FlowAccumulation) / 3f),
+            GenerationDebugMode.Temperature => Ramp((cell.TemperatureCelsius + 40f) / 85f),
+            GenerationDebugMode.Humidity => Ramp(cell.Humidity),
+            GenerationDebugMode.Substrate => cell.Substrate switch
+            {
+                Evolit.Core.SubstrateKind.BareRock => new Color(0.48f, 0.48f, 0.50f),
+                Evolit.Core.SubstrateKind.Basalt => new Color(0.24f, 0.24f, 0.28f),
+                Evolit.Core.SubstrateKind.VolcanicAsh => new Color(0.36f, 0.30f, 0.30f),
+                Evolit.Core.SubstrateKind.Sand => new Color(0.76f, 0.67f, 0.40f),
+                Evolit.Core.SubstrateKind.Sediment => new Color(0.42f, 0.55f, 0.43f),
+                Evolit.Core.SubstrateKind.IceSnow => new Color(0.78f, 0.92f, 1f),
+                _ => new Color(0.42f, 0.52f, 0.40f)
+            },
+            GenerationDebugMode.Minerals => Ramp(cell.MineralPotential),
+            GenerationDebugMode.Region => InitialRegionColor(cell),
+            _ => new Color(0.23f, 0.38f, 0.22f)
+        };
+    }
+
+    private static Color InitialRegionColor(WorldHexCell cell)
+    {
+        if (cell.WaterDepthMeters > 120f) return new Color(0.05f, 0.20f, 0.58f);
+        if (cell.WaterDepthMeters > 2f) return new Color(0.10f, 0.46f, 0.72f);
+        if (cell.Humidity > 0.75f && cell.WaterDepthMeters > 0f) return new Color(0.16f, 0.58f, 0.42f);
+        if (cell.TemperatureCelsius < -8f) return new Color(0.78f, 0.92f, 1f);
+        if (cell.Substrate is Evolit.Core.SubstrateKind.BareRock or Evolit.Core.SubstrateKind.Basalt)
+            return new Color(0.46f, 0.45f, 0.43f);
+        if (cell.Humidity < 0.22f) return new Color(0.78f, 0.58f, 0.28f);
+        if (cell.TemperatureCelsius < 5f) return new Color(0.48f, 0.70f, 0.78f);
+        if (cell.TemperatureCelsius > 23f && cell.Humidity > 0.68f) return new Color(0.15f, 0.72f, 0.50f);
+        return cell.Humidity > 0.52f
+            ? new Color(0.24f, 0.66f, 0.40f)
+            : new Color(0.60f, 0.66f, 0.34f);
+    }
+
+    private static Color TerrainColor(WorldHexCell cell, GenerationDebugMode debugMode)
+    {
+        if (debugMode != GenerationDebugMode.None)
+            return DebugColor(cell, debugMode);
+
         var baseColor = cell.Terrain switch
         {
             HexTerrainType.DeepWater => new Color(0.035f, 0.145f, 0.205f),

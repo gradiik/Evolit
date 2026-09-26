@@ -40,6 +40,7 @@ public sealed partial class AppRoot : Control
 
     public override void _Ready()
     {
+        AppVersionCatalog.ValidateCurrentVersion();
         Theme = NatureTechTheme.Create();
         InputBindings.EnsureDefaults();
         SettingsRuntime.Apply(_settings.Load());
@@ -175,7 +176,7 @@ public sealed partial class AppRoot : Control
 
     private void CreateNewSession(NewGameRequest request)
     {
-        _session = GameSession.CreateNew(request.WorldName, request.Seed, request.WorldSize);
+        _session = GameSession.CreateNew(request.WorldName, request.Seed, request.WorldSize, request.LandAmount, request.Climate, request.Geology);
         ClearGameRuntime();
         _gameViewState = null;
 
@@ -293,8 +294,10 @@ public sealed partial class AppRoot : Control
         ShowLoading(
             "Загрузка сохранения",
             document.Runtime?.Core is null
-                ? "Сохранение до Evolit Core: карта будет восстановлена по seed, Core создаст совместимый foundation-state."
-                : "Генерация карты по seed и восстановление demo + Core runtime-состояния…",
+                ? "Старое сохранение: карта будет совместимо восстановлена по seed."
+                : document.Runtime.World.Map is { Cells.Count: > 0 }
+                    ? "Восстановление сохранённой карты и Core runtime без повторной генерации…"
+                    : "Восстановление карты из Core snapshot без повторной procedural generation…",
             () =>
             {
                 PrepareGameRuntime(document);
@@ -470,9 +473,8 @@ public sealed partial class AppRoot : Control
 
         _simulationSpeed = new SimulationSpeedState();
         _gameTime = new GameTimeController(_simulationSpeed);
-        _demoWorld = new DemoWorldDataProvider(_session);
-
         var runtime = document?.Runtime;
+        _demoWorld = new DemoWorldDataProvider(_session, runtime?.World, runtime?.Core);
         if (runtime is not null)
         {
             _simulationSpeed.Restore(runtime.Speed.Paused, runtime.Speed.Multiplier);
@@ -555,7 +557,8 @@ public sealed partial class AppRoot : Control
         var core = _coreRuntime?.GetDiagnostics();
         var coreText = core.HasValue
             ? $"\nCore: tick {core.Value.Tick} · t={core.Value.SimulationSeconds:0.0}s · org {core.Value.OrganismCount} · genomes {core.Value.GenomeCount} · lineages {core.Value.LineageCount}" +
-              $"\nCore cells {core.Value.CellCount} · mode {core.Value.Mode} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · alloc/tick {core.Value.AllocatedBytesPerTick:0} B"
+              $"\nCore cells {core.Value.CellCount} · mode {core.Value.Mode} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · alloc/tick {core.Value.AllocatedBytesPerTick:0} B" +
+              $"\nBootstrap: {core.Value.BootstrapTicks} ticks · converged {core.Value.BootstrapConverged} · change {core.Value.BootstrapFinalChange:0.######}"
             : string.Empty;
 
         _debug.SetData(
@@ -567,6 +570,7 @@ public sealed partial class AppRoot : Control
             $"Save ID: {session?.SaveId ?? "—"}\n" +
             $"World: {session?.WorldName ?? "—"}\n" +
             $"Seed: {session?.Seed ?? "—"}\n" +
+            $"Generation: land {session?.LandAmount.ToString() ?? "—"} · climate {session?.Climate.ToString() ?? "—"} · geology {session?.Geology.ToString() ?? "—"}\n" +
             $"Playtime: {playtime}\n" +
             $"Saves: {_cachedSaveCount}\n" +
             $"Save schema: {SaveManager.SchemaVersion}" +

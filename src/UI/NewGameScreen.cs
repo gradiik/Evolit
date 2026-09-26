@@ -1,4 +1,5 @@
 using System;
+using Evolit.Core;
 using Godot;
 
 namespace Evolit.UI;
@@ -8,6 +9,9 @@ public sealed class NewGameRequest
     public string WorldName { get; init; } = string.Empty;
     public string Seed { get; init; } = string.Empty;
     public string WorldSize { get; init; } = "Средний";
+    public WorldLandAmount LandAmount { get; init; } = WorldLandAmount.Normal;
+    public WorldClimate Climate { get; init; } = WorldClimate.Temperate;
+    public GeologicalActivity Geology { get; init; } = GeologicalActivity.Normal;
 }
 
 public sealed partial class NewGameScreen : Control
@@ -18,6 +22,9 @@ public sealed partial class NewGameScreen : Control
     private LineEdit? _worldName;
     private LineEdit? _seed;
     private OptionButton? _worldSize;
+    private OptionButton? _landAmount;
+    private OptionButton? _climate;
+    private OptionButton? _geology;
     private Label? _error;
 
     public override void _Ready()
@@ -89,6 +96,40 @@ public sealed partial class NewGameScreen : Control
         _worldSize.Select(1);
         root.AddChild(_worldSize);
 
+        var generationGrid = new GridContainer { Columns = 3 };
+        generationGrid.AddThemeConstantOverride("h_separation", 12);
+        root.AddChild(generationGrid);
+
+        var landColumn = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        landColumn.AddChild(FieldLabel("Количество суши"));
+        _landAmount = new OptionButton { CustomMinimumSize = new Vector2(0, 48), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _landAmount.AddItem("Мало");
+        _landAmount.AddItem("Обычно");
+        _landAmount.AddItem("Много");
+        _landAmount.Select(1);
+        landColumn.AddChild(_landAmount);
+        generationGrid.AddChild(landColumn);
+
+        var climateColumn = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        climateColumn.AddChild(FieldLabel("Климат"));
+        _climate = new OptionButton { CustomMinimumSize = new Vector2(0, 48), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _climate.AddItem("Холодный");
+        _climate.AddItem("Умеренный");
+        _climate.AddItem("Тёплый");
+        _climate.Select(1);
+        climateColumn.AddChild(_climate);
+        generationGrid.AddChild(climateColumn);
+
+        var geologyColumn = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        geologyColumn.AddChild(FieldLabel("Геология"));
+        _geology = new OptionButton { CustomMinimumSize = new Vector2(0, 48), SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _geology.AddItem("Спокойная");
+        _geology.AddItem("Обычная");
+        _geology.AddItem("Активная");
+        _geology.Select(1);
+        geologyColumn.AddChild(_geology);
+        generationGrid.AddChild(geologyColumn);
+
         var hint = new Label
         {
             Text = "Размер определяет радиус гексагонального мира. Один и тот же seed и размер воспроизводят ту же карту.",
@@ -134,7 +175,7 @@ public sealed partial class NewGameScreen : Control
 
     private void Create()
     {
-        if (_worldName is null || _seed is null || _worldSize is null || _error is null)
+        if (_worldName is null || _seed is null || _worldSize is null || _landAmount is null || _climate is null || _geology is null || _error is null)
             return;
 
         var name = _worldName.Text.Trim();
@@ -157,7 +198,10 @@ public sealed partial class NewGameScreen : Control
         {
             WorldName = name,
             Seed = seed,
-            WorldSize = _worldSize.GetItemText(_worldSize.Selected)
+            WorldSize = _worldSize.GetItemText(_worldSize.Selected),
+            LandAmount = (WorldLandAmount)_landAmount.Selected,
+            Climate = (WorldClimate)_climate.Selected,
+            Geology = (GeologicalActivity)_geology.Selected
         });
     }
 }

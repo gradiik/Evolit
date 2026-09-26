@@ -21,7 +21,8 @@ public static class InputBindings
         ["select"] = "ЛКМ",
         ["terrain_inspect"] = "T",
         ["cancel"] = "Esc",
-        ["debug_overlay"] = "F3"
+        ["debug_overlay"] = "F3",
+        ["worldgen_debug"] = "F4"
     };
 
     public static void EnsureDefaults()
@@ -41,6 +42,7 @@ public static class InputBindings
         EnsureKeys("terrain_inspect", OS.FindKeycodeFromString("T"));
         EnsureKeys("cancel", OS.FindKeycodeFromString("Escape"));
         EnsureKeys("debug_overlay", OS.FindKeycodeFromString("F3"));
+        EnsureKeys("worldgen_debug", OS.FindKeycodeFromString("F4"));
     }
 
     public static string Describe(string action)

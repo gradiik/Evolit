@@ -13,6 +13,19 @@ public readonly record struct GameViewState(
     float Zoom,
     string? SelectedEntityId);
 
+public enum GenerationDebugMode
+{
+    None,
+    Elevation,
+    WaterDepth,
+    FlowAccumulation,
+    Temperature,
+    Humidity,
+    Substrate,
+    Minerals,
+    Region
+}
+
 public readonly record struct WorldRenderDiagnostics(
     int TotalHexes,
     int TotalChunks,
@@ -79,6 +92,8 @@ public sealed partial class DemoWorldView : Control
     private bool _inspectorActive;
     private readonly Vector2[] _inspectorPoints = new Vector2[6];
     private readonly Vector2[] _inspectorOutline = new Vector2[7];
+    private GenerationDebugMode _generationDebugMode;
+    private Label? _generationDebugLabel;
 
     public void Configure(
         DemoWorldDataProvider world,
@@ -103,6 +118,7 @@ public sealed partial class DemoWorldView : Control
 
         BuildWorldLayers();
         BuildInspectorPanel();
+        BuildGenerationDebugLabel();
 
         if (_world is not null)
             _world.DataChanged += HandleWorldDataChanged;
@@ -120,6 +136,19 @@ public sealed partial class DemoWorldView : Control
 
     public override void _Process(double delta)
     {
+        if (Input.IsActionJustPressed("worldgen_debug"))
+        {
+            _generationDebugMode = (GenerationDebugMode)(((int)_generationDebugMode + 1) % Enum.GetValues<GenerationDebugMode>().Length);
+            if (_generationDebugLabel is not null)
+            {
+                _generationDebugLabel.Visible = _generationDebugMode != GenerationDebugMode.None;
+                _generationDebugLabel.Text = $"F4 · Worldgen: {_generationDebugMode}";
+            }
+            foreach (var chunk in _chunks)
+                chunk.Base.SetDebugMode(_generationDebugMode);
+            UpdateChunkVisibility(true);
+        }
+
         _diagnosticSeconds += delta;
         if (_diagnosticSeconds >= 1.0)
         {
@@ -366,7 +395,7 @@ public sealed partial class DemoWorldView : Control
         _entityOverlay?.SetView(_cameraPosition, _zoom, Size, _selected);
         _overlayRedrawsThisSample++;
 
-        if (_inspectorActive)
+        if (_inspectorActive || _generationDebugMode != GenerationDebugMode.None)
             QueueRedraw();
     }
 
@@ -392,8 +421,9 @@ public sealed partial class DemoWorldView : Control
             if (force || chunk.Base.Visible != visible)
                 chunk.Base.Visible = visible;
 
-            var detailVisible = visible && _showDetails && _quality.DetailLevel > 0;
-            var fineVisible = visible && _showFineDetails && _quality.DetailLevel > 0;
+            var debugActive = _generationDebugMode != GenerationDebugMode.None;
+            var detailVisible = visible && !debugActive && _showDetails && _quality.DetailLevel > 0;
+            var fineVisible = visible && !debugActive && _showFineDetails && _quality.DetailLevel > 0;
             if (force || chunk.Detail.Visible != detailVisible)
                 chunk.Detail.Visible = detailVisible;
             if (force || chunk.Fine.Visible != fineVisible)
@@ -422,6 +452,21 @@ public sealed partial class DemoWorldView : Control
         _overlayRedrawsThisSample++;
     }
 
+
+    private void BuildGenerationDebugLabel()
+    {
+        _generationDebugLabel = new Label
+        {
+            Visible = false,
+            Text = string.Empty,
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 14
+        };
+        _generationDebugLabel.Position = new Vector2(16, 16);
+        _generationDebugLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
+        _generationDebugLabel.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
+        AddChild(_generationDebugLabel);
+    }
 
     private void BuildInspectorPanel()
     {
@@ -486,9 +531,11 @@ public sealed partial class DemoWorldView : Control
 
         _inspectorActive = true;
         _inspectorPanel.Visible = true;
+        var panelWidth = Math.Max(284f, _inspectorPanel.Size.X);
+        var panelHeight = Math.Max(260f, _inspectorPanel.Size.Y);
         _inspectorPanel.Position = new Vector2(
-            Math.Max(8f, Math.Min(Size.X - 284f, mouse.X + 18f)),
-            Math.Max(8f, Math.Min(Size.Y - 176f, mouse.Y + 18f)));
+            Math.Max(8f, Math.Min(Size.X - panelWidth - 8f, mouse.X + 18f)),
+            Math.Max(8f, Math.Min(Size.Y - panelHeight - 8f, mouse.Y + 18f)));
 
         var changedCell = !ReferenceEquals(_inspectedCell, nextCell);
         _inspectedCell = nextCell;
@@ -543,7 +590,9 @@ public sealed partial class DemoWorldView : Control
             $"Свет: {env.LightAvailability * 100f:0}% · вода {physical.WaterAvailability * 100f:0}%\n" +
             $"Минералы: {env.MineralPotential * 100f:0}% · nutrients {env.NutrientPotential * 100f:0}%\n" +
             $"Органика: {env.OrganicMatter:0.000} · substrate dev {env.SubstrateDevelopment * 100f:0}%\n" +
-            $"Субстрат: {env.Substrate} · регион: {physical.Region}";
+            $"Субстрат: {env.Substrate} · регион: {physical.Region}\n" +
+            $"Сток: {cell.FlowAccumulation:0.0} · уклон {cell.Slope:0.0} м\n" +
+            $"Geo: {cell.GeothermalPotential * 100f:0}% · mineral seed {cell.MineralPotential * 100f:0}%";
     }
 
     private static float WaterDepthMeters(WorldHexCell cell)

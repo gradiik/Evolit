@@ -14,9 +14,9 @@ public sealed record AppVersionRecord(
 
 public static class AppVersionCatalog
 {
-    public const string CurrentVersion = "0.0.7";
-    public const string PreviousVersion = "0.0.6";
-    public const string PreviousCommit = "e6c8407ac642cf79cfcd3d711fcd24a96ef3beae";
+    public const string CurrentVersion = "0.0.8";
+    public const string PreviousVersion = "0.0.7";
+    public const string PreviousCommit = "9536aac3084ede1ae6efc254ddeeb91a26262e1a";
     public const string BaselineVersion = "0.0.4";
     public const string BaselineCommit = "268fce1dd4d1d4b9f4d644a789e3110868201ff6";
     public const string LegacyVersion = "0.0.3";
@@ -28,14 +28,20 @@ public static class AppVersionCatalog
         new(
             CurrentVersion,
             "26 сентября 2026",
-            "0.0.7: dynamic physical environment, hydrology, atmosphere/climate foundation, resources/substrate, derived environmental regions и bootstrap stabilization.",
+            "0.0.8: deterministic procedural world generation, coherent landmasses, bathymetry, geology, drainage, climate initialization и Core bootstrap.",
             "Текущая разработка",
             true),
         new(
             PreviousVersion,
             "26 сентября 2026",
-            "0.0.6: Evolit Core foundation, deterministic fixed-step simulation, Godot-independent topology/environment, data-oriented organisms, genetics, lineages, snapshots и headless benchmark.",
+            "0.0.7: dynamic physical environment, hydrology, atmosphere/climate foundation, resources/substrate, derived environmental regions и bootstrap stabilization.",
             PreviousCommit,
+            false),
+        new(
+            "0.0.6",
+            "26 сентября 2026",
+            "0.0.6: Evolit Core foundation, deterministic fixed-step simulation, Godot-independent topology/environment, data-oriented organisms, genetics, lineages, snapshots и headless benchmark.",
+            "e6c8407ac642cf79cfcd3d711fcd24a96ef3beae",
             false),
         new(
             "0.0.5",
@@ -59,6 +65,13 @@ public static class AppVersionCatalog
 
     public static IReadOnlyList<AppVersionRecord> VisibleVersions =>
         Records.Take(VisibleHistoryLimit).ToArray();
+
+    public static void ValidateCurrentVersion()
+    {
+        var current = Records.Where(record => record.IsCurrent).ToArray();
+        if (current.Length != 1 || !string.Equals(current[0].Version, CurrentVersion, StringComparison.Ordinal))
+            throw new InvalidOperationException("Version catalog current record does not match the canonical CurrentVersion.");
+    }
 }
 
 public sealed class VersionSelectionStore

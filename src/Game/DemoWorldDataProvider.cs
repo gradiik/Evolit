@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Evolit.Core;
 using Evolit.Save;
 using Evolit.Session;
 using Godot;
@@ -54,9 +55,16 @@ public sealed class DemoWorldDataProvider
 
     public int LastSimulatedDay { get; private set; } = 1;
 
-    public DemoWorldDataProvider(GameSession session)
+    public DemoWorldDataProvider(
+        GameSession session,
+        DemoWorldSaveState? savedState = null,
+        CoreSimulationSnapshot? coreSnapshot = null)
     {
-        Map = WorldMapGenerator.Generate(session.Seed, session.WorldSize);
+        Map = savedState?.Map is { Cells.Count: > 0 }
+            ? WorldMapGenerator.Restore(session.Seed, session.WorldSize, savedState.Map)
+            : coreSnapshot?.Topology?.Cells.Length > 0
+                ? WorldMapGenerator.RestoreFromCore(session.Seed, session.WorldSize, coreSnapshot)
+                : WorldMapGenerator.Generate(session.Seed, session.WorldSize, session.LandAmount, session.Climate, session.Geology);
         _species = SpeciesDemoData.CreateSpecies();
         _chronicle = SpeciesDemoData.CreateChronicle();
         _events = SpeciesDemoData.CreateEvents(session.WorldName);
@@ -136,6 +144,34 @@ public sealed class DemoWorldDataProvider
         return new DemoWorldSaveState
         {
             LastSimulatedDay = LastSimulatedDay,
+            Map = new WorldMapSaveState
+            {
+                Radius = Map.Radius,
+                HexSize = Map.HexSize,
+                Cells = Map.Cells.Select(cell => new WorldHexCellSaveState
+                {
+                    Q = cell.Coord.Q,
+                    R = cell.Coord.R,
+                    Terrain = (int)cell.Terrain,
+                    WaterKind = (int)cell.WaterKind,
+                    Elevation = cell.Elevation,
+                    ElevationMeters = cell.ElevationMeters,
+                    WaterDepth = cell.WaterDepth,
+                    WaterDepthMeters = cell.WaterDepthMeters,
+                    Humidity = cell.Humidity,
+                    TemperatureCelsius = cell.TemperatureCelsius,
+                    PressureKPa = cell.PressureKPa,
+                    MovementCost = cell.MovementCost,
+                    MovementSpeedMultiplier = cell.MovementSpeedMultiplier,
+                    VisualVariation = cell.VisualVariation,
+                    FlowAccumulation = cell.FlowAccumulation,
+                    Slope = cell.Slope,
+                    MineralPotential = cell.MineralPotential,
+                    NutrientPotential = cell.NutrientPotential,
+                    GeothermalPotential = cell.GeothermalPotential,
+                    Substrate = (int)cell.Substrate
+                }).ToList()
+            },
             Entities = _entities.Select(entity => new DemoEntitySaveState
             {
                 Id = entity.Id,

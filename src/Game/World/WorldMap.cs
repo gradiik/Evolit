@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using Evolit.Core;
 
 namespace Evolit.Game;
 
@@ -62,6 +63,7 @@ public sealed class WorldHexCell
     public HexWaterKind WaterKind { get; set; }
     public float Elevation { get; set; }
     public float WaterDepth { get; set; }
+    public float WaterDepthMeters { get; set; }
     public float Humidity { get; set; }
     public float TemperatureCelsius { get; set; }
     public float ElevationMeters { get; set; }
@@ -69,6 +71,12 @@ public sealed class WorldHexCell
     public float MovementCost { get; set; }
     public float MovementSpeedMultiplier { get; set; }
     public float VisualVariation { get; init; }
+    public float FlowAccumulation { get; init; }
+    public float Slope { get; init; }
+    public float MineralPotential { get; init; }
+    public float NutrientPotential { get; init; }
+    public float GeothermalPotential { get; init; }
+    public SubstrateKind Substrate { get; init; }
 
     public bool IsWater => WaterKind != HexWaterKind.None;
 }
@@ -82,13 +90,17 @@ public sealed class WorldMap
         string sizeName,
         int radius,
         float hexSize,
-        IReadOnlyList<WorldHexCell> cells)
+        IReadOnlyList<WorldHexCell> cells,
+        WorldTopology? initialTopology = null,
+        EnvironmentStore? initialEnvironment = null)
     {
         Seed = seed;
         SizeName = sizeName;
         Radius = radius;
         HexSize = hexSize;
         Cells = cells;
+        InitialTopology = initialTopology;
+        InitialEnvironment = initialEnvironment;
         _lookup = cells.ToDictionary(cell => cell.Coord);
         Bounds = CalculateBounds(cells, hexSize);
     }
@@ -98,6 +110,8 @@ public sealed class WorldMap
     public int Radius { get; }
     public float HexSize { get; }
     public IReadOnlyList<WorldHexCell> Cells { get; }
+    public WorldTopology? InitialTopology { get; }
+    public EnvironmentStore? InitialEnvironment { get; }
     public Rect2 Bounds { get; }
 
     public bool TryGetCell(HexCoord coord, out WorldHexCell cell)

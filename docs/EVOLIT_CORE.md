@@ -1,4 +1,4 @@
-# Evolit Core, 0.0.6 foundation and 0.0.7 physical world
+# Evolit Core, 0.0.6 foundation through 0.0.8 procedural world
 
 ## Responsibility boundary
 
@@ -12,13 +12,13 @@ The Godot application owns rendering, input, UI, camera, current hex presentatio
 
 ## Migration boundary in 0.0.6
 
-The current `DemoWorldDataProvider` remains the legacy presentation/demo source for the existing HUD, selection, statistics, events and map visuals. `CoreSimulationHost` adapts the generated `WorldMap` into Core topology/environment and creates a small founder set matching the visible demo entities. No third Godot entity model is introduced.
+The current `DemoWorldDataProvider` remains the legacy presentation/demo source for the existing HUD, selection, statistics, events and map visuals. From 0.0.8, procedural generation creates canonical Core topology/environment first; `WorldMapGenerator` is only a Godot presentation adapter over that result. `CoreSimulationHost` consumes the same generated Core state directly and creates a small founder set matching the visible demo entities. No parallel simulation environment is created.
 
 Core state is canonical only for new Core features. The old demo population evolution is intentionally not migrated in 0.0.6. Later versions can replace individual legacy systems incrementally.
 
 ## Time and scheduler
 
-Core advances only through fixed `0.1 s` steps. The Godot adapter converts frame time and selected speed into a number of fixed steps; FPS never enters biological formulas. `SimulationScheduler` runs systems at integer tick intervals. The foundation currently has an organism system every tick and an environment proof system every 10 ticks.
+Core advances only through fixed `0.1 s` steps. The Godot adapter converts frame time and selected speed into a number of fixed steps; FPS never enters biological formulas. `SimulationScheduler` runs systems at integer tick intervals. The scheduler currently runs organism updates every tick and separate climate, atmosphere, humidity, hydrology, resources and light systems at deterministic multi-rate intervals.
 
 `SimulationMode.Live` and `SimulationMode.Bootstrap` share the same Core. Bootstrap-specific fidelity/rates can be introduced later without a second engine.
 
@@ -50,7 +50,7 @@ Genomes are immutable value records stored once in `GenomeStore`; organisms refe
 
 `CoreSimulationSnapshot` includes fixed clock, RNG streams, topology, environment, genomes, lineages and organism store. The existing save document carries this snapshot optionally so 0.0.5 saves without Core data remain loadable.
 
-The headless runner contains deterministic replay, save/restore continuation, genetics, organism-store and environment checks plus 1k/5k/10k/25k/50k benchmark scenarios.
+The headless runner contains deterministic replay, save/restore continuation, genetics, organism-store, environment and procedural-world checks plus 1k/5k/10k/25k/50k organism benchmarks and dedicated world-generation/environment benchmarks.
 
 ## 0.0.7 physical-world boundary
 
@@ -65,3 +65,10 @@ Organisms follow the same emergent principle:
 `genome → phenotype → morphology → behaviour → ecology → selection`
 
 No modern-Earth species presets are part of the Core architecture.
+
+
+## 0.0.8 procedural-world boundary
+
+0.0.8 makes procedural generation a Godot-independent Core concern. Seed + generation settings produce topology, coherent macro geography, elevation/bathymetry, geology, terrain-scale hydrology, initial climate/resources and substrate. That canonical Core environment is then stabilized through the same Bootstrap simulation systems used by live play.
+
+The Godot map is a renderer-compatible projection of generated Core state, not a second physical model. New saves persist the presentation map and the canonical Core snapshot so loading does not rerun procedural generation. Biological biomes, plants, animals and microbial ecosystems remain outside 0.0.8.

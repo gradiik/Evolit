@@ -1,5 +1,6 @@
 using System;
 using Evolit.Save;
+using Evolit.Core;
 
 namespace Evolit.Session;
 
@@ -9,6 +10,9 @@ public sealed class GameSession
     public string WorldName { get; }
     public string Seed { get; }
     public string WorldSize { get; }
+    public WorldLandAmount LandAmount { get; }
+    public WorldClimate Climate { get; }
+    public GeologicalActivity Geology { get; }
     public DateTimeOffset CreatedAt { get; }
     public double PlaytimeSeconds { get; private set; }
     public bool WasCreatedNew { get; }
@@ -18,6 +22,9 @@ public sealed class GameSession
         string worldName,
         string seed,
         string worldSize,
+        WorldLandAmount landAmount,
+        WorldClimate climate,
+        GeologicalActivity geology,
         DateTimeOffset createdAt,
         double playtimeSeconds,
         bool wasCreatedNew)
@@ -26,18 +33,30 @@ public sealed class GameSession
         WorldName = worldName;
         Seed = seed;
         WorldSize = worldSize;
+        LandAmount = landAmount;
+        Climate = climate;
+        Geology = geology;
         CreatedAt = createdAt;
         PlaytimeSeconds = playtimeSeconds;
         WasCreatedNew = wasCreatedNew;
     }
 
-    public static GameSession CreateNew(string worldName, string seed, string worldSize)
+    public static GameSession CreateNew(
+        string worldName,
+        string seed,
+        string worldSize,
+        WorldLandAmount landAmount = WorldLandAmount.Normal,
+        WorldClimate climate = WorldClimate.Temperate,
+        GeologicalActivity geology = GeologicalActivity.Normal)
     {
         return new GameSession(
             Guid.NewGuid().ToString("N"),
             worldName,
             seed,
             worldSize,
+            landAmount,
+            climate,
+            geology,
             DateTimeOffset.UtcNow,
             0,
             true);
@@ -50,6 +69,9 @@ public sealed class GameSession
             document.WorldName,
             document.Seed,
             document.WorldSize,
+            Enum.IsDefined(typeof(WorldLandAmount), document.LandAmount) ? (WorldLandAmount)document.LandAmount : WorldLandAmount.Normal,
+            Enum.IsDefined(typeof(WorldClimate), document.Climate) ? (WorldClimate)document.Climate : WorldClimate.Temperate,
+            Enum.IsDefined(typeof(GeologicalActivity), document.GeologicalActivity) ? (GeologicalActivity)document.GeologicalActivity : GeologicalActivity.Normal,
             document.CreatedAt,
             document.PlaytimeSeconds,
             false);

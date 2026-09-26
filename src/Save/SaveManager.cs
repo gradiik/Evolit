@@ -155,6 +155,9 @@ public sealed class SaveManager
             WorldName = session.WorldName,
             Seed = session.Seed,
             WorldSize = session.WorldSize,
+            LandAmount = (int)session.LandAmount,
+            Climate = (int)session.Climate,
+            GeologicalActivity = (int)session.Geology,
             CreatedAt = session.CreatedAt,
             SavedAt = DateTimeOffset.UtcNow,
             PlaytimeSeconds = session.PlaytimeSeconds,
@@ -303,10 +306,15 @@ public sealed class SaveManager
                 error = "Runtime-состояние не содержит обязательные данные мира.";
                 return false;
             }
+            if (document.Runtime.World.Map is { Cells.Count: 0 })
+            {
+                error = "Сохранённая карта мира не содержит клеток.";
+                return false;
+            }
 
             if (document.Runtime.Core is not null)
             {
-                if (document.Runtime.Core.Version != CoreSimulation.SnapshotVersion)
+                if (document.Runtime.Core.Version is < 1 or > CoreSimulation.SnapshotVersion)
                 {
                     error = $"Неподдерживаемая версия Evolit Core snapshot: {document.Runtime.Core.Version}.";
                     return false;

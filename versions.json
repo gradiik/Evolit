@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.7",
-  "development_branch": "feature/evolit-0.0.7-physical-world",
+  "current": "0.0.8",
+  "development_branch": "feature/evolit-0.0.8-world-generation",
   "protocol": "VERSIONING.md",
   "versions": [
     {
-      "version": "0.0.7",
+      "version": "0.0.8",
       "status": "development",
-      "branch": "feature/evolit-0.0.7-physical-world",
+      "branch": "feature/evolit-0.0.8-world-generation",
       "tag": null,
       "commit": null,
-      "note": "Physical World & Dynamic Environment development. No release/tag until explicit approval after audit."
+      "note": "Procedural World Generation development. No release/tag until explicit approval after audit."
+    },
+    {
+      "version": "0.0.7",
+      "status": "checkpoint",
+      "branch": "feature/evolit-0.0.7-physical-world",
+      "tag": null,
+      "commit": "9536aac3084ede1ae6efc254ddeeb91a26262e1a",
+      "note": "Final 0.0.7 physical-world checkpoint before procedural generation work. Release/tag not created."
     },
     {
       "version": "0.0.6",

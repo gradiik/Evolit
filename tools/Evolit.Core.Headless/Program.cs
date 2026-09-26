@@ -23,6 +23,27 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
+        if (string.Equals(args[0], "worldgen-verify", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenVerification();
+            return 0;
+        }
+        if (string.Equals(args[0], "worldgen-seeds", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenSeeds();
+            return 0;
+        }
+        if (string.Equals(args[0], "worldgen-summary", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenSummary(args.Length >= 2 ? args[1] : "evolit-summary");
+            return 0;
+        }
+        if (string.Equals(args[0], "worldgen-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenBenchmark();
+            return 0;
+        }
+
         if (string.Equals(args[0], "environment-verify", StringComparison.OrdinalIgnoreCase))
         {
             RunEnvironmentVerification();
@@ -52,7 +73,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | environment-verify | bootstrap-test | environment-benchmark [ticks] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | environment-verify | bootstrap-test | environment-benchmark [ticks] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -211,6 +232,191 @@ static void AssertEnvironment()
 }
 
 
+
+static void RunWorldgenVerification()
+{
+    var settings = new WorldGenerationSettings("worldgen-determinism", 28);
+    var a = ProceduralWorldGenerator.Generate(settings);
+    var b = ProceduralWorldGenerator.Generate(settings);
+    var other = ProceduralWorldGenerator.Generate(settings with { Seed = "worldgen-other" });
+
+    if (!GeneratedWorldEquivalent(a, b))
+        throw new InvalidOperationException("Same seed/settings produced different generated cell state.");
+    if (GeneratedWorldEquivalent(a, other))
+        throw new InvalidOperationException("Different seeds produced identical generated cell state.");
+
+    var aBootstrap = BootstrapGeneratedWorld(a, settings.Seed);
+    var bBootstrap = BootstrapGeneratedWorld(b, settings.Seed);
+    var otherBootstrap = BootstrapGeneratedWorld(other, "worldgen-other");
+
+    if (!string.Equals(aBootstrap.Snapshot, bBootstrap.Snapshot, StringComparison.Ordinal))
+        throw new InvalidOperationException("World generation + bootstrap is not deterministic.");
+    if (string.Equals(aBootstrap.Snapshot, otherBootstrap.Snapshot, StringComparison.Ordinal))
+        throw new InvalidOperationException("Different worldgen seeds produced identical stabilized snapshots.");
+    ValidateGeneratedWorld(a);
+    ValidateGeneratedWorld(other);
+    Console.WriteLine($"WORLDGEN VERIFY PASS bootstrap_ticks={aBootstrap.Ticks} converged={aBootstrap.Converged}");
+}
+
+static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b)
+{
+    if (a.Cells.Length != b.Cells.Length || !a.Settings.Equals(b.Settings))
+        return false;
+
+    for (var i = 0; i < a.Cells.Length; i++)
+    {
+        var x = a.Cells[i];
+        var y = b.Cells[i];
+        if (x.Id != y.Id ||
+            x.ElevationMeters != y.ElevationMeters ||
+            x.WaterDepthMeters != y.WaterDepthMeters ||
+            x.TemperatureCelsius != y.TemperatureCelsius ||
+            x.Humidity != y.Humidity ||
+            x.PressureKPa != y.PressureKPa ||
+            x.MineralPotential != y.MineralPotential ||
+            x.NutrientPotential != y.NutrientPotential ||
+            x.GeothermalPotential != y.GeothermalPotential ||
+            x.Substrate != y.Substrate ||
+            x.DrainageTarget != y.DrainageTarget ||
+            x.FlowAccumulation != y.FlowAccumulation ||
+            x.Slope != y.Slope ||
+            x.IsRiver != y.IsRiver ||
+            x.IsLake != y.IsLake)
+            return false;
+    }
+
+    return true;
+}
+
+static void RunWorldgenSeeds()
+{
+    for (var i = 0; i < 20; i++)
+    {
+        var seed = $"seed-{i:00}";
+        var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, 28));
+        ValidateGeneratedWorld(world);
+        var bootstrap = BootstrapGeneratedWorld(world, seed);
+        PrintWorldgenSummary(seed, world, bootstrap);
+    }
+    Console.WriteLine("WORLDGEN SEEDS PASS");
+}
+
+static void RunWorldgenSummary(string seed)
+{
+    var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings(seed, 38));
+    ValidateGeneratedWorld(world);
+    var bootstrap = BootstrapGeneratedWorld(world, seed);
+    PrintWorldgenSummary(seed, world, bootstrap);
+}
+
+static void RunWorldgenBenchmark()
+{
+    foreach (var radius in new[] { 28, 38, 49 })
+    {
+        GC.Collect();
+        var before = GC.GetTotalMemory(true);
+        var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings($"bench-{radius}", radius));
+        var bootstrap = BootstrapGeneratedWorld(world, $"bench-{radius}");
+        var memory = Math.Max(0, GC.GetTotalMemory(false) - before);
+        var m = world.Metrics;
+        Console.WriteLine(
+            $"WORLDGEN_BENCH radius={radius} cells={world.Cells.Length} " +
+            $"topology_ms={m.TopologyMs:0.###} macro_elevation_ms={m.MacroElevationMs:0.###} " +
+            $"coast_bathymetry_ms={m.CoastBathymetryMs:0.###} geology_ms={m.GeologyMs:0.###} " +
+            $"hydrology_ms={m.HydrologyMs:0.###} climate_ms={m.ClimateMs:0.###} " +
+            $"resources_ms={m.ResourcesMs:0.###} environment_build_ms={m.EnvironmentBuildMs:0.###} " +
+            $"generation_total_ms={m.TotalMs:0.###} core_construct_ms={bootstrap.CoreConstructionMs:0.###} " +
+            $"bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} converged={bootstrap.Converged} memory_delta={memory}");
+    }
+}
+
+static void ValidateGeneratedWorld(GeneratedWorld world)
+{
+    var s = world.Summary;
+    if (s.Cells <= 0 || s.LandRatio < 0.20f || s.LandRatio > 0.75f)
+        throw new InvalidOperationException($"Invalid land ratio {s.LandRatio:0.###}.");
+    if (s.LargestContinentCells <= 0)
+        throw new InvalidOperationException("World lacks coherent land.");
+
+    foreach (var cell in world.Cells)
+    {
+        if (!float.IsFinite(cell.ElevationMeters) ||
+            !float.IsFinite(cell.WaterDepthMeters) || cell.WaterDepthMeters < 0 ||
+            !float.IsFinite(cell.TemperatureCelsius) ||
+            !float.IsFinite(cell.Humidity) || cell.Humidity is < 0f or > 1f ||
+            !float.IsFinite(cell.PressureKPa) || cell.PressureKPa <= 0 ||
+            cell.MineralPotential is < 0f or > 1f ||
+            cell.NutrientPotential is < 0f or > 1f ||
+            cell.GeothermalPotential is < 0f or > 1f)
+            throw new InvalidOperationException($"Invalid generated cell {cell.Id}.");
+        if (cell.DrainageTarget >= 0 &&
+            world.Cells[cell.DrainageTarget].ElevationMeters > cell.ElevationMeters + 0.001f)
+            throw new InvalidOperationException($"Uphill drainage from {cell.Id}.");
+    }
+}
+
+static (string Snapshot, int Ticks, bool Converged, double FinalChange, double CoreConstructionMs, double BootstrapMs) BootstrapGeneratedWorld(GeneratedWorld world, string seed)
+{
+    const int minimumTicks = 200;
+    const int maximumTicks = 2_000;
+    const int checkInterval = 100;
+    const double threshold = 0.0025;
+
+    var coreStart = Stopwatch.GetTimestamp();
+    var simulation = new CoreSimulation(
+        world.Topology,
+        world.Environment,
+        SeedMixer.FromString(seed),
+        SimulationMode.Bootstrap);
+    var coreConstructionMs = Stopwatch.GetElapsedTime(coreStart).TotalMilliseconds;
+    var bootstrapStart = Stopwatch.GetTimestamp();
+    var previous = simulation.Environment.CaptureSnapshot();
+    var finalChange = double.PositiveInfinity;
+    var ticks = 0;
+    var converged = false;
+
+    for (; ticks < maximumTicks; ticks += checkInterval)
+    {
+        simulation.Step(checkInterval);
+        finalChange = simulation.Environment.MeasureChange(previous);
+        AssertPhysicalBounds(simulation);
+        previous = simulation.Environment.CaptureSnapshot();
+        if (ticks + checkInterval >= minimumTicks && finalChange <= threshold)
+        {
+            ticks += checkInterval;
+            converged = true;
+            break;
+        }
+    }
+
+    simulation.Mode = SimulationMode.Live;
+    var bootstrapMs = Stopwatch.GetElapsedTime(bootstrapStart).TotalMilliseconds;
+    return (
+        CoreSnapshotSerializer.Serialize(simulation.CaptureSnapshot()),
+        Math.Min(ticks, maximumTicks),
+        converged,
+        finalChange,
+        coreConstructionMs,
+        bootstrapMs);
+}
+
+static void PrintWorldgenSummary(
+    string seed,
+    GeneratedWorld world,
+    (string Snapshot, int Ticks, bool Converged, double FinalChange, double CoreConstructionMs, double BootstrapMs) bootstrap)
+{
+    var s = world.Summary;
+    var largestPct = s.Cells == 0 ? 0 : s.LargestContinentCells * 100.0 / s.Cells;
+    Console.WriteLine(
+        $"WORLDGEN seed={seed} cells={s.Cells} land={s.LandRatio:P1} water={(1f-s.LandRatio):P1} " +
+        $"components={s.LandComponents} largest={largestPct:0.0}% islands={s.IslandCount} " +
+        $"mountains={s.MountainCells} rivers={s.RiverCells} lakes={s.LakeCells} " +
+        $"elevation={s.MinElevationMeters:0}..{s.MaxElevationMeters:0}m max_water={s.MaxWaterDepthMeters:0}m " +
+        $"temp={s.MinTemperatureCelsius:0.0}..{s.MaxTemperatureCelsius:0.0}C humidity={s.MinHumidity:P0}..{s.MaxHumidity:P0} " +
+        $"generation_ms={world.Metrics.TotalMs:0.###} core_ms={bootstrap.CoreConstructionMs:0.###} bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} " +
+        $"converged={bootstrap.Converged} final_change={bootstrap.FinalChange:0.######}");
+}
+
 static void RunEnvironmentVerification()
 {
     var a = ScenarioFactory.Create("physical-environment", 0, 24);
@@ -260,7 +466,9 @@ static void RunBootstrapTest()
     AssertPhysicalBounds(a);
     if (!double.IsFinite(firstChange) || !double.IsFinite(secondChange))
         throw new InvalidOperationException("Bootstrap stabilization metric is not finite.");
-    Console.WriteLine($"BOOTSTRAP PASS first_change={firstChange:0.######} second_change={secondChange:0.######} decreasing={secondChange <= firstChange} final_cells={a.Topology.Count}");
+    if (secondChange > firstChange)
+        throw new InvalidOperationException($"Bootstrap did not stabilize: first={firstChange:0.######}, second={secondChange:0.######}.");
+    Console.WriteLine($"BOOTSTRAP PASS first_change={firstChange:0.######} second_change={secondChange:0.######} decreasing=True final_cells={a.Topology.Count}");
 }
 
 static void AssertPhysicalBounds(CoreSimulation sim)

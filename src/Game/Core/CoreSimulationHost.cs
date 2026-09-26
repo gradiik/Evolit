@@ -15,7 +15,10 @@ public readonly record struct CoreRuntimeDiagnostics(
     double LastTickMilliseconds,
     double AverageTickMilliseconds,
     double AllocatedBytesPerTick,
-    SimulationMode Mode);
+    SimulationMode Mode,
+    int BootstrapTicks,
+    bool BootstrapConverged,
+    double BootstrapFinalChange);
 
 public sealed class CoreSimulationHost
 {
@@ -23,10 +26,20 @@ public sealed class CoreSimulationHost
     private double _lastTickMilliseconds;
     private double _averageTickMilliseconds;
     private double _allocatedBytesPerTick;
+    private readonly int _bootstrapTicks;
+    private readonly bool _bootstrapConverged;
+    private readonly double _bootstrapFinalChange;
 
-    private CoreSimulationHost(CoreSimulation simulation)
+    private CoreSimulationHost(
+        CoreSimulation simulation,
+        int bootstrapTicks = 0,
+        bool bootstrapConverged = true,
+        double bootstrapFinalChange = 0)
     {
         Simulation = simulation;
+        _bootstrapTicks = bootstrapTicks;
+        _bootstrapConverged = bootstrapConverged;
+        _bootstrapFinalChange = bootstrapFinalChange;
     }
 
     public CoreSimulation Simulation { get; }
@@ -41,16 +54,18 @@ public sealed class CoreSimulationHost
         if (snapshot is not null)
             return new CoreSimulationHost(CoreSimulation.Restore(snapshot));
 
-        var topology = BuildTopology(world.Map);
-        var environment = BuildEnvironment(world.Map, topology);
+        var topology = world.Map.InitialTopology ?? BuildTopology(world.Map);
+        var environment = world.Map.InitialEnvironment ?? BuildEnvironment(world.Map, topology);
         var simulation = new CoreSimulation(
             topology,
             environment,
             SeedMixer.FromString(seed),
-            SimulationMode.Live);
+            SimulationMode.Bootstrap);
 
+        var bootstrap = StabilizeEnvironment(simulation);
+        simulation.Mode = SimulationMode.Live;
         SeedFoundationOrganisms(simulation, world);
-        return new CoreSimulationHost(simulation);
+        return new CoreSimulationHost(simulation, bootstrap.Ticks, bootstrap.Converged, bootstrap.FinalChange);
     }
 
     public int AdvanceFrame(double deltaSeconds, SimulationSpeedState speed)
@@ -107,7 +122,10 @@ public sealed class CoreSimulationHost
             _lastTickMilliseconds,
             _averageTickMilliseconds,
             _allocatedBytesPerTick,
-            Simulation.Mode);
+            Simulation.Mode,
+            _bootstrapTicks,
+            _bootstrapConverged,
+            _bootstrapFinalChange);
     }
 
     private static WorldTopology BuildTopology(WorldMap map)
@@ -132,12 +150,7 @@ public sealed class CoreSimulationHost
         foreach (var cell in map.Cells)
         {
             var id = CellId.FromAxial(cell.Coord.Q, cell.Coord.R);
-            var depthMeters = cell.Terrain switch
-            {
-                HexTerrainType.River => 2.5f + cell.WaterDepth * 18f,
-                HexTerrainType.Lake => 6f + cell.WaterDepth * 120f,
-                _ => cell.WaterDepth * 850f
-            };
+            var depthMeters = cell.WaterDepthMeters;
 
             environment.SetInitial(id, new EnvironmentCellState(
                 ElevationMeters: cell.ElevationMeters,
@@ -146,15 +159,62 @@ public sealed class CoreSimulationHost
                 Humidity: cell.Humidity,
                 PressureKPa: cell.PressureKPa,
                 LightAvailability: cell.IsWater && depthMeters > 100f ? 0.55f : 1f,
-                MineralPotential: MineralPotential(cell.Terrain),
-                NutrientPotential: cell.IsWater ? 0.35f : 0.22f,
+                MineralPotential: cell.MineralPotential,
+                NutrientPotential: cell.NutrientPotential,
                 OrganicMatter: 0f,
                 SubstrateDevelopment: 0f,
-                GeothermalPotential: cell.Terrain == HexTerrainType.Mountain ? 0.12f : 0.02f,
-                Substrate: SubstrateFor(cell.Terrain)));
+                GeothermalPotential: cell.GeothermalPotential,
+                Substrate: cell.Substrate));
         }
         return environment;
     }
+
+    private static BootstrapDiagnostics StabilizeEnvironment(CoreSimulation simulation)
+    {
+        const int minimumTicks = 200;
+        const int maximumTicks = 2_000;
+        const int checkInterval = 100;
+        const double convergenceThreshold = 0.0025;
+
+        var previous = simulation.Environment.CaptureSnapshot();
+        var finalChange = double.PositiveInfinity;
+        var ticks = 0;
+        var converged = false;
+
+        for (; ticks < maximumTicks; ticks += checkInterval)
+        {
+            simulation.Step(checkInterval);
+            finalChange = simulation.Environment.MeasureChange(previous);
+            ValidateEnvironment(simulation);
+            previous = simulation.Environment.CaptureSnapshot();
+            if (ticks + checkInterval >= minimumTicks && finalChange <= convergenceThreshold)
+            {
+                ticks += checkInterval;
+                converged = true;
+                break;
+            }
+        }
+
+        return new BootstrapDiagnostics(Math.Min(ticks, maximumTicks), converged, finalChange);
+    }
+
+    private static void ValidateEnvironment(CoreSimulation simulation)
+    {
+        foreach (var id in simulation.Topology.Cells)
+        {
+            var state = simulation.Environment.Get(id);
+            var physical = simulation.Environment.GetPhysical(id);
+            if (!float.IsFinite(state.ElevationMeters) ||
+                !float.IsFinite(state.WaterDepthMeters) || state.WaterDepthMeters < 0f ||
+                !float.IsFinite(state.TemperatureCelsius) ||
+                !float.IsFinite(state.Humidity) || state.Humidity is < 0f or > 1f ||
+                !float.IsFinite(state.PressureKPa) || state.PressureKPa <= 0f ||
+                !float.IsFinite(physical.WindX) || !float.IsFinite(physical.WindY))
+                throw new InvalidOperationException($"Bootstrap produced an invalid environment cell {id}.");
+        }
+    }
+
+    private readonly record struct BootstrapDiagnostics(int Ticks, bool Converged, double FinalChange);
 
     private static void SeedFoundationOrganisms(CoreSimulation simulation, DemoWorldDataProvider world)
     {
@@ -179,32 +239,5 @@ public sealed class CoreSimulationHost
         }
     }
 
-    private static float MineralPotential(HexTerrainType terrain)
-    {
-        return terrain switch
-        {
-            HexTerrainType.Mountain => 0.82f,
-            HexTerrainType.Rocky => 0.74f,
-            HexTerrainType.River => 0.62f,
-            HexTerrainType.Sand => 0.38f,
-            HexTerrainType.Desert => 0.48f,
-            HexTerrainType.Grassland => 0.55f,
-            _ => 0.45f
-        };
-    }
 
-    private static SubstrateKind SubstrateFor(HexTerrainType terrain)
-    {
-        return terrain switch
-        {
-            HexTerrainType.Sand => SubstrateKind.Sand,
-            HexTerrainType.Mountain => SubstrateKind.BareRock,
-            HexTerrainType.Rocky => SubstrateKind.BareRock,
-            HexTerrainType.DeepWater => SubstrateKind.Sediment,
-            HexTerrainType.ShallowWater => SubstrateKind.Sediment,
-            HexTerrainType.Lake => SubstrateKind.Sediment,
-            HexTerrainType.River => SubstrateKind.Sediment,
-            _ => SubstrateKind.MineralRegolith
-        };
-    }
 }
