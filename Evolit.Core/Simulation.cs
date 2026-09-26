@@ -81,43 +81,60 @@ public static class BootstrapPolicy
 
 public static class EnvironmentSchedule
 {
-    public const int ClimateTicks = 2;
-    public const int AtmosphereTicks = 4;
-    public const int HumidityTicks = 5;
-    public const int HydrologyTicks = 10;
-    public const int ResourceTicks = 20;
-    public const int LightTicks = 10;
+    // Environment is intentionally multi-rate. With 0.0.8's 17k+ cell worlds,
+    // updating every physical field several times per second wastes the entire tick
+    // budget while producing changes too small to perceive at normal speed.
+    public const int ClimateTicks = 5;
+    public const int AtmosphereTicks = 10;
+    public const int HumidityTicks = 10;
+    public const int HydrologyTicks = 20;
+    public const int ResourceTicks = 50;
+    public const int LightTicks = 20;
+
+    // Preserve approximately the same physical evolution per simulated second
+    // after lowering execution frequency.
+    public const float ClimateRateScale = 2.5f;
+    public const float AtmosphereRateScale = 2.5f;
+    public const float HumidityRateScale = 2f;
+    public const float HydrologyRateScale = 2f;
+    public const float ResourceRateScale = 2.5f;
 }
 
 public sealed class ClimateSystem : ISimulationSystem
 {
     public string Name => "environment.climate";
     public int IntervalTicks => EnvironmentSchedule.ClimateTicks;
-    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateClimate(simulation.Clock.SimulationSeconds, simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateClimate(
+        simulation.Clock.SimulationSeconds,
+        EnvironmentSchedule.ClimateRateScale * (simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f));
 }
 public sealed class AtmosphereSystem : ISimulationSystem
 {
     public string Name => "environment.atmosphere";
     public int IntervalTicks => EnvironmentSchedule.AtmosphereTicks;
-    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateAtmosphere(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateAtmosphere(
+        EnvironmentSchedule.AtmosphereRateScale * (simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f));
 }
 public sealed class HumiditySystem : ISimulationSystem
 {
     public string Name => "environment.humidity";
     public int IntervalTicks => EnvironmentSchedule.HumidityTicks;
-    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHumidity(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHumidity(
+        EnvironmentSchedule.HumidityRateScale * (simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f));
 }
 public sealed class HydrologySystem : ISimulationSystem
 {
     public string Name => "environment.hydrology";
     public int IntervalTicks => EnvironmentSchedule.HydrologyTicks;
-    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHydrology(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateHydrology(
+        EnvironmentSchedule.HydrologyRateScale * (simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f));
 }
 public sealed class ResourceSystem : ISimulationSystem
 {
     public string Name => "environment.resources";
     public int IntervalTicks => EnvironmentSchedule.ResourceTicks;
-    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateResources(simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f);
+    public void Execute(CoreSimulation simulation) => simulation.Environment.UpdateResources(
+        EnvironmentSchedule.ResourceRateScale * (simulation.Mode == SimulationMode.Bootstrap ? 4f : 1f));
 }
 public sealed class LightSystem : ISimulationSystem
 {

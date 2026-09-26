@@ -40,6 +40,8 @@ public sealed partial class EnvironmentStore
     private float[]? _waterDelta;
     private float[]? _pressureScratch;
     private float[]? _nutrientScratch;
+    private float[]? _baseClimateTemperature;
+    private float[]? _targetPressure;
 
     public PhysicalEnvironmentState GetPhysical(CellId id)
     {
@@ -56,24 +58,27 @@ public sealed partial class EnvironmentStore
         EnsurePhysicalStorage();
         var blend = Math.Clamp(0.025f * rate, 0f, 0.25f);
         var dayPhase = (float)(simulationSeconds % 86400.0 / 86400.0 * Math.PI * 2.0);
+        var dayWave = MathF.Sin(dayPhase);
+
         for (var i = 0; i < Count; i++)
         {
-            var id = _topology.GetCellId(i);
-            var latitude = Math.Clamp(Math.Abs(id.R) / 96f, 0f, 1f);
-            var elevationCooling = Math.Max(0f, _elevationMeters[i]) * 0.0062f;
             var waterModeration = Math.Clamp(_waterAvailability![i], 0f, 1f);
-            var target = 29f - latitude * 31f - elevationCooling;
-            target += MathF.Sin(dayPhase) * (3.5f - waterModeration * 2.5f);
-            var neighbors = _topology.GetNeighbors(id);
+            var target = _baseClimateTemperature![i] + dayWave * (3.5f - waterModeration * 2.5f);
+            var neighbors = _topology.GetNeighborIndices(i);
             if (neighbors.Length > 0)
             {
                 var sum = 0f;
                 for (var n = 0; n < neighbors.Length; n++)
-                    if (_topology.TryGetIndex(neighbors[n], out var ni)) sum += _temperatureCelsius[ni];
+                    sum += _temperatureCelsius[neighbors[n]];
                 target = target * 0.82f + (sum / neighbors.Length) * 0.18f;
             }
-            _temperatureScratch![i] = Math.Clamp(_temperatureCelsius[i] + (target - _temperatureCelsius[i]) * blend, -80f, 65f);
+
+            _temperatureScratch![i] = Math.Clamp(
+                _temperatureCelsius[i] + (target - _temperatureCelsius[i]) * blend,
+                -80f,
+                65f);
         }
+
         SwapInto(_temperatureScratch!, _temperatureCelsius);
     }
 
@@ -81,26 +86,32 @@ public sealed partial class EnvironmentStore
     {
         EnsurePhysicalStorage();
         var blend = Math.Clamp(0.04f * rate, 0f, 0.3f);
+
         for (var i = 0; i < Count; i++)
         {
-            var id = _topology.GetCellId(i);
-            var targetPressure = Math.Max(20f, 101.325f * MathF.Exp(-Math.Max(-500f, _elevationMeters[i]) / 8434f));
-            _pressureScratch![i] = Math.Clamp(_pressureKPa[i] + (targetPressure - _pressureKPa[i]) * blend, 20f, 115f);
+            _pressureScratch![i] = Math.Clamp(
+                _pressureKPa[i] + (_targetPressure![i] - _pressureKPa[i]) * blend,
+                20f,
+                115f);
 
             var gx = 0f;
             var gy = 0f;
-            var neighbors = _topology.GetNeighbors(id);
+            var id = _topology.GetCellId(i);
+            var neighbors = _topology.GetNeighborIndices(i);
             for (var n = 0; n < neighbors.Length; n++)
             {
-                if (!_topology.TryGetIndex(neighbors[n], out var ni)) continue;
+                var ni = neighbors[n];
+                var neighborId = _topology.GetCellId(ni);
                 var dp = _pressureKPa[i] - _pressureKPa[ni];
-                gx += dp * (neighbors[n].Q - id.Q);
-                gy += dp * (neighbors[n].R - id.R);
+                gx += dp * (neighborId.Q - id.Q);
+                gy += dp * (neighborId.R - id.R);
             }
+
             var scale = neighbors.Length == 0 ? 0f : 0.18f / neighbors.Length;
             _windX![i] = Math.Clamp(gx * scale, -1f, 1f);
             _windY![i] = Math.Clamp(gy * scale, -1f, 1f);
         }
+
         SwapInto(_pressureScratch!, _pressureKPa);
     }
 
@@ -120,14 +131,13 @@ public sealed partial class EnvironmentStore
             _precipitation![i] = precipitation;
             _waterDelta![i] += precipitation - evaporation;
 
-            var id = _topology.GetCellId(i);
-            var neighbors = _topology.GetNeighbors(id);
+            var neighbors = _topology.GetNeighborIndices(i);
             var best = -1;
             var sourceSurface = _elevationMeters[i] + water;
             var bestSurface = sourceSurface;
             for (var n = 0; n < neighbors.Length; n++)
             {
-                if (!_topology.TryGetIndex(neighbors[n], out var ni)) continue;
+                var ni = neighbors[n];
                 var surface = _elevationMeters[ni] + _waterDepthMeters[ni];
                 if (surface < bestSurface)
                 {
@@ -162,12 +172,12 @@ public sealed partial class EnvironmentStore
         var blend = Math.Clamp(0.035f * rate, 0f, 0.25f);
         for (var i = 0; i < Count; i++)
         {
-            var id = _topology.GetCellId(i);
             var neighborHumidity = 0f;
-            var neighbors = _topology.GetNeighbors(id);
+            var neighbors = _topology.GetNeighborIndices(i);
             for (var n = 0; n < neighbors.Length; n++)
-                if (_topology.TryGetIndex(neighbors[n], out var ni)) neighborHumidity += _humidity[ni];
-            if (neighbors.Length > 0) neighborHumidity /= neighbors.Length;
+                neighborHumidity += _humidity[neighbors[n]];
+            if (neighbors.Length > 0)
+                neighborHumidity /= neighbors.Length;
 
             var waterSource = _waterAvailability![i] * 0.72f + Math.Min(0.2f, _evaporation![i] * 30f);
             var target = Math.Clamp(waterSource + neighborHumidity * 0.28f - _precipitation![i] * 0.8f, 0f, 1f);
@@ -259,8 +269,25 @@ public sealed partial class EnvironmentStore
         _waterAvailability = new float[Count];
         _temperatureScratch = new float[Count]; _humidityScratch = new float[Count];
         _waterScratch = new float[Count]; _waterDelta = new float[Count]; _pressureScratch = new float[Count]; _nutrientScratch = new float[Count];
+        _baseClimateTemperature = new float[Count];
+        _targetPressure = new float[Count];
+
+        var maxAbsR = 1;
         for (var i = 0; i < Count; i++)
+            maxAbsR = Math.Max(maxAbsR, Math.Abs(_topology.GetCellId(i).R));
+
+        for (var i = 0; i < Count; i++)
+        {
             _waterAvailability[i] = _waterDepthMeters[i] > 0 ? 1f : _humidity[i] * 0.72f;
+
+            var id = _topology.GetCellId(i);
+            var latitude = Math.Clamp(Math.Abs(id.R) / (float)maxAbsR, 0f, 1f);
+            var elevationCooling = Math.Max(0f, _elevationMeters[i]) * 0.0062f;
+            _baseClimateTemperature[i] = 29f - latitude * 31f - elevationCooling;
+            _targetPressure[i] = Math.Max(
+                20f,
+                101.325f * MathF.Exp(-Math.Max(-500f, _elevationMeters[i]) / 8434f));
+        }
     }
 
     private static void SwapInto(float[] source, float[] target) => Array.Copy(source, target, source.Length);

@@ -73,3 +73,12 @@ Mountain relief is now applied as deterministic elongated belts after coastline 
 Sand is restricted to actual low coastal cells. Interior dry/humid terrain rendering now blends continuously by physical humidity/temperature instead of switching between two flat colors. Very deep ocean visually approaches the game background so the finite hex world boundary is less prominent.
 
 Renderer chunk span is increased from 8 to 12 cells and minimum camera zoom is reduced so doubled Large worlds can still be framed at low display resolutions.
+
+
+## 0.0.8 enlarged-world performance pass
+
+The doubled world sizes exposed two separate bottlenecks at runtime. Environment systems previously resolved every neighbor through a CellId dictionary inside each hot loop. WorldTopology now precomputes dense neighbor indices once, and climate/atmosphere/humidity/hydrology consume those index spans directly. Static pressure and base climate targets are cached with the physical environment storage.
+
+Environment systems remain deterministic and multi-rate, but their live cadence is reduced for 17k-29k cell maps while rate multipliers preserve approximately the same physical evolution per simulated second.
+
+At low zoom the map used one Canvas polygon command per visible hex. Base terrain is now triangulated into one ArrayMesh per chunk, reducing the base layer from thousands of Canvas commands to roughly one draw command per visible chunk. Detail and fine layers still use the existing zoom-dependent LOD and remain hidden at full-world overview scale.

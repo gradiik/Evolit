@@ -8,6 +8,7 @@ public sealed class WorldTopology
     private readonly CellId[] _cells;
     private readonly int[] _neighborOffsets;
     private readonly CellId[] _neighbors;
+    private readonly int[] _neighborIndices;
     private readonly Dictionary<CellId, int> _indexById;
 
     public WorldTopology(CellId[] cells, int[] neighborOffsets, CellId[] neighbors)
@@ -29,6 +30,14 @@ public sealed class WorldTopology
             if (!_indexById.TryAdd(cells[index], index))
                 throw new ArgumentException($"Duplicate cell id {cells[index]}.", nameof(cells));
         }
+
+        _neighborIndices = new int[neighbors.Length];
+        for (var index = 0; index < neighbors.Length; index++)
+        {
+            if (!_indexById.TryGetValue(neighbors[index], out var neighborIndex))
+                throw new ArgumentException($"Neighbor {neighbors[index]} is not present in topology cells.", nameof(neighbors));
+            _neighborIndices[index] = neighborIndex;
+        }
     }
 
     public int Count => _cells.Length;
@@ -46,6 +55,16 @@ public sealed class WorldTopology
         var start = _neighborOffsets[index];
         var length = _neighborOffsets[index + 1] - start;
         return _neighbors.AsSpan(start, length);
+    }
+
+    public ReadOnlySpan<int> GetNeighborIndices(int index)
+    {
+        if ((uint)index >= (uint)_cells.Length)
+            return ReadOnlySpan<int>.Empty;
+
+        var start = _neighborOffsets[index];
+        var length = _neighborOffsets[index + 1] - start;
+        return _neighborIndices.AsSpan(start, length);
     }
 
     public WorldTopologySnapshot CaptureSnapshot()

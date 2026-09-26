@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Evolit.Game;
 using Evolit.Settings;
 using Godot;
@@ -55,6 +56,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private GenerationDebugMode _debugMode;
     private readonly Vector2[] _hexPoints = new Vector2[6];
     private readonly Vector2[] _hexOutline = new Vector2[7];
+    private ArrayMesh? _baseMesh;
 
     public int EstimatedCommands { get; private set; }
 
@@ -70,6 +72,8 @@ internal sealed partial class TerrainChunkLayer : Control
         _hexSize = hexSize;
         _quality = quality;
         _kind = kind;
+        if (_kind == TerrainLayerKind.Base)
+            _baseMesh = BuildBaseMesh();
         EstimatedCommands = EstimateCommands();
 
         Position = worldBounds.Position;
@@ -84,19 +88,24 @@ internal sealed partial class TerrainChunkLayer : Control
         if (_kind != TerrainLayerKind.Base || _debugMode == mode)
             return;
         _debugMode = mode;
+        _baseMesh = BuildBaseMesh();
         QueueRedraw();
     }
 
     public override void _Draw()
     {
+        if (_kind == TerrainLayerKind.Base)
+        {
+            if (_baseMesh is not null)
+                DrawMesh(_baseMesh, null, Transform2D.Identity, Colors.White);
+            return;
+        }
+
         foreach (var cell in _cells)
         {
             var center = cell.WorldCenter - _worldBounds.Position;
             switch (_kind)
             {
-                case TerrainLayerKind.Base:
-                    DrawBase(cell, center);
-                    break;
                 case TerrainLayerKind.Detail:
                     DrawDetail(cell, center);
                     break;
@@ -107,10 +116,43 @@ internal sealed partial class TerrainChunkLayer : Control
         }
     }
 
-    private void DrawBase(WorldHexCell cell, Vector2 center)
+    private ArrayMesh BuildBaseMesh()
     {
-        FillHexPoints(center, _hexSize, _hexPoints);
-        DrawColoredPolygon(_hexPoints, TerrainColor(cell, _debugMode));
+        var vertices = new List<Vector2>(_cells.Length * 7);
+        var colors = new List<Color>(_cells.Length * 7);
+        var indices = new List<int>(_cells.Length * 18);
+
+        foreach (var cell in _cells)
+        {
+            var center = cell.WorldCenter - _worldBounds.Position;
+            var color = TerrainColor(cell, _debugMode);
+            var baseIndex = vertices.Count;
+
+            vertices.Add(center);
+            colors.Add(color);
+            for (var corner = 0; corner < 6; corner++)
+            {
+                vertices.Add(center + UnitHex[corner] * _hexSize);
+                colors.Add(color);
+            }
+
+            for (var corner = 0; corner < 6; corner++)
+            {
+                indices.Add(baseIndex);
+                indices.Add(baseIndex + 1 + corner);
+                indices.Add(baseIndex + 1 + ((corner + 1) % 6));
+            }
+        }
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+        arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
+        arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
     }
 
     private void DrawDetail(WorldHexCell cell, Vector2 center)
@@ -185,7 +227,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private int EstimateCommands()
     {
         if (_kind == TerrainLayerKind.Base)
-            return _cells.Length;
+            return _cells.Length == 0 ? 0 : 1;
 
         var commands = 0;
         foreach (var cell in _cells)

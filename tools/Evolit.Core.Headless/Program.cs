@@ -59,7 +59,12 @@ static int ProgramMain(string[] args)
         if (string.Equals(args[0], "environment-benchmark", StringComparison.OrdinalIgnoreCase))
         {
             var ticks = args.Length >= 2 ? int.Parse(args[1]) : 1000;
-            foreach (var radius in new[] { 18, 40, 58, 80 })
+            foreach (var radius in new[]
+                     {
+                         WorldGenerationScale.SmallRadius,
+                         WorldGenerationScale.MediumRadius,
+                         WorldGenerationScale.LargeRadius
+                     })
                 RunEnvironmentBenchmark(radius, ticks, "environment-benchmark");
             return 0;
         }
@@ -551,7 +556,7 @@ static void RunEnvironmentBenchmark(int radius, int ticks, string seed)
     var allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAllocated;
     var memory = Math.Max(0, GC.GetTotalMemory(false) - beforeMemory);
     Array.Sort(samples);
-    Console.WriteLine($"ENV_BENCH cells={sim.Topology.Count} ticks={ticks} init_ms={initMs:0.###} avg_ms={(totalMs/ticks):0.######} p50_ms={Percentile(samples,0.5):0.######} p95_ms={Percentile(samples,0.95):0.######} p99_ms={Percentile(samples,0.99):0.######} alloc_per_tick={(allocated/(double)ticks):0.##} memory_delta={memory} cells_per_sec={(sim.Topology.Count*ticks/Math.Max(0.000001,totalMs/1000.0)):0.##}");
+    Console.WriteLine($"ENV_BENCH cells={sim.Topology.Count} ticks={ticks} init_ms={initMs:0.###} avg_ms={(totalMs/ticks):0.######} p50_ms={Percentile(samples,0.5):0.######} p95_ms={Percentile(samples,0.95):0.######} p99_ms={Percentile(samples,0.99):0.######} ticks_per_sec={(ticks/Math.Max(0.000001,totalMs/1000.0)):0.##} alloc_per_tick={(allocated/(double)ticks):0.##} memory_delta={memory} cells_per_sec={(sim.Topology.Count*ticks/Math.Max(0.000001,totalMs/1000.0)):0.##}");
 }
 
 static void RunBenchmark(int organismCount, int ticks, string seed)
