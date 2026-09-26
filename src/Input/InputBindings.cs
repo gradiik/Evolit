@@ -19,6 +19,7 @@ public static class InputBindings
         ["simulation_speed_3"] = "3",
         ["simulation_speed_max"] = "4",
         ["select"] = "ЛКМ",
+        ["terrain_inspect"] = "T",
         ["cancel"] = "Esc",
         ["debug_overlay"] = "F3"
     };
@@ -37,6 +38,7 @@ public static class InputBindings
         EnsureKeys("simulation_speed_3", OS.FindKeycodeFromString("3"));
         EnsureKeys("simulation_speed_max", OS.FindKeycodeFromString("4"));
         EnsureMouse("select", MouseButton.Left);
+        EnsureKeys("terrain_inspect", OS.FindKeycodeFromString("T"));
         EnsureKeys("cancel", OS.FindKeycodeFromString("Escape"));
         EnsureKeys("debug_overlay", OS.FindKeycodeFromString("F3"));
     }

@@ -33,6 +33,16 @@ public sealed partial class DemoWorldView : Control
     private const float FineShowZoom = 0.46f;
     private const float FineHideZoom = 0.38f;
 
+    private static readonly Vector2[] UnitHexPoints =
+    [
+        new Vector2(0.8660254f, 0.5f),
+        new Vector2(0f, 1f),
+        new Vector2(-0.8660254f, 0.5f),
+        new Vector2(-0.8660254f, -0.5f),
+        new Vector2(0f, -1f),
+        new Vector2(0.8660254f, -0.5f)
+    ];
+
     private DemoWorldDataProvider? _world;
     private DemoEntity? _selected;
     private Vector2 _cameraPosition;
@@ -61,6 +71,13 @@ public sealed partial class DemoWorldView : Control
     private double _diagnosticSeconds;
     private double _overlayRedrawsPerSecond;
 
+    private PanelContainer? _inspectorPanel;
+    private Label? _inspectorLabel;
+    private WorldHexCell? _inspectedCell;
+    private bool _inspectorActive;
+    private readonly Vector2[] _inspectorPoints = new Vector2[6];
+    private readonly Vector2[] _inspectorOutline = new Vector2[7];
+
     public void Configure(
         DemoWorldDataProvider world,
         double cameraSpeed,
@@ -81,6 +98,7 @@ public sealed partial class DemoWorldView : Control
         Resized += HandleResized;
 
         BuildWorldLayers();
+        BuildInspectorPanel();
 
         if (_world is not null)
             _world.DataChanged += HandleWorldDataChanged;
@@ -157,6 +175,8 @@ public sealed partial class DemoWorldView : Control
 
         if (viewChanged)
             UpdateViewTransform();
+
+        UpdateInspector();
     }
 
     public override void _GuiInput(InputEvent @event)
@@ -218,6 +238,8 @@ public sealed partial class DemoWorldView : Control
             new Rect2(Vector2.Zero, Size),
             new Color(0.010f, 0.040f, 0.047f),
             true);
+
+        DrawInspectorHighlight();
     }
 
     public GameViewState CaptureViewState()
@@ -339,6 +361,9 @@ public sealed partial class DemoWorldView : Control
         UpdateChunkVisibility(forceVisibility || oldDetails != _showDetails || oldFine != _showFineDetails);
         _entityOverlay?.SetView(_cameraPosition, _zoom, Size, _selected);
         _overlayRedrawsThisSample++;
+
+        if (_inspectorActive)
+            QueueRedraw();
     }
 
     private void UpdateChunkVisibility(bool force = false)
@@ -391,6 +416,161 @@ public sealed partial class DemoWorldView : Control
     {
         _entityOverlay?.Refresh(_selected);
         _overlayRedrawsThisSample++;
+    }
+
+
+    private void BuildInspectorPanel()
+    {
+        _inspectorPanel = new PanelContainer
+        {
+            Visible = false,
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 15,
+            CustomMinimumSize = UiMetrics.Size(268, 0)
+        };
+        _inspectorPanel.AddThemeStyleboxOverride(
+            "panel",
+            NatureTechTheme.CardStyle(0.98f));
+        AddChild(_inspectorPanel);
+
+        var margin = new MarginContainer
+        {
+            MouseFilter = MouseFilterEnum.Ignore
+        };
+        margin.AddThemeConstantOverride("margin_left", 12);
+        margin.AddThemeConstantOverride("margin_right", 12);
+        margin.AddThemeConstantOverride("margin_top", 9);
+        margin.AddThemeConstantOverride("margin_bottom", 9);
+        _inspectorPanel.AddChild(margin);
+
+        _inspectorLabel = new Label
+        {
+            Text = string.Empty,
+            MouseFilter = MouseFilterEnum.Ignore,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        _inspectorLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
+        _inspectorLabel.AddThemeColorOverride(
+            "font_color",
+            EvolitPalette.MistWhite);
+        margin.AddChild(_inspectorLabel);
+    }
+
+    private void UpdateInspector()
+    {
+        if (_world is null || _inspectorPanel is null)
+            return;
+
+        var active = Input.IsActionPressed("terrain_inspect");
+        var mouse = GetLocalMousePosition();
+        var inside = new Rect2(Vector2.Zero, Size).HasPoint(mouse);
+        var nextCell = active && inside
+            ? _world.Map.GetCellAtWorld(ScreenToWorld(mouse))
+            : null;
+
+        if (!active || nextCell is null)
+        {
+            if (_inspectorActive || _inspectedCell is not null)
+            {
+                _inspectorActive = false;
+                _inspectedCell = null;
+                _inspectorPanel.Visible = false;
+                QueueRedraw();
+            }
+            return;
+        }
+
+        _inspectorActive = true;
+        _inspectorPanel.Visible = true;
+        _inspectorPanel.Position = new Vector2(
+            Math.Max(8f, Math.Min(Size.X - 284f, mouse.X + 18f)),
+            Math.Max(8f, Math.Min(Size.Y - 176f, mouse.Y + 18f)));
+
+        if (!ReferenceEquals(_inspectedCell, nextCell))
+        {
+            _inspectedCell = nextCell;
+            if (_inspectorLabel is not null)
+                _inspectorLabel.Text = FormatInspectorText(nextCell);
+            QueueRedraw();
+        }
+    }
+
+    private void DrawInspectorHighlight()
+    {
+        if (!_inspectorActive || _inspectedCell is null || _world is null)
+            return;
+
+        var center = WorldToScreen(_inspectedCell.WorldCenter);
+        var radius = _world.Map.HexSize * _zoom;
+        if (radius <= 0f)
+            return;
+
+        FillHexPoints(center, radius * 0.96f, _inspectorPoints);
+        DrawColoredPolygon(
+            _inspectorPoints,
+            new Color(EvolitPalette.EvolutionCyan, 0.08f));
+
+        for (var index = 0; index < 6; index++)
+            _inspectorOutline[index] = _inspectorPoints[index];
+        _inspectorOutline[6] = _inspectorPoints[0];
+
+        DrawPolyline(
+            _inspectorOutline,
+            EvolitPalette.EvolutionCyan,
+            Math.Max(1.5f, 2.2f * _zoom),
+            true);
+    }
+
+    private static string FormatInspectorText(WorldHexCell cell)
+    {
+        var location = $"Гекс {cell.Coord.Q}:{cell.Coord.R}";
+        var terrain = $"Тип: {TerrainLabel(cell.Terrain)}";
+        var vertical = cell.IsWater
+            ? $"Глубина: {WaterDepthMeters(cell):0} м"
+            : $"Высота: {cell.ElevationMeters:0} м";
+
+        return
+            $"{location}\n" +
+            $"{terrain}\n" +
+            $"{vertical}\n" +
+            $"Температура: {cell.TemperatureCelsius:0.0} °C\n" +
+            $"Влажность: {cell.Humidity * 100f:0}%\n" +
+            $"Давление: {cell.PressureKPa:0.0} кПа\n" +
+            $"Движение: ×{cell.MovementSpeedMultiplier:0.00} " +
+            $"(стоимость {cell.MovementCost:0.00})";
+    }
+
+    private static float WaterDepthMeters(WorldHexCell cell)
+    {
+        return cell.Terrain switch
+        {
+            HexTerrainType.River => 2.5f + cell.WaterDepth * 18f,
+            HexTerrainType.Lake => 6f + cell.WaterDepth * 120f,
+            _ => cell.WaterDepth * 850f
+        };
+    }
+
+    private static string TerrainLabel(HexTerrainType terrain)
+    {
+        return terrain switch
+        {
+            HexTerrainType.DeepWater => "Глубокий океан",
+            HexTerrainType.ShallowWater => "Мелководье",
+            HexTerrainType.Lake => "Озеро",
+            HexTerrainType.River => "Река",
+            HexTerrainType.Sand => "Песчаный берег",
+            HexTerrainType.Desert => "Пустыня",
+            HexTerrainType.Grassland => "Равнина",
+            HexTerrainType.Rocky => "Каменистая возвышенность",
+            HexTerrainType.Mountain => "Горы",
+            _ => terrain.ToString()
+        };
+    }
+
+    private static void FillHexPoints(Vector2 center, float radius, Vector2[] target)
+    {
+        for (var index = 0; index < 6; index++)
+            target[index] = center + UnitHexPoints[index] * radius;
     }
 
     private void ZoomAt(Vector2 screenPoint, float factor)
@@ -507,6 +687,11 @@ public sealed partial class DemoWorldView : Control
         return (screen - Size * 0.5f)
             / Math.Max(_zoom, 0.01f)
             + _cameraPosition;
+    }
+
+    private Vector2 WorldToScreen(Vector2 world)
+    {
+        return (world - _cameraPosition) * _zoom + Size * 0.5f;
     }
 
     private void ClampCamera()
