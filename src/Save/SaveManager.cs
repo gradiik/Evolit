@@ -240,7 +240,7 @@ public sealed class SaveManager
                 return false;
             }
 
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var stream = new FileStream(path, FileMode.Open, System.IO.FileAccess.Read, FileShare.Read);
             var parsed = JsonSerializer.Deserialize<SaveDocument>(stream, _json);
             if (parsed is null)
             {

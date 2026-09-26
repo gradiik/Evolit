@@ -299,7 +299,7 @@ public sealed partial class SpeciesPortrait : Control
         }
     }
 
-    private static void DrawOrigin(Vector2 center, float radius, Color accent)
+    private void DrawOrigin(Vector2 center, float radius, Color accent)
     {
         DrawCircle(center, radius * 0.32f, new Color(accent, 0.72f));
     }

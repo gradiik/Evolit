@@ -144,7 +144,7 @@ public sealed partial class DemoWorldView : Control
 
     public override void _Process(double delta)
     {
-        if (Input.IsActionJustPressed("worldgen_debug"))
+        if (Godot.Input.IsActionJustPressed("worldgen_debug"))
         {
             _generationDebugMode = (GenerationDebugMode)(((int)_generationDebugMode + 1) % Enum.GetValues<GenerationDebugMode>().Length);
             if (_generationDebugLabel is not null)
@@ -165,7 +165,7 @@ public sealed partial class DemoWorldView : Control
             _diagnosticSeconds = 0;
         }
 
-        var direction = Input.GetVector(
+        var direction = Godot.Input.GetVector(
             "camera_left",
             "camera_right",
             "camera_up",
@@ -473,7 +473,7 @@ public sealed partial class DemoWorldView : Control
             ZIndex = 14
         };
         _generationDebugLabel.Position = new Vector2(16, 16);
-        _generationDebugLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(13));
+        _generationDebugLabel.AddThemeFontSizeOverride("font_size", 13);
         _generationDebugLabel.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         AddChild(_generationDebugLabel);
     }
@@ -485,7 +485,7 @@ public sealed partial class DemoWorldView : Control
             Visible = false,
             MouseFilter = MouseFilterEnum.Ignore,
             ZIndex = 15,
-            CustomMinimumSize = UiMetrics.Size(268, 0)
+            CustomMinimumSize = new Vector2(268, 0)
         };
         _inspectorPanel.AddThemeStyleboxOverride(
             "panel",
@@ -508,7 +508,7 @@ public sealed partial class DemoWorldView : Control
             MouseFilter = MouseFilterEnum.Ignore,
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
-        _inspectorLabel.AddThemeFontSizeOverride("font_size", UiMetrics.Font(12));
+        _inspectorLabel.AddThemeFontSizeOverride("font_size", 12);
         _inspectorLabel.AddThemeColorOverride(
             "font_color",
             EvolitPalette.MistWhite);
@@ -520,7 +520,7 @@ public sealed partial class DemoWorldView : Control
         if (_world is null || _inspectorPanel is null)
             return;
 
-        var active = Input.IsActionPressed("terrain_inspect");
+        var active = Godot.Input.IsActionPressed("terrain_inspect");
         if (!active && !_inspectorActive)
             return;
 

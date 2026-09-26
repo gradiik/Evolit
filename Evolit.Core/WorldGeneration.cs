@@ -111,7 +111,7 @@ public static class ProceduralWorldGenerator
         GeneratedWorld? best = null;
         var bestScore = double.NegativeInfinity;
 
-        const int maxAttempts = 2;
+        const int maxAttempts = 12;
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             var attemptSeed = attempt == 0

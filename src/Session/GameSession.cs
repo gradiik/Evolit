@@ -69,9 +69,12 @@ public sealed class GameSession
             document.WorldName,
             document.Seed,
             document.WorldSize,
-            Enum.IsDefined(typeof(WorldLandAmount), document.LandAmount) ? (WorldLandAmount)document.LandAmount : WorldLandAmount.Normal,
-            Enum.IsDefined(typeof(WorldClimate), document.Climate) ? (WorldClimate)document.Climate : WorldClimate.Temperate,
-            Enum.IsDefined(typeof(GeologicalActivity), document.GeologicalActivity) ? (GeologicalActivity)document.GeologicalActivity : GeologicalActivity.Normal,
+            document.LandAmount is >= 0 and <= byte.MaxValue && Enum.IsDefined((WorldLandAmount)document.LandAmount)
+                ? (WorldLandAmount)document.LandAmount : WorldLandAmount.Normal,
+            document.Climate is >= 0 and <= byte.MaxValue && Enum.IsDefined((WorldClimate)document.Climate)
+                ? (WorldClimate)document.Climate : WorldClimate.Temperate,
+            document.GeologicalActivity is >= 0 and <= byte.MaxValue && Enum.IsDefined((GeologicalActivity)document.GeologicalActivity)
+                ? (GeologicalActivity)document.GeologicalActivity : GeologicalActivity.Normal,
             document.CreatedAt,
             document.PlaytimeSeconds,
             false);

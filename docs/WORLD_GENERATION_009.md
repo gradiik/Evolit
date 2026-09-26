@@ -59,12 +59,18 @@ Land amount remains controlled by the requested setting, but the underlying scal
 After sea-level selection, deterministic connected-component cleanup removes only obvious noise fragments and tiny enclosed water holes.
 
 A multi-source BFS builds distance-to-coast in O(N). Ocean depth then grows from shallow continental shelf toward deep basins with large-scale basin variation. The finite hex boundary is still forced toward ocean so it is not traced by land.
+The edge falloff uses hex distance, matching the actual playable boundary. Volcanic
+island arcs cannot spawn on the outer three cells. A bounded deterministic
+candidate search also favors worlds without one overwhelming landmass.
 
 ## Relief
 
 Mountain systems are tied to convergent pseudo-plate boundaries instead of arbitrary isolated blobs. Uplift has broad halos, while a limited thermal-style relaxation pass turns isolated spikes into connected peaks, foothills and highlands.
 
 Stable interiors are intentionally smoother so large plains remain possible. Divergent zones provide valley/rift foundations. Rivers later carve shallow corridors into the final relief.
+After sea-level selection, positive macro elevation is compressed before
+tectonic relief is applied. This keeps broad continental interiors low while
+plate convergence supplies most prominent high ground.
 
 ## Hydrology
 
@@ -82,6 +88,9 @@ Drainage then provides:
 - lake spill/outlet paths.
 
 The main river network is generated from accumulated catchment flow, not random drawing. Major river cells receive a small valley-carving pass, then hydrology is rebuilt against the carved relief.
+Each land cell selects the steepest neighbor with a strictly lower filled
+hydraulic surface; the priority-flood parent remains a safe fallback. A lake
+must cover at least two cells, so single-cell sinks are filled into terrain.
 
 ## Initial climate
 
@@ -94,6 +103,8 @@ Humidity uses real water distance plus a deterministic west-to-east moisture tra
 Subsystems use separate SeedMixer-derived streams for macro geography, geology, islands, erosion/hydrology detail and climate. Same version + seed + settings + size produces the same starting world.
 
 Runtime generation may evaluate a small bounded number of deterministic candidates and choose the best quality score. Aesthetic quality thresholds never make New Game crash.
+The current bound is twelve candidates. This is a worst-case cap, not the
+normal number of generation passes.
 
 ## Quality metrics
 

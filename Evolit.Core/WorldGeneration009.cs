@@ -86,7 +86,13 @@ internal static class WorldGeneration009Pipeline
         var coastStart = Stopwatch.GetTimestamp();
         var seaLevel = ChooseSeaLevel(settings, elevation);
         for (var i = 0; i < count; i++)
+        {
             elevation[i] -= seaLevel;
+            // Continental crust controls the land mask. Broad interior height
+            // stays low until geological uplift creates mountain belts.
+            if (elevation[i] >= 0f)
+                elevation[i] *= 0.38f;
+        }
 
         AddContinentalShelfIslands(
             settings,
@@ -330,8 +336,8 @@ internal static class WorldGeneration009Pipeline
 
             // Domain warp affects plate borders and coast shape, but not the underlying
             // RNG streams for geology/hydrology.
-            var warpX = (Fbm(x0 * 1.7f + 3.1f, y0 * 1.7f - 5.4f, SeedMixer.Combine(macroSeed, 101), 3) - 0.5f) * 0.24f;
-            var warpY = (Fbm(x0 * 1.7f - 4.7f, y0 * 1.7f + 2.8f, SeedMixer.Combine(macroSeed, 103), 3) - 0.5f) * 0.24f;
+            var warpX = (Fbm(x0 * 2.3f + 3.1f, y0 * 2.3f - 5.4f, SeedMixer.Combine(macroSeed, 101), 3) - 0.5f) * 0.72f;
+            var warpY = (Fbm(x0 * 2.3f - 4.7f, y0 * 2.3f + 2.8f, SeedMixer.Combine(macroSeed, 103), 3) - 0.5f) * 0.72f;
             var x = x0 + warpX;
             var y = y0 + warpY;
 
@@ -356,9 +362,9 @@ internal static class WorldGeneration009Pipeline
             convergence[i] = Math.Clamp(relative, 0f, 1.5f) * boundaryStrength;
             divergence[i] = Math.Clamp(-relative, 0f, 1.5f) * boundaryStrength;
 
-            var continentalBlend = p.Crust;
-            if (boundaryStrength > 0.25f)
-                continentalBlend = Lerp(continentalBlend, s.Crust, boundaryStrength * 0.32f);
+            // Nearest-plate assignment is discontinuous at a Voronoi edge.
+            // Blend halfway there so plate borders do not become straight coasts.
+            var continentalBlend = Lerp(p.Crust, s.Crust, 0.5f * MathF.Exp(-gap * 5.5f));
 
             var broad = Fbm(x0 * 1.25f + 7f, y0 * 1.25f - 11f, SeedMixer.Combine(macroSeed, 107), 4) - 0.5f;
             var regional = Fbm(x0 * 3.3f - 13f, y0 * 3.3f + 17f, SeedMixer.Combine(macroSeed, 109), 3) - 0.5f;
@@ -374,14 +380,19 @@ internal static class WorldGeneration009Pipeline
                 ? convergence[i] * (0.10f + (p.Volcanism + s.Volcanism) * 0.08f)
                 : 0f;
 
-            var radial = MathF.Sqrt(x0 * x0 + y0 * y0);
-            var edgeOcean = MathF.Pow(Math.Clamp((radial - 0.73f) / 0.27f, 0f, 1f), 2.2f) * 1.65f;
+            // The playable topology is a hexagon. A circular edge falloff leaves
+            // its six flat sides exposed as clipped continental coastlines.
+            var hexRadius = Math.Max(Math.Abs(ids[i].Q),
+                Math.Max(Math.Abs(ids[i].R), Math.Abs(-ids[i].Q - ids[i].R)));
+            var boundaryProximity = hexRadius / (float)settings.Radius;
+            var edgeOcean = MathF.Pow(
+                Math.Clamp((boundaryProximity - 0.70f) / 0.30f, 0f, 1f), 1.8f) * 3.7f;
 
             var value =
                 continentalBlend * 0.90f +
                 broad * 0.54f +
-                regional * (0.22f + coastStyle * 0.055f) +
-                local * (0.045f + coastStyle * 0.070f) +
+                regional * (0.58f + coastStyle * 0.14f) +
+                local * (0.07f + coastStyle * 0.06f) +
                 arc -
                 rift -
                 edgeOcean +
@@ -589,6 +600,11 @@ internal static class WorldGeneration009Pipeline
         for (var i = 0; i < elevation.Length; i++)
         {
             if (elevation[i] >= 0f)
+                continue;
+
+            var hexRadius = Math.Max(Math.Abs(ids[i].Q),
+                Math.Max(Math.Abs(ids[i].R), Math.Abs(-ids[i].Q - ids[i].R)));
+            if (hexRadius >= settings.Radius - 3)
                 continue;
 
             var p = plates[province[i]];
@@ -956,6 +972,30 @@ internal static class WorldGeneration009Pipeline
             }
         }
 
+        // Priority flood gives every cell a safe escape route, but its first
+        // discovery tree can turn rivers into long straight spokes. Prefer the
+        // steepest adjacent hydraulic descent while keeping the filled surface
+        // strictly decreasing, so drainage remains acyclic.
+        for (var i = 0; i < count; i++)
+        {
+            if (elevation[i] < 0f)
+                continue;
+
+            var neighbors = topology.GetNeighborIndices(i);
+            var best = drainage[i];
+            var bestDrop = best >= 0 ? filled[i] - filled[best] : float.NegativeInfinity;
+            for (var n = 0; n < neighbors.Length; n++)
+            {
+                var ni = neighbors[n];
+                var drop = filled[i] - filled[ni];
+                if (drop <= PriorityFloodEpsilon * 0.5f || drop <= bestDrop)
+                    continue;
+                best = ni;
+                bestDrop = drop;
+            }
+            drainage[i] = best;
+        }
+
         var depression = new float[count];
         for (var i = 0; i < count; i++)
             if (elevation[i] >= 0f)
@@ -1104,7 +1144,7 @@ internal static class WorldGeneration009Pipeline
 
             var keep =
                 component.Count >= 3 ||
-                maxDepth >= 34f ||
+                (component.Count >= 2 && maxDepth >= 34f) ||
                 (component.Count >= 2 && maxElevation > 700f && maxDepth >= 16f);
 
             if (!keep)

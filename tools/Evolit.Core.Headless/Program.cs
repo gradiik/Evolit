@@ -553,7 +553,7 @@ static void PrintWorldgenQuality(string seed, GeneratedWorld world)
 
     Console.WriteLine(
         $"WORLDGEN_QUALITY seed={seed} continents={q.ContinentCount} land={s.LandRatio:P1} " +
-        $"largest_land={largestPct:0.0}% second_land={secondPct:0.0}% tiny_islands={q.TinyIslandCount} " +
+        $"largest_land={largestPct:0.0}% second_land={secondPct:0.0}% islands={s.IslandCount} tiny_islands={q.TinyIslandCount} " +
         $"inland_water={q.InlandWaterComponents} coast_edges={q.CoastlineEdges} coast_complexity={q.CoastlineComplexity:0.###} " +
         $"mountain_ranges={q.MountainRangeCount} rivers={q.RiverCount} river_cells={q.RiverTotalLength} " +
         $"longest_river={q.LongestRiver} tributaries={q.TributaryCount} lakes={q.LakeCount} lake_cells={s.LakeCells} " +

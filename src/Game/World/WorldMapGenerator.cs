@@ -64,7 +64,7 @@ public static class WorldMapGenerator
                 MineralPotential = Math.Clamp(saved.MineralPotential, 0f, 1f),
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
-                Substrate = Enum.IsDefined(typeof(SubstrateKind), saved.Substrate)
+                Substrate = saved.Substrate is >= 0 and <= byte.MaxValue && Enum.IsDefined((SubstrateKind)saved.Substrate)
                     ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown,
                 ProvinceId = saved.ProvinceId,
                 Continentalness = saved.Continentalness,
@@ -214,7 +214,7 @@ public static class WorldMapGenerator
         if (water == HexWaterKind.Ocean) return waterDepthMeters > 180f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
         if ((elevationMeters > 1450f && slope > 120f) || elevationMeters > 2600f)
             return HexTerrainType.Mountain;
-        if (slope > 75f || elevationMeters > 900f || substrate is SubstrateKind.BareRock or SubstrateKind.Basalt)
+        if (slope > 140f || elevationMeters > 1500f || substrate is SubstrateKind.BareRock or SubstrateKind.Basalt)
             return HexTerrainType.Rocky;
         if (substrate == SubstrateKind.Sand && elevationMeters < 180f) return HexTerrainType.Sand;
         if (humidity < 0.28f && temperature > 18f) return HexTerrainType.Desert;
