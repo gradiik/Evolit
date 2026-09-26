@@ -184,8 +184,10 @@ static void RunBenchmark(int organismCount, int ticks, string seed)
     GC.WaitForPendingFinalizers();
     GC.Collect();
 
-    var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+    // Allocate benchmark bookkeeping before allocation measurement so
+    // alloc_per_tick reflects the simulation hot path rather than the harness.
     var samples = new double[ticks];
+    var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
     var totalStart = Stopwatch.GetTimestamp();
     for (var index = 0; index < ticks; index++)
     {
