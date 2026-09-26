@@ -5,7 +5,10 @@ namespace Evolit.UI;
 
 public sealed partial class MenuBackground : Control
 {
+    private const double RedrawInterval = 1.0 / 30.0;
+
     private double _time;
+    private double _redrawAccumulator;
     private Vector2 _parallax;
     private Vector2 _parallaxTarget;
 
@@ -21,6 +24,7 @@ public sealed partial class MenuBackground : Control
     public override void _Process(double delta)
     {
         _time += delta;
+        _redrawAccumulator += delta;
 
         var viewportSize = GetViewportRect().Size;
         if (viewportSize.X > 1 && viewportSize.Y > 1)
@@ -34,6 +38,10 @@ public sealed partial class MenuBackground : Control
             _parallax = _parallax.Lerp(_parallaxTarget, 1f - MathF.Exp(-3.2f * (float)delta));
         }
 
+        if (_redrawAccumulator < RedrawInterval)
+            return;
+
+        _redrawAccumulator %= RedrawInterval;
         QueueRedraw();
     }
 
@@ -131,7 +139,6 @@ public sealed partial class MenuBackground : Control
         DrawCircle(new Vector2(width * 0.79f, height * 0.94f) - offset, height * 0.24f, new Color(0.025f, 0.115f, 0.100f, 1f));
         DrawCircle(new Vector2(width * 0.04f, height * 0.96f) - offset, height * 0.22f, new Color(0.018f, 0.075f, 0.075f, 1f));
 
-        // A few large pebbles to add depth without visual noise.
         DrawCircle(new Vector2(width * 0.70f, height * 0.87f) - offset * 0.8f, height * 0.037f, new Color(EvolitPalette.Slate, 0.16f));
         DrawCircle(new Vector2(width * 0.735f, height * 0.90f) - offset * 0.82f, height * 0.026f, new Color(EvolitPalette.Slate, 0.12f));
         DrawCircle(new Vector2(width * 0.18f, height * 0.91f) - offset * 0.76f, height * 0.031f, new Color(EvolitPalette.Slate, 0.11f));

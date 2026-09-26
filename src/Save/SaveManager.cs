@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Evolit.Game;
 using Evolit.Session;
 using Evolit.Storage;
+using Evolit.Versioning;
 using Godot;
 
 namespace Evolit.Save;
@@ -13,7 +15,6 @@ public sealed class SaveManager
 {
     public const int SchemaVersion = 1;
     public const int AutosaveSlots = 5;
-    public const string GameVersion = "dev";
     public const string ManualType = "manual";
     public const string AutosaveType = "autosave";
 
@@ -30,14 +31,22 @@ public sealed class SaveManager
         Directory.CreateDirectory(_saveDirectory);
     }
 
-    public SaveOperationResult SaveManual(GameSession session)
+    public SaveOperationResult SaveManual(
+        GameSession session,
+        GameTimeController? time = null,
+        SimulationSpeedState? speed = null,
+        DemoWorldDataProvider? world = null)
     {
-        var document = BuildDocument(session, ManualType, null);
+        var document = BuildDocument(session, ManualType, null, time, speed, world);
         var path = Path.Combine(_saveDirectory, $"manual_{session.SaveId}.json");
         return WriteDocument(path, document);
     }
 
-    public SaveOperationResult CreateAutosave(GameSession session)
+    public SaveOperationResult CreateAutosave(
+        GameSession session,
+        GameTimeController? time = null,
+        SimulationSpeedState? speed = null,
+        DemoWorldDataProvider? world = null)
     {
         var slots = ListSaves()
             .Where(slot => slot.Document?.SaveType == AutosaveType && slot.Document.AutosaveIndex.HasValue)
@@ -48,7 +57,7 @@ public sealed class SaveManager
             ? 1
             : (slots[0].Document!.AutosaveIndex!.Value % AutosaveSlots) + 1;
 
-        var document = BuildDocument(session, AutosaveType, nextIndex);
+        var document = BuildDocument(session, AutosaveType, nextIndex, time, speed, world);
         var path = Path.Combine(_saveDirectory, $"autosave_{nextIndex}.json");
         return WriteDocument(path, document);
     }
@@ -127,7 +136,13 @@ public sealed class SaveManager
             : SaveOperationResult.Fail(error);
     }
 
-    private SaveDocument BuildDocument(GameSession session, string saveType, int? autosaveIndex)
+    private SaveDocument BuildDocument(
+        GameSession session,
+        string saveType,
+        int? autosaveIndex,
+        GameTimeController? time,
+        SimulationSpeedState? speed,
+        DemoWorldDataProvider? world)
     {
         return new SaveDocument
         {
@@ -139,10 +154,27 @@ public sealed class SaveManager
             CreatedAt = session.CreatedAt,
             SavedAt = DateTimeOffset.UtcNow,
             PlaytimeSeconds = session.PlaytimeSeconds,
-            GameVersion = GameVersion,
+            GameVersion = AppVersionCatalog.CurrentVersion,
             SaveType = saveType,
             AutosaveIndex = autosaveIndex,
-            Payload = new Dictionary<string, string>()
+            Payload = new Dictionary<string, string>(),
+            Runtime = time is not null && speed is not null && world is not null
+                ? new GameRuntimeSaveState
+                {
+                    Time = new GameTimeSaveState
+                    {
+                        Day = time.Day,
+                        MinuteOfDay = time.MinuteOfDay,
+                        TickCount = time.TickCount
+                    },
+                    Speed = new SimulationSpeedSaveState
+                    {
+                        Paused = speed.Paused,
+                        Multiplier = speed.Multiplier
+                    },
+                    World = world.CaptureSaveState()
+                }
+                : null
         };
     }
 
@@ -245,6 +277,27 @@ public sealed class SaveManager
         {
             error = "Некорректный индекс автосохранения.";
             return false;
+        }
+
+        // Legacy schema-1 saves did not have Runtime. Keep them loadable and let
+        // AppRoot rebuild deterministic defaults from seed + world size.
+        if (document.Runtime is not null)
+        {
+            if (document.Runtime.Time.Day < 1)
+            {
+                error = "Некорректный день в runtime-состоянии.";
+                return false;
+            }
+            if (document.Runtime.Speed.Multiplier <= 0)
+            {
+                error = "Некорректная скорость в runtime-состоянии.";
+                return false;
+            }
+            if (document.Runtime.World.Entities.Count == 0 || document.Runtime.World.Species.Count == 0)
+            {
+                error = "Runtime-состояние не содержит обязательные данные мира.";
+                return false;
+            }
         }
 
         error = string.Empty;

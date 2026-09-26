@@ -29,13 +29,7 @@ public sealed class SimulationSpeedState
 
     public void SetMultiplier(int multiplier)
     {
-        var next = multiplier switch
-        {
-            <= 1 => 1,
-            <= 4 => 4,
-            <= 16 => 16,
-            _ => MaxMultiplier
-        };
+        var next = NormalizeMultiplier(multiplier);
 
         if (Multiplier == next && !Paused)
             return;
@@ -43,5 +37,23 @@ public sealed class SimulationSpeedState
         Multiplier = next;
         Paused = false;
         Changed?.Invoke();
+    }
+
+    public void Restore(bool paused, int multiplier)
+    {
+        Multiplier = NormalizeMultiplier(multiplier);
+        Paused = paused;
+        Changed?.Invoke();
+    }
+
+    private static int NormalizeMultiplier(int multiplier)
+    {
+        return multiplier switch
+        {
+            <= 1 => 1,
+            <= 4 => 4,
+            <= 16 => 16,
+            _ => MaxMultiplier
+        };
     }
 }

@@ -116,6 +116,15 @@ public sealed partial class NewGameScreen : Control
         buttons.AddChild(create);
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("game_pause"))
+            return;
+
+        BackRequested?.Invoke();
+        GetViewport().SetInputAsHandled();
+    }
+
     private static Label FieldLabel(string text)
     {
         var label = new Label { Text = text };

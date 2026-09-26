@@ -103,6 +103,15 @@ public sealed partial class VersionsScreen : Control
         root.AddChild(note);
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("game_pause"))
+            return;
+
+        BackRequested?.Invoke();
+        GetViewport().SetInputAsHandled();
+    }
+
     private Control BuildVersionCard(AppVersionRecord record)
     {
         var panel = new PanelContainer

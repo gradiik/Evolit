@@ -42,6 +42,15 @@ public sealed partial class SettingsMenu : Control
         ShowCategory(_currentCategory);
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("game_pause"))
+            return;
+
+        BackRequested?.Invoke();
+        GetViewport().SetInputAsHandled();
+    }
+
     private void Build()
     {
         var dim = new ColorRect
@@ -215,7 +224,11 @@ public sealed partial class SettingsMenu : Control
     {
         if (_content is null) return;
         _content.AddChild(OptionRow("Режим экрана", ["Оконный", "Без рамки", "Полноэкранный"], _state.DisplayMode, value => _state.DisplayMode = value));
-        _content.AddChild(OptionRow("Разрешение", ["1280×720", "1920×1080", "2560×1440"], _state.Resolution, value => _state.Resolution = value));
+        _content.AddChild(OptionRow(
+            "Разрешение",
+            ["1280×720", "1920×1080", "2560×1440", "1920×1200", "2560×1600"],
+            _state.Resolution,
+            value => _state.Resolution = value));
         _content.AddChild(ToggleRow("Вертикальная синхронизация", _state.VSync, value => _state.VSync = value));
         _content.AddChild(OptionRow("Уровень детализации", ["Низкий", "Средний", "Высокий"], _state.DetailLevel, value => _state.DetailLevel = value));
         _content.AddChild(OptionRow("Качество воды", ["Низкое", "Среднее", "Высокое"], _state.WaterQuality, value => _state.WaterQuality = value));

@@ -72,6 +72,24 @@ public sealed partial class EvolitConfirmDialog : Control
         buttons.AddChild(_confirm);
     }
 
+    public bool TryCancel()
+    {
+        if (!Visible)
+            return false;
+
+        HideDialog();
+        return true;
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!Visible || !@event.IsActionPressed("game_pause"))
+            return;
+
+        HideDialog();
+        GetViewport().SetInputAsHandled();
+    }
+
     public void ShowDialog(string title, string message, string confirmText, Action onConfirm)
     {
         if (_title is null || _message is null || _confirm is null)

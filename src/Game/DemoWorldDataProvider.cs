@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Evolit.Save;
 using Evolit.Session;
 using Godot;
 
@@ -35,6 +36,8 @@ public sealed class DemoEntity
 public sealed class DemoWorldDataProvider
 {
     private const int MaxHistorySamples = 2048;
+    private const int MaxChronicleEntries = 512;
+    private const int MaxEvents = 40;
 
     private readonly List<DemoEntity> _entities;
     private readonly List<DemoSpeciesRecord> _species;
@@ -108,7 +111,6 @@ public sealed class DemoWorldDataProvider
     public IReadOnlyList<DemoSpeciesRecord> Species => _species;
     public IReadOnlyList<DemoChronicleEntry> Chronicle => _chronicle;
     public IReadOnlyList<DemoEventEntry> Events => _events;
-
     public IReadOnlyList<WorldHistorySample> History => _history;
 
     public int CreatureCount => _entities.Where(entity => entity.Kind == DemoEntityKind.Creature).Sum(entity => entity.Population);
@@ -128,6 +130,179 @@ public sealed class DemoWorldDataProvider
         .Select(species => (double)species.Adaptability)
         .DefaultIfEmpty(0)
         .Average();
+
+    public DemoWorldSaveState CaptureSaveState()
+    {
+        return new DemoWorldSaveState
+        {
+            LastSimulatedDay = LastSimulatedDay,
+            Entities = _entities.Select(entity => new DemoEntitySaveState
+            {
+                Id = entity.Id,
+                Kind = (int)entity.Kind,
+                Name = entity.Name,
+                Species = entity.Species,
+                Subspecies = entity.Subspecies,
+                WorldX = entity.WorldPosition.X,
+                WorldY = entity.WorldPosition.Y,
+                AgeDays = entity.AgeDays,
+                Health = entity.Health,
+                Energy = entity.Energy,
+                Size = entity.Size,
+                Speed = entity.Speed,
+                Diet = entity.Diet,
+                State = entity.State,
+                PlantType = entity.PlantType,
+                Population = entity.Population,
+                PopulationHistory = new List<float>(entity.PopulationHistory)
+            }).ToList(),
+            Species = _species.Select(species => new DemoSpeciesSaveState
+            {
+                Id = species.Id,
+                ParentId = species.ParentId,
+                Name = species.Name,
+                Kind = (int)species.Kind,
+                Status = (int)species.Status,
+                DayAppeared = species.DayAppeared,
+                Population = species.Population,
+                Adaptability = species.Adaptability,
+                Description = species.Description,
+                PopulationHistory = new List<float>(species.PopulationHistory)
+            }).ToList(),
+            History = _history.Select(sample => new WorldHistorySaveState
+            {
+                Sequence = sample.Sequence,
+                Day = sample.Day,
+                GameTime = sample.GameTime,
+                CreaturePopulation = sample.CreaturePopulation,
+                PlantPopulation = sample.PlantPopulation,
+                SpeciesCount = sample.SpeciesCount,
+                SubspeciesCount = sample.SubspeciesCount
+            }).ToList(),
+            Chronicle = _chronicle.Select(entry => new DemoChronicleSaveState
+            {
+                Day = entry.Day,
+                Time = entry.Time,
+                Category = (int)entry.Category,
+                Kind = (int)entry.Kind,
+                Severity = (int)entry.Severity,
+                Title = entry.Title,
+                Description = entry.Description,
+                RelatedEntityId = entry.RelatedEntityId,
+                IconPath = entry.IconPath
+            }).ToList(),
+            Events = _events.Select(entry => new DemoEventSaveState
+            {
+                Day = entry.Day,
+                Time = entry.Time,
+                Category = (int)entry.Category,
+                Kind = (int)entry.Kind,
+                Severity = (int)entry.Severity,
+                Title = entry.Title,
+                Description = entry.Description,
+                RelatedEntityId = entry.RelatedEntityId,
+                IconPath = entry.IconPath
+            }).ToList()
+        };
+    }
+
+    public void RestoreSaveState(DemoWorldSaveState state)
+    {
+        LastSimulatedDay = Math.Max(1, state.LastSimulatedDay);
+
+        _entities.Clear();
+        foreach (var entity in state.Entities)
+        {
+            _entities.Add(new DemoEntity
+            {
+                Id = entity.Id,
+                Kind = (DemoEntityKind)entity.Kind,
+                Name = entity.Name,
+                Species = entity.Species,
+                Subspecies = entity.Subspecies,
+                WorldPosition = new Vector2(entity.WorldX, entity.WorldY),
+                AgeDays = entity.AgeDays,
+                Health = entity.Health,
+                Energy = entity.Energy,
+                Size = entity.Size,
+                Speed = entity.Speed,
+                Diet = entity.Diet,
+                State = entity.State,
+                PlantType = entity.PlantType,
+                Population = entity.Population,
+                PopulationHistory = new List<float>(entity.PopulationHistory)
+            });
+        }
+
+        _species.Clear();
+        foreach (var species in state.Species)
+        {
+            _species.Add(new DemoSpeciesRecord
+            {
+                Id = species.Id,
+                ParentId = species.ParentId,
+                Name = species.Name,
+                Kind = (DemoSpeciesKind)species.Kind,
+                Status = (DemoSpeciesStatus)species.Status,
+                DayAppeared = species.DayAppeared,
+                Population = species.Population,
+                Adaptability = species.Adaptability,
+                Description = species.Description,
+                PopulationHistory = new List<float>(species.PopulationHistory)
+            });
+        }
+
+        _history.Clear();
+        foreach (var sample in state.History.TakeLast(MaxHistorySamples))
+        {
+            _history.Add(new WorldHistorySample(
+                sample.Sequence,
+                sample.Day,
+                sample.GameTime,
+                sample.CreaturePopulation,
+                sample.PlantPopulation,
+                sample.SpeciesCount,
+                sample.SubspeciesCount));
+        }
+        _nextHistorySequence = _history.Count == 0 ? 0 : _history.Max(sample => sample.Sequence) + 1;
+
+        _chronicle.Clear();
+        foreach (var entry in state.Chronicle.TakeLast(MaxChronicleEntries))
+        {
+            _chronicle.Add(new DemoChronicleEntry
+            {
+                Day = entry.Day,
+                Time = entry.Time,
+                Category = (DemoEventCategory)entry.Category,
+                Kind = (DemoEventKind)entry.Kind,
+                Severity = (DemoEventSeverity)entry.Severity,
+                Title = entry.Title,
+                Description = entry.Description,
+                RelatedEntityId = entry.RelatedEntityId,
+                IconPath = entry.IconPath
+            });
+        }
+
+        _events.Clear();
+        foreach (var entry in state.Events.Take(MaxEvents))
+        {
+            _events.Add(new DemoEventEntry
+            {
+                Day = entry.Day,
+                Time = entry.Time,
+                Category = (DemoEventCategory)entry.Category,
+                Kind = (DemoEventKind)entry.Kind,
+                Severity = (DemoEventSeverity)entry.Severity,
+                Title = entry.Title,
+                Description = entry.Description,
+                RelatedEntityId = entry.RelatedEntityId,
+                IconPath = entry.IconPath
+            });
+        }
+
+        HistoryChanged?.Invoke();
+        DataChanged?.Invoke();
+    }
 
     public void AdvanceDemoDay(int day)
     {
@@ -221,6 +396,7 @@ public sealed class DemoWorldDataProvider
                 Description = "Демо-runtime добавил новую точку статистики без запуска биологической симуляции.",
                 IconPath = "simulation/history.svg"
             });
+            TrimChronicle();
         }
 
         InsertEvent(
@@ -242,11 +418,17 @@ public sealed class DemoWorldDataProvider
     {
         _events.Insert(0, entry);
 
-        if (_events.Count > 40)
-            _events.RemoveRange(40, _events.Count - 40);
+        if (_events.Count > MaxEvents)
+            _events.RemoveRange(MaxEvents, _events.Count - MaxEvents);
 
         if (notify)
             EventAdded?.Invoke(entry);
+    }
+
+    private void TrimChronicle()
+    {
+        if (_chronicle.Count > MaxChronicleEntries)
+            _chronicle.RemoveRange(0, _chronicle.Count - MaxChronicleEntries);
     }
 
     private void SeedLegacyHistory()

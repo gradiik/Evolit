@@ -17,6 +17,7 @@ public sealed class GameTimeController
 
     public int Day { get; private set; } = 1;
     public long TickCount { get; private set; }
+    public double MinuteOfDay => _minuteOfDay;
 
     public double Tps => _measuredTps;
 
@@ -34,6 +35,17 @@ public sealed class GameTimeController
     public GameTimeController(SimulationSpeedState speed)
     {
         _speed = speed;
+    }
+
+    public void Restore(int day, double minuteOfDay, long tickCount)
+    {
+        Day = Math.Max(1, day);
+        _minuteOfDay = Math.Clamp(minuteOfDay, 0, MinutesPerDay - 0.0001);
+        TickCount = Math.Max(0, tickCount);
+        _tickFraction = 0;
+        _measureSeconds = 0;
+        _measureTicks = 0;
+        _measuredTps = 0;
     }
 
     public void Advance(double delta)

@@ -312,7 +312,7 @@ public sealed partial class EvolutionPanel : Control
 
         var note = new Label
         {
-            Text = "Интерфейс 0.0.4\n\nМутации, давление среды и отбор здесь являются демонстрацией интерфейса и не изменяют мир. Биологическая симуляция будет подключена отдельно.",
+            Text = "Интерфейс 0.0.5\n\nМутации, давление среды и отбор здесь являются демонстрацией интерфейса и не изменяют мир. Биологическая симуляция будет подключена отдельно.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         note.AddThemeFontSizeOverride("font_size", 12);

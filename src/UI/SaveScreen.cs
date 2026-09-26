@@ -86,6 +86,15 @@ public sealed partial class SaveScreen : Control
         Refresh();
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!@event.IsActionPressed("game_pause"))
+            return;
+
+        BackRequested?.Invoke();
+        GetViewport().SetInputAsHandled();
+    }
+
     public void Refresh()
     {
         if (_list is null || _saveManager is null)

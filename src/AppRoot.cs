@@ -6,6 +6,7 @@ using Evolit.Save;
 using Evolit.Session;
 using Evolit.Settings;
 using Evolit.UI;
+using Evolit.UI.Game;
 using Evolit.Versioning;
 using Godot;
 
@@ -27,6 +28,8 @@ public sealed partial class AppRoot : Control
     private SimulationSpeedState? _simulationSpeed;
     private GameTimeController? _gameTime;
     private DemoWorldDataProvider? _demoWorld;
+    private GameScreen? _activeGameScreen;
+    private GameViewState? _gameViewState;
 
     private GameFlowState _returnFromSettings = GameFlowState.MainMenu;
     private GameFlowState _returnFromSaves = GameFlowState.MainMenu;
@@ -83,8 +86,20 @@ public sealed partial class AppRoot : Control
         if (!@event.IsActionPressed("game_pause"))
             return;
 
+        if (_confirm?.TryCancel() == true)
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (_flow.Current == GameFlowState.Game)
         {
+            if (_activeGameScreen?.TryCloseActiveTool() == true)
+            {
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
             ShowPause();
             GetViewport().SetInputAsHandled();
         }
@@ -158,23 +173,33 @@ public sealed partial class AppRoot : Control
 
     private void CreateNewSession(NewGameRequest request)
     {
-        var session = GameSession.CreateNew(request.WorldName, request.Seed, request.WorldSize);
-        var manual = _saves.SaveManual(session);
+        _session = GameSession.CreateNew(request.WorldName, request.Seed, request.WorldSize);
+        ClearGameRuntime();
+        _gameViewState = null;
 
-        if (!manual.Success)
-        {
-            _toasts?.ShowToast($"Не удалось создать сохранение: {manual.Error}", ToastKind.Error);
-            return;
-        }
+        ShowLoading(
+            "Создание мира",
+            "Генерация карты и подготовка окружения…",
+            () =>
+            {
+                PrepareGameRuntime();
+                if (_session is null)
+                    return;
 
-        var autosave = _saves.CreateAutosave(session);
-        if (!autosave.Success)
-            _toasts?.ShowToast("Первый autosave не создан, manual save сохранён.", ToastKind.Warning);
+                var manual = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld);
+                if (!manual.Success)
+                {
+                    _toasts?.ShowToast($"Не удалось создать сохранение: {manual.Error}", ToastKind.Error);
+                    return;
+                }
 
-        _session = session;
-        PrepareGameRuntime();
-        RefreshSaveCount();
-        ShowLoading("Создание сессии", ShowGame);
+                var autosave = _saves.CreateAutosave(_session, _gameTime, _simulationSpeed, _demoWorld);
+                if (!autosave.Success)
+                    _toasts?.ShowToast("Первый autosave не создан, manual save сохранён.", ToastKind.Warning);
+
+                RefreshSaveCount();
+            },
+            ShowGame);
     }
 
     private void ContinueLatest()
@@ -223,7 +248,7 @@ public sealed partial class AppRoot : Control
             if (_session is null)
                 return;
 
-            var result = _saves.SaveManual(_session);
+            var result = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld);
             if (result.Success)
             {
                 RefreshSaveCount();
@@ -257,24 +282,58 @@ public sealed partial class AppRoot : Control
         }
 
         _session = GameSession.FromSave(document);
-        PrepareGameRuntime();
-        RefreshSaveCount();
+        ClearGameRuntime();
+        _gameViewState = null;
 
         if (recovered)
             _toasts?.ShowToast("Основной save восстановлен из backup", ToastKind.Warning);
 
-        ShowLoading("Загрузка сохранения", ShowGame);
+        ShowLoading(
+            "Загрузка сохранения",
+            document.Runtime is null
+                ? "Старое сохранение: карта будет восстановлена по seed, runtime начнётся с безопасных значений."
+                : "Генерация карты по seed и восстановление runtime-состояния…",
+            () =>
+            {
+                PrepareGameRuntime(document);
+                RefreshSaveCount();
+            },
+            ShowGame);
     }
 
-    private void ShowLoading(string operation, Action next)
+    private void ShowLoading(string operation, string workHint, Action work, Action next)
     {
         var loading = new LoadingScreen { Operation = operation };
         SwitchScreen(loading, GameFlowState.Loading);
 
         Callable.From(() =>
         {
-            loading.SetProgress(100);
-            next();
+            loading.SetStage("Подготовка сессии", 15, "Интерфейс загрузки готов.");
+            Callable.From(() =>
+            {
+                loading.SetStage("Генерация мира", 45, workHint);
+                Callable.From(() =>
+                {
+                    try
+                    {
+                        work();
+                    }
+                    catch (Exception ex)
+                    {
+                        loading.SetStage("Ошибка", 100, "Не удалось подготовить мир.");
+                        _toasts?.ShowToast($"Ошибка подготовки мира: {ex.Message}", ToastKind.Error);
+                        Callable.From(ShowMainMenu).CallDeferred();
+                        return;
+                    }
+
+                    loading.SetStage("Подготовка интерфейса", 85, "Связываем runtime с игровым экраном.");
+                    Callable.From(() =>
+                    {
+                        loading.SetStage("Готово", 100, "Мир готов к наблюдению.");
+                        Callable.From(next).CallDeferred();
+                    }).CallDeferred();
+                }).CallDeferred();
+            }).CallDeferred();
         }).CallDeferred();
     }
 
@@ -293,10 +352,11 @@ public sealed partial class AppRoot : Control
             return;
 
         var game = new GameScreen();
-        game.Configure(_session, _settings.Load(), _simulationSpeed, _gameTime, _demoWorld);
+        game.Configure(_session, _settings.Load(), _simulationSpeed, _gameTime, _demoWorld, _gameViewState);
         game.SaveRequested += SaveCurrentManual;
         game.SettingsRequested += () => ShowSettings(GameFlowState.Game);
         game.PauseRequested += ShowPause;
+        _activeGameScreen = game;
         SwitchScreen(game, GameFlowState.Game);
     }
 
@@ -304,6 +364,8 @@ public sealed partial class AppRoot : Control
     {
         if (_session is null)
             return;
+
+        CaptureGameViewState();
 
         var pause = new PauseMenu();
         pause.ResumeRequested += ShowGame;
@@ -320,12 +382,12 @@ public sealed partial class AppRoot : Control
         if (_session is null)
             return;
 
-        var result = _saves.SaveManual(_session);
+        var result = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld);
         if (result.Success)
         {
             RefreshSaveCount();
             RecordSystemEvent("Игра сохранена", "Создана или обновлена ручная точка сохранения.", "actions/apply.svg");
-            _toasts?.ShowToast("Игра сохранена", ToastKind.Success);
+            _toasts?.ShowToast("Сохранение создано", ToastKind.Success);
         }
         else
         {
@@ -336,6 +398,8 @@ public sealed partial class AppRoot : Control
     private void ShowSettings(GameFlowState returnState)
     {
         _returnFromSettings = returnState;
+        if (returnState == GameFlowState.Game)
+            CaptureGameViewState();
 
         var settings = new SettingsMenu();
         settings.Configure(_settings);
@@ -365,6 +429,7 @@ public sealed partial class AppRoot : Control
                 TryAutosaveCurrent();
                 _session = null;
                 ClearGameRuntime();
+                _gameViewState = null;
                 ShowMainMenu();
             });
     }
@@ -387,7 +452,7 @@ public sealed partial class AppRoot : Control
         if (_session is null)
             return;
 
-        var result = _saves.CreateAutosave(_session);
+        var result = _saves.CreateAutosave(_session, _gameTime, _simulationSpeed, _demoWorld);
         if (result.Success)
             RecordSystemEvent("Автосохранение создано", "Текущее состояние сессии записано в кольцевой autosave.", "simulation/history.svg");
         else
@@ -396,7 +461,7 @@ public sealed partial class AppRoot : Control
         RefreshSaveCount();
     }
 
-    private void PrepareGameRuntime()
+    private void PrepareGameRuntime(SaveDocument? document = null)
     {
         if (_session is null)
             return;
@@ -404,13 +469,31 @@ public sealed partial class AppRoot : Control
         _simulationSpeed = new SimulationSpeedState();
         _gameTime = new GameTimeController(_simulationSpeed);
         _demoWorld = new DemoWorldDataProvider(_session);
+
+        var runtime = document?.Runtime;
+        if (runtime is null)
+            return;
+
+        _simulationSpeed.Restore(runtime.Speed.Paused, runtime.Speed.Multiplier);
+        _gameTime.Restore(runtime.Time.Day, runtime.Time.MinuteOfDay, runtime.Time.TickCount);
+        _demoWorld.RestoreSaveState(runtime.World);
     }
 
     private void ClearGameRuntime()
     {
+        _activeGameScreen = null;
         _simulationSpeed = null;
         _gameTime = null;
         _demoWorld = null;
+    }
+
+    private void CaptureGameViewState()
+    {
+        if (_activeGameScreen is null)
+            return;
+
+        _gameViewState = _activeGameScreen.CaptureViewState() ?? _gameViewState;
+        _activeGameScreen = null;
     }
 
     private void RecordSystemEvent(string title, string description, string icon)
@@ -459,6 +542,11 @@ public sealed partial class AppRoot : Control
         var session = _session;
         var playtime = session is null ? "—" : FormatPlaytime(session.PlaytimeSeconds);
         var worldTime = _gameTime is null ? "—" : $"День {_gameTime.Day} · {_gameTime.FormattedTime}";
+        var render = _activeGameScreen?.GetRenderDiagnostics();
+        var renderText = render.HasValue
+            ? $"\nMap: {render.Value.VisibleHexes}/{render.Value.TotalHexes} hex · {render.Value.VisibleChunks}/{render.Value.TotalChunks} chunks" +
+              $"\nMap cmds≈{render.Value.EstimatedDrawCommands} · rebuilds {render.Value.TerrainRebuilds} · overlay redraw/s {render.Value.OverlayRedrawsPerSecond:0}"
+            : string.Empty;
 
         _debug.SetData(
             $"EVOLIT {AppVersionCatalog.CurrentVersion} DEBUG\n" +
@@ -471,7 +559,8 @@ public sealed partial class AppRoot : Control
             $"Seed: {session?.Seed ?? "—"}\n" +
             $"Playtime: {playtime}\n" +
             $"Saves: {_cachedSaveCount}\n" +
-            $"Save schema: {SaveManager.SchemaVersion}");
+            $"Save schema: {SaveManager.SchemaVersion}" +
+            renderText);
     }
 
     private static string FormatPlaytime(double seconds)

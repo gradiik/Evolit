@@ -5,6 +5,8 @@ namespace Evolit.UI;
 public sealed partial class LoadingScreen : Control
 {
     private ProgressBar? _progress;
+    private Label? _operation;
+    private Label? _hint;
 
     public string Operation { get; set; } = "Подготовка мира";
 
@@ -36,29 +38,39 @@ public sealed partial class LoadingScreen : Control
         title.AddThemeFontSizeOverride("font_size", 38);
         root.AddChild(title);
 
-        var operation = new Label { Text = Operation };
-        operation.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
-        root.AddChild(operation);
+        _operation = new Label { Text = Operation };
+        _operation.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
+        root.AddChild(_operation);
 
         _progress = new ProgressBar
         {
             MinValue = 0,
             MaxValue = 100,
-            Value = 35,
+            Value = 5,
             ShowPercentage = false,
             CustomMinimumSize = new Vector2(0, 10)
         };
         root.AddChild(_progress);
 
-        var hint = new Label { Text = "Системная оболочка готовит игровую сессию." };
-        hint.AddThemeFontSizeOverride("font_size", 13);
-        hint.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
-        root.AddChild(hint);
+        _hint = new Label { Text = "Подготовка…" };
+        _hint.AddThemeFontSizeOverride("font_size", 13);
+        _hint.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
+        root.AddChild(_hint);
+    }
+
+    public void SetStage(string operation, double progress, string? hint = null)
+    {
+        if (_operation is not null)
+            _operation.Text = operation;
+        if (_progress is not null)
+            _progress.Value = Mathf.Clamp((float)progress, 0, 100);
+        if (_hint is not null && hint is not null)
+            _hint.Text = hint;
     }
 
     public void SetProgress(double value)
     {
         if (_progress is not null)
-            _progress.Value = value;
+            _progress.Value = Mathf.Clamp((float)value, 0, 100);
     }
 }

@@ -53,6 +53,15 @@ public sealed partial class GameHud : Control
 
     public bool HasActiveTool => _activeTool is not null;
 
+    public bool TryCloseActiveTool()
+    {
+        if (_activeTool is null)
+            return false;
+
+        CloseActiveToolAnimated();
+        return true;
+    }
+
     public void Configure(
         ISimulationStatsProvider statsProvider,
         DemoWorldDataProvider world,

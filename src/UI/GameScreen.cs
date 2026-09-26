@@ -20,19 +20,23 @@ public sealed partial class GameScreen : Control
     private DemoWorldDataProvider? _world;
     private DemoSimulationController? _demoSimulation;
     private GameHud? _hud;
+    private DemoWorldView? _worldView;
+    private GameViewState? _initialViewState;
 
     public void Configure(
         GameSession session,
         AppSettings settings,
         SimulationSpeedState speed,
         GameTimeController time,
-        DemoWorldDataProvider world)
+        DemoWorldDataProvider world,
+        GameViewState? initialViewState = null)
     {
         _session = session;
         _settings = settings.Clone();
         _speed = speed;
         _time = time;
         _world = world;
+        _initialViewState = initialViewState;
     }
 
     public override void _Ready()
@@ -44,10 +48,10 @@ public sealed partial class GameScreen : Control
         var stats = new DemoSimulationStatsProvider(_session, _world, _time);
         var quality = GraphicsQualityProfile.From(_settings);
 
-        var worldView = new DemoWorldView();
-        worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom, quality);
-        AddChild(worldView);
+        _worldView = new DemoWorldView();
+        _worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        _worldView.Configure(_world, _settings.CameraSpeed, _settings.SmoothZoom, quality);
+        AddChild(_worldView);
 
         _hud = new GameHud();
         _hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -55,13 +59,16 @@ public sealed partial class GameScreen : Control
         _hud.SaveRequested += () => SaveRequested?.Invoke();
         _hud.SettingsRequested += () => SettingsRequested?.Invoke();
         _hud.PauseRequested += () => PauseRequested?.Invoke();
-        _hud.CameraZoomInRequested += worldView.ZoomIn;
-        _hud.CameraZoomOutRequested += worldView.ZoomOut;
-        _hud.CameraCenterRequested += worldView.CenterCamera;
-        _hud.CameraResetRequested += worldView.ResetCamera;
+        _hud.CameraZoomInRequested += _worldView.ZoomIn;
+        _hud.CameraZoomOutRequested += _worldView.ZoomOut;
+        _hud.CameraCenterRequested += _worldView.CenterCamera;
+        _hud.CameraResetRequested += _worldView.ResetCamera;
         AddChild(_hud);
 
-        worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+        _worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+
+        if (_initialViewState.HasValue)
+            _worldView.RestoreViewState(_initialViewState.Value);
     }
 
     public override void _Process(double delta)
@@ -74,6 +81,12 @@ public sealed partial class GameScreen : Control
     {
         if (!@event.IsActionPressed("game_pause"))
             return;
+
+        if (TryCloseActiveTool())
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
 
         PauseRequested?.Invoke();
         GetViewport().SetInputAsHandled();
@@ -101,5 +114,20 @@ public sealed partial class GameScreen : Control
             _hud?.SetSpeedFromAction(SimulationSpeedState.MaxMultiplier);
             GetViewport().SetInputAsHandled();
         }
+    }
+
+    public bool TryCloseActiveTool()
+    {
+        return _hud?.TryCloseActiveTool() ?? false;
+    }
+
+    public GameViewState? CaptureViewState()
+    {
+        return _worldView?.CaptureViewState();
+    }
+
+    public WorldRenderDiagnostics? GetRenderDiagnostics()
+    {
+        return _worldView?.GetDiagnostics();
     }
 }

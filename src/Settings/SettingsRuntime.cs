@@ -25,11 +25,14 @@ public readonly record struct GraphicsQualityProfile(
 
 public static class SettingsRuntime
 {
+    // Keep existing indices stable for previously saved settings; append 16:10 modes.
     private static readonly Vector2I[] Resolutions =
     [
         new Vector2I(1280, 720),
         new Vector2I(1920, 1080),
-        new Vector2I(2560, 1440)
+        new Vector2I(2560, 1440),
+        new Vector2I(1920, 1200),
+        new Vector2I(2560, 1600)
     ];
 
     public static void Apply(AppSettings settings)
@@ -66,7 +69,15 @@ public static class SettingsRuntime
     private static void ApplyResolution(int resolutionIndex)
     {
         var index = Math.Clamp(resolutionIndex, 0, Resolutions.Length - 1);
-        DisplayServer.WindowSetSize(Resolutions[index]);
+        var requested = Resolutions[index];
+        var screen = DisplayServer.WindowGetCurrentScreen();
+        var screenSize = DisplayServer.ScreenGetSize(screen);
+
+        // Avoid placing a window larger than the active monitor. The stored setting
+        // remains intact and will be applied in full on a larger display later.
+        var width = Math.Min(requested.X, Math.Max(640, screenSize.X));
+        var height = Math.Min(requested.Y, Math.Max(480, screenSize.Y));
+        DisplayServer.WindowSetSize(new Vector2I(width, height));
     }
 
     private static void ApplyAudio(AppSettings settings)
