@@ -77,6 +77,13 @@ public sealed class WorldHexCell
     public float NutrientPotential { get; init; }
     public float GeothermalPotential { get; init; }
     public SubstrateKind Substrate { get; init; }
+    public int ProvinceId { get; init; } = -1;
+    public float Continentalness { get; init; }
+    public float TectonicUplift { get; init; }
+    public int CoastDistance { get; init; } = -1;
+    public int BasinId { get; init; } = -1;
+    public int RiverLength { get; init; }
+    public float RiverWidth { get; init; }
 
     public bool IsWater => WaterKind != HexWaterKind.None;
 }

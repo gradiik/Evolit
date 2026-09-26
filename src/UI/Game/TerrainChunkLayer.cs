@@ -273,11 +273,17 @@ internal sealed partial class TerrainChunkLayer : Control
 
         return mode switch
         {
-            GenerationDebugMode.Elevation => Ramp((cell.ElevationMeters + 4000f) / 7500f),
+            GenerationDebugMode.Continentalness => Ramp((cell.Continentalness + 1.5f) / 3f),
+            GenerationDebugMode.Province => ProvinceColor(cell.ProvinceId),
+            GenerationDebugMode.Elevation => Ramp((cell.ElevationMeters + 4000f) / 9000f),
+            GenerationDebugMode.Slope => Ramp(cell.Slope / 1200f),
+            GenerationDebugMode.CoastDistance => Ramp(Math.Clamp(cell.CoastDistance / 18f, 0f, 1f)),
             GenerationDebugMode.WaterDepth => cell.WaterDepthMeters > 0f
                 ? new Color(0.05f, Math.Clamp(0.28f + cell.WaterDepthMeters / 6000f, 0.28f, 0.62f), 0.92f, 1f)
                 : new Color(0.08f, 0.10f, 0.10f, 1f),
-            GenerationDebugMode.FlowAccumulation => Ramp(MathF.Log10(1f + cell.FlowAccumulation) / 3f),
+            GenerationDebugMode.FlowAccumulation => Ramp(MathF.Log10(1f + cell.FlowAccumulation) / 3.5f),
+            GenerationDebugMode.Basin => BasinColor(cell.BasinId),
+            GenerationDebugMode.TectonicUplift => Ramp(cell.TectonicUplift),
             GenerationDebugMode.Temperature => Ramp((cell.TemperatureCelsius + 40f) / 85f),
             GenerationDebugMode.Humidity => Ramp(cell.Humidity),
             GenerationDebugMode.Substrate => cell.Substrate switch
@@ -294,6 +300,30 @@ internal sealed partial class TerrainChunkLayer : Control
             GenerationDebugMode.Region => InitialRegionColor(cell),
             _ => new Color(0.23f, 0.38f, 0.22f)
         };
+    }
+
+    private static Color ProvinceColor(int provinceId)
+    {
+        if (provinceId < 0)
+            return new Color(0.12f, 0.14f, 0.16f);
+
+        var x = unchecked((uint)provinceId * 2654435761u);
+        var r = 0.25f + ((x & 0xFFu) / 255f) * 0.65f;
+        var g = 0.25f + (((x >> 8) & 0xFFu) / 255f) * 0.65f;
+        var b = 0.25f + (((x >> 16) & 0xFFu) / 255f) * 0.65f;
+        return new Color(r, g, b);
+    }
+
+    private static Color BasinColor(int basinId)
+    {
+        if (basinId < 0)
+            return new Color(0.06f, 0.16f, 0.24f);
+
+        var x = unchecked((uint)basinId * 2246822519u + 3266489917u);
+        var r = 0.22f + ((x & 0xFFu) / 255f) * 0.68f;
+        var g = 0.22f + (((x >> 8) & 0xFFu) / 255f) * 0.68f;
+        var b = 0.22f + (((x >> 16) & 0xFFu) / 255f) * 0.68f;
+        return new Color(r, g, b);
     }
 
     private static Color InitialRegionColor(WorldHexCell cell)

@@ -65,7 +65,14 @@ public static class WorldMapGenerator
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
                 Substrate = Enum.IsDefined(typeof(SubstrateKind), saved.Substrate)
-                    ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown
+                    ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown,
+                ProvinceId = saved.ProvinceId,
+                Continentalness = saved.Continentalness,
+                TectonicUplift = saved.TectonicUplift,
+                CoastDistance = saved.CoastDistance,
+                BasinId = saved.BasinId,
+                RiverLength = saved.RiverLength,
+                RiverWidth = saved.RiverWidth
             });
         }
 
@@ -126,7 +133,9 @@ public static class WorldMapGenerator
                 MineralPotential = environment.MineralPotential[i],
                 NutrientPotential = environment.NutrientPotential[i],
                 GeothermalPotential = environment.GeothermalPotential[i],
-                Substrate = substrate
+                Substrate = substrate,
+                ProvinceId = -1,
+                BasinId = -1
             };
             cell.MovementCost = WorldMovementRules.BaseMovementCost(cell);
             cell.MovementSpeedMultiplier = WorldMovementRules.SpeedMultiplier(cell, DemoEntityKind.Creature);
@@ -167,7 +176,14 @@ public static class WorldMapGenerator
             MineralPotential = source.MineralPotential,
             NutrientPotential = source.NutrientPotential,
             GeothermalPotential = source.GeothermalPotential,
-            Substrate = source.Substrate
+            Substrate = source.Substrate,
+            ProvinceId = source.ProvinceId,
+            Continentalness = source.Continentalness,
+            TectonicUplift = source.TectonicUplift,
+            CoastDistance = source.CoastDistance,
+            BasinId = source.BasinId,
+            RiverLength = source.RiverLength,
+            RiverWidth = source.RiverWidth
         };
         cell.MovementCost = WorldMovementRules.BaseMovementCost(cell);
         cell.MovementSpeedMultiplier = WorldMovementRules.SpeedMultiplier(cell, DemoEntityKind.Creature);
@@ -175,7 +191,14 @@ public static class WorldMapGenerator
     }
 
     private static HexTerrainType ClassifyTerrain(GeneratedWorldCell cell, HexWaterKind water) =>
-        ClassifyTerrain(cell.ElevationMeters, cell.WaterDepthMeters, cell.TemperatureCelsius, cell.Humidity, cell.Substrate, water);
+        ClassifyTerrain(
+            cell.ElevationMeters,
+            cell.WaterDepthMeters,
+            cell.TemperatureCelsius,
+            cell.Humidity,
+            cell.Substrate,
+            water,
+            cell.Slope);
 
     private static HexTerrainType ClassifyTerrain(
         float elevationMeters,
@@ -183,13 +206,16 @@ public static class WorldMapGenerator
         float temperature,
         float humidity,
         SubstrateKind substrate,
-        HexWaterKind water)
+        HexWaterKind water,
+        float slope = 0f)
     {
         if (water == HexWaterKind.River) return HexTerrainType.River;
         if (water == HexWaterKind.Lake) return HexTerrainType.Lake;
         if (water == HexWaterKind.Ocean) return waterDepthMeters > 180f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
-        if (elevationMeters > 1700f) return HexTerrainType.Mountain;
-        if (elevationMeters > 850f || substrate is SubstrateKind.BareRock or SubstrateKind.Basalt) return HexTerrainType.Rocky;
+        if ((elevationMeters > 1450f && slope > 120f) || elevationMeters > 2600f)
+            return HexTerrainType.Mountain;
+        if (slope > 75f || elevationMeters > 900f || substrate is SubstrateKind.BareRock or SubstrateKind.Basalt)
+            return HexTerrainType.Rocky;
         if (substrate == SubstrateKind.Sand && elevationMeters < 180f) return HexTerrainType.Sand;
         if (humidity < 0.28f && temperature > 18f) return HexTerrainType.Desert;
         return HexTerrainType.Grassland;

@@ -160,4 +160,11 @@ public sealed class WorldHexCellSaveState
     public float NutrientPotential { get; set; }
     public float GeothermalPotential { get; set; }
     public int Substrate { get; set; }
+    public int ProvinceId { get; set; } = -1;
+    public float Continentalness { get; set; }
+    public float TectonicUplift { get; set; }
+    public int CoastDistance { get; set; } = -1;
+    public int BasinId { get; set; } = -1;
+    public int RiverLength { get; set; }
+    public float RiverWidth { get; set; }
 }

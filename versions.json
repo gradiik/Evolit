@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.8",
-  "development_branch": "feature/evolit-0.0.8-world-generation",
+  "current": "0.0.9",
+  "development_branch": "feature/evolit-0.0.9-world-generation",
   "protocol": "VERSIONING.md",
   "versions": [
     {
-      "version": "0.0.8",
+      "version": "0.0.9",
       "status": "development",
-      "branch": "feature/evolit-0.0.8-world-generation",
+      "branch": "feature/evolit-0.0.9-world-generation",
       "tag": null,
       "commit": null,
-      "note": "Procedural World Generation development. No release/tag until explicit approval after audit."
+      "note": "World Generation Rework development. Pseudo-plates, structured relief, priority-flood hydrology, basin/lake/river quality tooling. No release/tag until explicit approval."
+    },
+    {
+      "version": "0.0.8",
+      "status": "checkpoint",
+      "branch": "feature/evolit-0.0.8-world-generation",
+      "tag": null,
+      "commit": "9a5d0f98cdf8921d674740a83cd2cd4e2e2202ff",
+      "note": "Final 0.0.8 checkpoint after enlarged-world generation and Optimization Pass 4. Release/tag not created."
     },
     {
       "version": "0.0.7",

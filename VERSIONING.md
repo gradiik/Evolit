@@ -7,7 +7,7 @@ This file is mandatory reading for any coding agent before modifying the reposit
 1. Read `versions.json`.
 2. Read this file.
 3. Inspect the current `main` HEAD before editing.
-4. `main` is the active development branch.
+4. Development normally uses `main` unless the current project-specific rule or an explicit user instruction names a feature/version branch.
 5. A completed version is identified by an immutable Git tag `vX.Y.Z`. The tag/commit is the authoritative historical checkpoint.
 6. `version/X.Y.Z` is a convenience branch pointing at that checkpoint. It may be repaired to match the tag if it drifted, but historical code must never be rewritten.
 7. Never increment the application version unless the user explicitly requests a new version.
@@ -15,7 +15,7 @@ This file is mandatory reading for any coding agent before modifying the reposit
 
 ## Development lifecycle
 
-Normal development happens on `main` with as few commits/pushes as practical. Do not run GitHub Actions for ordinary development, intermediate checks, experiments, or each commit.
+Normal development happens on the currently authorized development branch with as few commits/pushes as practical. Do not run GitHub Actions for ordinary development, intermediate checks, experiments, or each commit.
 
 When the user says a version is ready:
 1. Finish development on `main`.
@@ -37,4 +37,4 @@ The in-app Versions screen is informational/selection UI. Selecting an old versi
 
 Before changing code, compare the requested version with `versions.json` and the repository state. If they conflict, do not guess: preserve the existing checkpoint and report the mismatch. Never invent commits, tags, branches, releases, artifacts, or version history.
 
-Current project-specific rule: 0.0.6 is developed on `feature/evolit-core-0.0.6`. Do not merge it into `main`, tag, release, or advance to 0.0.7 without explicit user instruction.
+Current project-specific rule: 0.0.9 is developed on `feature/evolit-0.0.9-world-generation` from the final 0.0.8 checkpoint. Do not merge it into `main`, tag, release, or advance to 0.0.10 without explicit user instruction.

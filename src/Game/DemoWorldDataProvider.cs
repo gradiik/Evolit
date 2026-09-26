@@ -175,7 +175,14 @@ public sealed class DemoWorldDataProvider
                     MineralPotential = cell.MineralPotential,
                     NutrientPotential = cell.NutrientPotential,
                     GeothermalPotential = cell.GeothermalPotential,
-                    Substrate = (int)cell.Substrate
+                    Substrate = (int)cell.Substrate,
+                    ProvinceId = cell.ProvinceId,
+                    Continentalness = cell.Continentalness,
+                    TectonicUplift = cell.TectonicUplift,
+                    CoastDistance = cell.CoastDistance,
+                    BasinId = cell.BasinId,
+                    RiverLength = cell.RiverLength,
+                    RiverWidth = cell.RiverWidth
                 }).ToList()
             },
             Entities = _entities.Select(entity => new DemoEntitySaveState

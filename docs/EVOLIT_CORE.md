@@ -1,4 +1,4 @@
-# Evolit Core, 0.0.6 foundation through 0.0.8 procedural world
+# Evolit Core, 0.0.6 foundation through 0.0.9 world generation rework
 
 ## Responsibility boundary
 
@@ -72,3 +72,12 @@ No modern-Earth species presets are part of the Core architecture.
 0.0.8 makes procedural generation a Godot-independent Core concern. Seed + generation settings produce topology, coherent macro geography, elevation/bathymetry, geology, terrain-scale hydrology, initial climate/resources and substrate. That canonical Core environment is then stabilized through the same Bootstrap simulation systems used by live play.
 
 The Godot map is a renderer-compatible projection of generated Core state, not a second physical model. New saves persist the presentation map and the canonical Core snapshot so loading does not rerun procedural generation. Biological biomes, plants, animals and microbial ecosystems remain outside 0.0.8.
+
+
+## 0.0.9 world-generation boundary
+
+0.0.9 changes generation-time geography while preserving the same Core/runtime ownership boundary. Procedural generation now uses pseudo-geological provinces, coast-distance bathymetry, structured uplift and deterministic priority-flood drainage before constructing the canonical EnvironmentStore.
+
+The generator also exposes generation-only province, uplift, coast-distance, basin and river diagnostics to the Godot presentation adapter. These diagnostics do not become a second simulation state.
+
+Runtime climate, hydrology and organism systems remain in Evolit.Core and continue from the generated initial state. 0.0.9 does not introduce biological ecosystems, runtime tectonics or a spherical world.

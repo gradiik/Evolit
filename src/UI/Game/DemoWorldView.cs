@@ -16,9 +16,15 @@ public readonly record struct GameViewState(
 public enum GenerationDebugMode
 {
     None,
+    Continentalness,
+    Province,
     Elevation,
+    Slope,
+    CoastDistance,
     WaterDepth,
     FlowAccumulation,
+    Basin,
+    TectonicUplift,
     Temperature,
     Humidity,
     Substrate,
@@ -599,7 +605,9 @@ public sealed partial class DemoWorldView : Control
             $"Органика: {env.OrganicMatter:0.000} · substrate dev {env.SubstrateDevelopment * 100f:0}%\n" +
             $"Субстрат: {env.Substrate} · регион: {physical.Region}\n" +
             $"Сток: {cell.FlowAccumulation:0.0} · уклон {cell.Slope:0.0} м\n" +
-            $"Geo: {cell.GeothermalPotential * 100f:0}% · mineral seed {cell.MineralPotential * 100f:0}%";
+            $"Река: длина {cell.RiverLength} · ширина {cell.RiverWidth:0.00} · basin {cell.BasinId}\n" +
+            $"Plate: {cell.ProvinceId} · continental {cell.Continentalness:0.00} · coast {cell.CoastDistance}\n" +
+            $"Uplift: {cell.TectonicUplift * 100f:0}% · geo {cell.GeothermalPotential * 100f:0}% · mineral {cell.MineralPotential * 100f:0}%";
     }
 
     private static float WaterDepthMeters(WorldHexCell cell)

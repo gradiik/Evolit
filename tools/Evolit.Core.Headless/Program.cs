@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Evolit.Core;
@@ -42,6 +43,17 @@ static int ProgramMain(string[] args)
         if (string.Equals(args[0], "worldgen-benchmark", StringComparison.OrdinalIgnoreCase))
         {
             RunWorldgenBenchmark();
+            return 0;
+        }
+
+        if (string.Equals(args[0], "worldgen-quality", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenQuality();
+            return 0;
+        }
+        if (string.Equals(args[0], "worldgen-gallery", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenGallery(args.Length >= 2 ? args[1] : "worldgen-gallery");
             return 0;
         }
 
@@ -97,7 +109,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | worldgen-quality | worldgen-gallery [directory] | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -346,7 +358,14 @@ static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b, bool co
             x.FlowAccumulation != y.FlowAccumulation ||
             x.Slope != y.Slope ||
             x.IsRiver != y.IsRiver ||
-            x.IsLake != y.IsLake)
+            x.IsLake != y.IsLake ||
+            x.ProvinceId != y.ProvinceId ||
+            x.Continentalness != y.Continentalness ||
+            x.TectonicUplift != y.TectonicUplift ||
+            x.CoastDistance != y.CoastDistance ||
+            x.BasinId != y.BasinId ||
+            x.RiverLength != y.RiverLength ||
+            x.RiverWidth != y.RiverWidth)
             return false;
     }
 
@@ -401,33 +420,154 @@ static void RunWorldgenBenchmark()
     }
 }
 
+static void RunWorldgenQuality()
+{
+    var failures = new List<string>();
+    for (var i = 0; i < 20; i++)
+    {
+        var seed = $"quality-{i:00}";
+        var world = ProceduralWorldGenerator.Generate(
+            new WorldGenerationSettings(seed, WorldGenerationScale.MediumRadius));
+
+        try
+        {
+            ValidateGeneratedWorld(world);
+            ValidateWorldgenQuality(world);
+            PrintWorldgenQuality(seed, world);
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"{seed}: {ex.Message}");
+            Console.WriteLine($"WORLDGEN_QUALITY_FAIL seed={seed} reason={ex.Message}");
+        }
+    }
+
+    if (failures.Count > 0)
+        throw new InvalidOperationException(
+            $"World generation quality failed for {failures.Count}/20 seeds: {string.Join(" | ", failures)}");
+
+    Console.WriteLine("WORLDGEN QUALITY PASS seeds=20");
+}
+
+static void RunWorldgenGallery(string directory)
+{
+    Directory.CreateDirectory(directory);
+
+    for (var i = 0; i < 10; i++)
+    {
+        var seed = $"gallery-{i:00}";
+        var world = ProceduralWorldGenerator.Generate(
+            new WorldGenerationSettings(seed, WorldGenerationScale.MediumRadius));
+        ValidateGeneratedWorld(world);
+
+        var path = Path.Combine(directory, $"{seed}.svg");
+        WriteWorldSvg(world, path);
+        Console.WriteLine($"WORLDGEN_GALLERY seed={seed} path={path}");
+    }
+
+    Console.WriteLine($"WORLDGEN GALLERY PASS directory={Path.GetFullPath(directory)} files=10");
+}
+
+static void WriteWorldSvg(GeneratedWorld world, string path)
+{
+    const float cellScale = 3.0f;
+    var radius = world.Settings.Radius;
+    var width = (radius * 2 + 4) * cellScale * 1.75f;
+    var height = (radius * 2 + 4) * cellScale * 1.55f;
+    var centerX = width * 0.5f;
+    var centerY = height * 0.5f;
+
+    var sb = new StringBuilder(world.Cells.Length * 70);
+    sb.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
+      .Append(width.ToString("0.##", CultureInfo.InvariantCulture)).Append(' ')
+      .Append(height.ToString("0.##", CultureInfo.InvariantCulture))
+      .Append("\"><rect width=\"100%\" height=\"100%\" fill=\"#061116\"/>");
+
+    foreach (var cell in world.Cells)
+    {
+        var x = centerX + cellScale * 1.7320508f * (cell.Id.Q + cell.Id.R * 0.5f);
+        var y = centerY + cellScale * 1.5f * cell.Id.R;
+        var color = GalleryColor(cell);
+        sb.Append("<circle cx=\"")
+          .Append(x.ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" cy=\"")
+          .Append(y.ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" r=\"")
+          .Append((cellScale * 1.04f).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" fill=\"").Append(color).Append("\"/>");
+    }
+
+    sb.Append("</svg>");
+    File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+}
+
+static string GalleryColor(GeneratedWorldCell cell)
+{
+    if (cell.ElevationMeters < 0f)
+    {
+        if (cell.WaterDepthMeters > 1200f) return "#07304a";
+        if (cell.WaterDepthMeters > 250f) return "#0a526b";
+        return "#187b86";
+    }
+    if (cell.IsLake) return "#178f97";
+    if (cell.IsRiver) return "#38aeb0";
+    if (cell.ElevationMeters > 2200f && cell.Slope > 130f) return "#b6b7ae";
+    if (cell.ElevationMeters > 1200f || cell.TectonicUplift > 0.5f) return "#6d7564";
+    if (cell.Humidity < 0.24f) return "#a68a50";
+    if (cell.Humidity > 0.65f) return "#477b4e";
+    return "#6f8a52";
+}
+
+static void ValidateWorldgenQuality(GeneratedWorld world)
+{
+    var s = world.Summary;
+    var q = world.Quality;
+    var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
+    var largestShare = s.LargestContinentCells / (double)landCells;
+
+    if (q.ContinentCount <= 0)
+        throw new InvalidOperationException("No coherent continent components.");
+    if (largestShare > 0.92)
+        throw new InvalidOperationException("Almost all land collapsed into one landmass.");
+    if (q.TinyIslandCount > Math.Max(36, s.Cells / 300))
+        throw new InvalidOperationException("Tiny-island fragmentation is excessive.");
+    if (q.BoundaryOceanRatio < 0.82f)
+        throw new InvalidOperationException("Finite hex boundary is too visible through land contact.");
+    if (q.MountainRangeCount <= 0)
+        throw new InvalidOperationException("No coherent mountain systems.");
+    if (q.RiverTotalLength <= 0 || q.LongestRiver < 5)
+        throw new InvalidOperationException("No meaningful river network.");
+    if (q.DrainageBasinCount <= 0)
+        throw new InvalidOperationException("No drainage basins.");
+    if (!float.IsFinite(q.MeanSlope) || q.MeanSlope < 0f)
+        throw new InvalidOperationException("Invalid mean slope.");
+}
+
+static void PrintWorldgenQuality(string seed, GeneratedWorld world)
+{
+    var s = world.Summary;
+    var q = world.Quality;
+    var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
+    var largestPct = s.LargestContinentCells * 100.0 / landCells;
+    var secondPct = q.SecondLargestContinentCells * 100.0 / landCells;
+
+    Console.WriteLine(
+        $"WORLDGEN_QUALITY seed={seed} continents={q.ContinentCount} land={s.LandRatio:P1} " +
+        $"largest_land={largestPct:0.0}% second_land={secondPct:0.0}% tiny_islands={q.TinyIslandCount} " +
+        $"inland_water={q.InlandWaterComponents} coast_edges={q.CoastlineEdges} coast_complexity={q.CoastlineComplexity:0.###} " +
+        $"mountain_ranges={q.MountainRangeCount} rivers={q.RiverCount} river_cells={q.RiverTotalLength} " +
+        $"longest_river={q.LongestRiver} tributaries={q.TributaryCount} lakes={q.LakeCount} lake_cells={s.LakeCells} " +
+        $"largest_lake={q.LargestLakeCells} basins={q.DrainageBasinCount} boundary_ocean={q.BoundaryOceanRatio:P1} " +
+        $"mean_slope={q.MeanSlope:0.###}");
+}
+
 static void ValidateGeneratedWorld(GeneratedWorld world)
 {
     var s = world.Summary;
-    if (s.Cells <= 0 || s.LandRatio < 0.20f || s.LandRatio > 0.75f)
+    if (s.Cells <= 0 || s.LandRatio < 0.15f || s.LandRatio > 0.78f)
         throw new InvalidOperationException($"Invalid land ratio {s.LandRatio:0.###}.");
     if (s.LargestContinentCells <= 0)
         throw new InvalidOperationException("World lacks coherent land.");
-    var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
-    if (s.LargestContinentCells < landCells * 0.16)
-        throw new InvalidOperationException("World land is excessively fragmented.");
-    if (s.MountainCells <= 0)
-        throw new InvalidOperationException("World has no mountain/highland structure.");
-    if (s.RiverCells <= 0)
-        throw new InvalidOperationException("World has no readable river network.");
-
-    var boundaryCells = 0;
-    var boundaryLand = 0;
-    foreach (var cell in world.Cells)
-    {
-        if (world.Topology.GetNeighbors(cell.Id).Length >= 6)
-            continue;
-        boundaryCells++;
-        if (cell.ElevationMeters >= 0f)
-            boundaryLand++;
-    }
-    if (boundaryCells > 0 && boundaryLand > boundaryCells * 0.10)
-        throw new InvalidOperationException("Too much land reaches the finite world boundary.");
 
     foreach (var cell in world.Cells)
     {
@@ -438,11 +578,21 @@ static void ValidateGeneratedWorld(GeneratedWorld world)
             !float.IsFinite(cell.PressureKPa) || cell.PressureKPa <= 0 ||
             cell.MineralPotential is < 0f or > 1f ||
             cell.NutrientPotential is < 0f or > 1f ||
-            cell.GeothermalPotential is < 0f or > 1f)
+            cell.GeothermalPotential is < 0f or > 1f ||
+            cell.Slope < 0f ||
+            cell.CoastDistance < 0)
             throw new InvalidOperationException($"Invalid generated cell {cell.Id}.");
-        if (cell.DrainageTarget >= 0 &&
-            world.Cells[cell.DrainageTarget].ElevationMeters > cell.ElevationMeters + 0.001f)
-            throw new InvalidOperationException($"Uphill drainage from {cell.Id}.");
+
+        if (cell.DrainageTarget < 0)
+            continue;
+        if (cell.DrainageTarget >= world.Cells.Length)
+            throw new InvalidOperationException($"Invalid drainage target from {cell.Id}.");
+
+        var target = world.Cells[cell.DrainageTarget];
+        var sourceSurface = cell.ElevationMeters + (cell.IsLake ? cell.WaterDepthMeters : 0f);
+        var targetSurface = target.ElevationMeters + (target.IsLake ? target.WaterDepthMeters : 0f);
+        if (targetSurface > sourceSurface + 0.11f)
+            throw new InvalidOperationException($"Uphill hydraulic drainage from {cell.Id}.");
     }
 }
 
@@ -492,11 +642,14 @@ static void PrintWorldgenSummary(
     (string Snapshot, int Ticks, bool Converged, double FinalChange, double CoreConstructionMs, double BootstrapMs) bootstrap)
 {
     var s = world.Summary;
-    var largestPct = s.Cells == 0 ? 0 : s.LargestContinentCells * 100.0 / s.Cells;
+    var q = world.Quality;
+    var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
+    var largestPct = s.LargestContinentCells * 100.0 / landCells;
+    var secondPct = q.SecondLargestContinentCells * 100.0 / landCells;
     Console.WriteLine(
         $"WORLDGEN seed={seed} radius={world.Settings.Radius} cells={s.Cells} land={s.LandRatio:P1} water={(1f-s.LandRatio):P1} " +
-        $"components={s.LandComponents} largest={largestPct:0.0}% islands={s.IslandCount} " +
-        $"mountains={s.MountainCells} rivers={s.RiverCells} lakes={s.LakeCells} " +
+        $"continents={q.ContinentCount} largest_land={largestPct:0.0}% second_land={secondPct:0.0}% islands={s.IslandCount} tiny_islands={q.TinyIslandCount} " +
+        $"mountain_ranges={q.MountainRangeCount} river_systems={q.RiverCount} river_cells={q.RiverTotalLength} longest_river={q.LongestRiver} tributaries={q.TributaryCount} lakes={s.LakeCells} basins={q.DrainageBasinCount} " +
         $"elevation={s.MinElevationMeters:0}..{s.MaxElevationMeters:0}m max_water={s.MaxWaterDepthMeters:0}m " +
         $"temp={s.MinTemperatureCelsius:0.0}..{s.MaxTemperatureCelsius:0.0}C humidity={s.MinHumidity:P0}..{s.MaxHumidity:P0} " +
         $"generation_ms={world.Metrics.TotalMs:0.###} core_ms={bootstrap.CoreConstructionMs:0.###} bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} " +

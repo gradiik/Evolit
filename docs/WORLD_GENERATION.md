@@ -99,3 +99,10 @@ Bootstrap convergence checks reuse a compact temperature/humidity/water state in
 The headless runner now has opt-in per-system timings, Gen0/Gen1/Gen2 counts, actual enlarged-map environment scenarios, medium-world organism scaling, an optimization-benchmark command and a snapshot-benchmark command. Profiling remains disabled in normal simulation.
 
 The renderer keeps one ArrayMesh base surface per chunk. Off-screen demo entities are culled before their detailed CanvasItem drawing, and hidden F3 diagnostics no longer build formatted debug strings every 250 ms.
+
+
+## 0.0.9 generation rework
+
+0.0.9 supersedes the active 0.0.8 continental-anchor generator with a pseudo-plate, priority-flood and river-basin pipeline. The detailed architecture, quality metrics and scope are documented in `docs/WORLD_GENERATION_009.md`.
+
+The 0.0.8 sections above remain as historical context for why the rework was necessary.
