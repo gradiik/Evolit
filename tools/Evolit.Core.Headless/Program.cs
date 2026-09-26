@@ -66,10 +66,10 @@ static void AssertDeterministicReplay()
     var b = ScenarioFactory.Create("determinism", 10_000);
     a.Step(10_000);
     b.Step(10_000);
-    var hashA = SnapshotHash.Compute(a.CaptureSnapshot());
-    var hashB = SnapshotHash.Compute(b.CaptureSnapshot());
-    if (hashA != hashB)
-        throw new InvalidOperationException($"Same-seed determinism failed: {hashA:X16} != {hashB:X16}");
+    var snapshotA = CoreSnapshotSerializer.Serialize(a.CaptureSnapshot());
+    var snapshotB = CoreSnapshotSerializer.Serialize(b.CaptureSnapshot());
+    if (!string.Equals(snapshotA, snapshotB, StringComparison.Ordinal))
+        throw new InvalidOperationException("Same-seed determinism failed: complete snapshots differ.");
 }
 
 static void AssertSaveRestoreDeterminism()
@@ -81,13 +81,13 @@ static void AssertSaveRestoreDeterminism()
     var roundTrip = CoreSnapshotSerializer.Deserialize(serialized);
 
     source.Step(5_000);
-    var expected = SnapshotHash.Compute(source.CaptureSnapshot());
+    var expected = CoreSnapshotSerializer.Serialize(source.CaptureSnapshot());
 
     var restored = CoreSimulation.Restore(roundTrip);
     restored.Step(5_000);
-    var actual = SnapshotHash.Compute(restored.CaptureSnapshot());
-    if (expected != actual)
-        throw new InvalidOperationException($"Save/restore determinism failed: {expected:X16} != {actual:X16}");
+    var actual = CoreSnapshotSerializer.Serialize(restored.CaptureSnapshot());
+    if (!string.Equals(expected, actual, StringComparison.Ordinal))
+        throw new InvalidOperationException("Save/restore determinism failed: complete snapshots differ.");
 }
 
 static void AssertGeneticDeterminism()
@@ -120,9 +120,20 @@ static void AssertOrganismStore()
     for (var index = 0; index < ids.Length; index++)
         ids[index] = store.Create(cell, genome, lineage);
 
+    var movedCell = CellId.FromAxial(1, -1);
+    if (!store.SetCell(ids[1], movedCell) ||
+        !store.SetEnergyHealth(ids[1], 0.25f, 0.75f) ||
+        !store.TryGet(ids[1], out var updated) ||
+        updated.CellId != movedCell ||
+        Math.Abs(updated.Energy - 0.25f) > 0.00001f ||
+        Math.Abs(updated.Health - 0.75f) > 0.00001f)
+    {
+        throw new InvalidOperationException("Organism update/lookup failed.");
+    }
+
     for (var index = 0; index < ids.Length; index += 2)
     {
-        if (!store.Remove(ids[index]))
+        if (!store.Remove(ids[index]) || store.TryGet(ids[index], out _))
             throw new InvalidOperationException("Organism removal failed.");
     }
 
@@ -149,7 +160,17 @@ static void AssertOrganismStore()
 static void AssertEnvironment()
 {
     var sim = ScenarioFactory.Create("environment", 100);
+    var replay = ScenarioFactory.Create("environment", 100);
     sim.Step(1000);
+    replay.Step(1000);
+    if (!string.Equals(
+            CoreSnapshotSerializer.Serialize(sim.CaptureSnapshot()),
+            CoreSnapshotSerializer.Serialize(replay.CaptureSnapshot()),
+            StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("Environment initialization/update is not deterministic.");
+    }
+
     var center = CellId.FromAxial(0, 0);
     if (sim.Topology.GetNeighbors(center).Length != 6)
         throw new InvalidOperationException("Hex topology neighbor lookup failed for center cell.");
