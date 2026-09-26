@@ -82,3 +82,20 @@ The doubled world sizes exposed two separate bottlenecks at runtime. Environment
 Environment systems remain deterministic and multi-rate, but their live cadence is reduced for 17k-29k cell maps while rate multipliers preserve approximately the same physical evolution per simulated second.
 
 At low zoom the map used one Canvas polygon command per visible hex. Base terrain is now triangulated into one ArrayMesh per chunk, reducing the base layer from thousands of Canvas commands to roughly one draw command per visible chunk. Detail and fine layers still use the existing zoom-dependent LOD and remain hidden at full-world overview scale.
+
+
+## Optimization Pass 4
+
+The enlarged-world runtime keeps the 56 / 76 / 98 generation radii unchanged. Optimization Pass 4 targets simulation, rendering and diagnostics instead of reducing map scale or disabling environment systems.
+
+Core topology now derives dense adjacency indices and compact axial direction deltas once at construction. Environment hot loops consume those spans directly. Static climate/pressure terms and terrain downhill drainage are cached. Terrain-scale hydrology skips meaningless ocean-neighbor routing while preserving local ocean precipitation/evaporation, and flooded/blocked land cells still fall back to dynamic water-surface neighbor selection.
+
+Double-buffered physical fields now swap backing arrays instead of copying a complete cell array after every climate, atmosphere, humidity, hydrology or resource pass. GenomeStore also caches compiled phenotypes so organism foundation updates do not recompile the same genome per organism per tick.
+
+CoreSimulationHost uses a bounded per-frame simulation budget and explicit backlog cap to prevent high-speed catch-up spirals from starving Godot rendering/input. Backlog, capped frames and dropped simulated seconds are exposed in debug diagnostics rather than hidden. GameTimeController advances from actual completed Core steps so displayed TPS and world time do not run ahead of a throttled simulation.
+
+Bootstrap convergence checks reuse a compact temperature/humidity/water state instead of cloning a complete environment snapshot every check. Dense physical-bound validation replaces CellId dictionary lookups during bootstrap verification.
+
+The headless runner now has opt-in per-system timings, Gen0/Gen1/Gen2 counts, actual enlarged-map environment scenarios, medium-world organism scaling, an optimization-benchmark command and a snapshot-benchmark command. Profiling remains disabled in normal simulation.
+
+The renderer keeps one ArrayMesh base surface per chunk. Off-screen demo entities are culled before their detailed CanvasItem drawing, and hidden F3 diagnostics no longer build formatted debug strings every 250 ms.

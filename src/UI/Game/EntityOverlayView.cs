@@ -52,13 +52,24 @@ internal sealed partial class EntityOverlayView : Control
         if (_world is null)
             return;
 
-        foreach (var entity in _world.Entities)
-            DrawEntity(entity);
+        var margin = 96f;
+        var viewport = new Rect2(
+            new Vector2(-margin, -margin),
+            _viewportSize + new Vector2(margin * 2f, margin * 2f));
+
+        var entities = _world.Entities;
+        for (var index = 0; index < entities.Count; index++)
+        {
+            var entity = entities[index];
+            var center = (entity.WorldPosition - _cameraPosition) * _zoom + _viewportSize * 0.5f;
+            if (!viewport.HasPoint(center))
+                continue;
+            DrawEntity(entity, center);
+        }
     }
 
-    private void DrawEntity(DemoEntity entity)
+    private void DrawEntity(DemoEntity entity, Vector2 center)
     {
-        var center = (entity.WorldPosition - _cameraPosition) * _zoom + _viewportSize * 0.5f;
         var selected = ReferenceEquals(entity, _selected);
         var visualScale = Mathf.Clamp(_zoom, 0.38f, 2.5f);
 

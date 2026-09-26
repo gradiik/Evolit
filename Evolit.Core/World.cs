@@ -9,6 +9,8 @@ public sealed class WorldTopology
     private readonly int[] _neighborOffsets;
     private readonly CellId[] _neighbors;
     private readonly int[] _neighborIndices;
+    private readonly sbyte[] _neighborDeltaQ;
+    private readonly sbyte[] _neighborDeltaR;
     private readonly Dictionary<CellId, int> _indexById;
 
     public WorldTopology(CellId[] cells, int[] neighborOffsets, CellId[] neighbors)
@@ -32,11 +34,31 @@ public sealed class WorldTopology
         }
 
         _neighborIndices = new int[neighbors.Length];
-        for (var index = 0; index < neighbors.Length; index++)
+        _neighborDeltaQ = new sbyte[neighbors.Length];
+        _neighborDeltaR = new sbyte[neighbors.Length];
+
+        for (var cellIndex = 0; cellIndex < cells.Length; cellIndex++)
         {
-            if (!_indexById.TryGetValue(neighbors[index], out var neighborIndex))
-                throw new ArgumentException($"Neighbor {neighbors[index]} is not present in topology cells.", nameof(neighbors));
-            _neighborIndices[index] = neighborIndex;
+            var start = neighborOffsets[cellIndex];
+            var end = neighborOffsets[cellIndex + 1];
+            var source = cells[cellIndex];
+
+            for (var neighborOffset = start; neighborOffset < end; neighborOffset++)
+            {
+                var neighborId = neighbors[neighborOffset];
+                if (!_indexById.TryGetValue(neighborId, out var neighborIndex))
+                    throw new ArgumentException($"Neighbor {neighborId} is not present in topology cells.", nameof(neighbors));
+
+                var dq = neighborId.Q - source.Q;
+                var dr = neighborId.R - source.R;
+                if (dq is < sbyte.MinValue or > sbyte.MaxValue ||
+                    dr is < sbyte.MinValue or > sbyte.MaxValue)
+                    throw new ArgumentException("Neighbor coordinate delta exceeds compact topology storage.", nameof(neighbors));
+
+                _neighborIndices[neighborOffset] = neighborIndex;
+                _neighborDeltaQ[neighborOffset] = (sbyte)dq;
+                _neighborDeltaR[neighborOffset] = (sbyte)dr;
+            }
         }
     }
 
@@ -65,6 +87,26 @@ public sealed class WorldTopology
         var start = _neighborOffsets[index];
         var length = _neighborOffsets[index + 1] - start;
         return _neighborIndices.AsSpan(start, length);
+    }
+
+    public ReadOnlySpan<sbyte> GetNeighborDeltaQ(int index)
+    {
+        if ((uint)index >= (uint)_cells.Length)
+            return ReadOnlySpan<sbyte>.Empty;
+
+        var start = _neighborOffsets[index];
+        var length = _neighborOffsets[index + 1] - start;
+        return _neighborDeltaQ.AsSpan(start, length);
+    }
+
+    public ReadOnlySpan<sbyte> GetNeighborDeltaR(int index)
+    {
+        if ((uint)index >= (uint)_cells.Length)
+            return ReadOnlySpan<sbyte>.Empty;
+
+        var start = _neighborOffsets[index];
+        var length = _neighborOffsets[index + 1] - start;
+        return _neighborDeltaR.AsSpan(start, length);
     }
 
     public WorldTopologySnapshot CaptureSnapshot()
@@ -164,13 +206,13 @@ public sealed partial class EnvironmentStore
 {
     private readonly WorldTopology _topology;
     private readonly float[] _elevationMeters;
-    private readonly float[] _waterDepthMeters;
-    private readonly float[] _temperatureCelsius;
-    private readonly float[] _humidity;
-    private readonly float[] _pressureKPa;
+    private float[] _waterDepthMeters;
+    private float[] _temperatureCelsius;
+    private float[] _humidity;
+    private float[] _pressureKPa;
     private readonly float[] _lightAvailability;
     private readonly float[] _mineralPotential;
-    private readonly float[] _nutrientPotential;
+    private float[] _nutrientPotential;
     private readonly float[] _organicMatter;
     private readonly float[] _substrateDevelopment;
     private readonly float[] _geothermalPotential;

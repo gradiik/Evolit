@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 using Evolit.Core;
 
 return ProgramMain(args);
@@ -19,7 +20,7 @@ static int ProgramMain(string[] args)
             var ticks = args.Length >= 2 ? int.Parse(args[1]) : 1000;
             var seed = args.Length >= 3 ? args[2] : "evolit-benchmark";
             foreach (var count in new[] { 1_000, 5_000, 10_000, 25_000, 50_000 })
-                RunBenchmark(count, ticks, seed);
+                RunBenchmark(count, ticks, seed, WorldGenerationScale.MediumRadius);
             return 0;
         }
 
@@ -69,6 +70,24 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
+        if (string.Equals(args[0], "optimization-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            var ticks = args.Length >= 2 ? int.Parse(args[1]) : 2000;
+            RunEnvironmentBenchmark(WorldGenerationScale.SmallRadius, ticks, "optimization-small");
+            RunEnvironmentBenchmark(WorldGenerationScale.MediumRadius, ticks, "optimization-medium");
+            RunEnvironmentBenchmark(WorldGenerationScale.LargeRadius, ticks, "optimization-large");
+            foreach (var count in new[] { 1_000, 5_000, 10_000 })
+                RunBenchmark(count, ticks, "optimization-organisms", WorldGenerationScale.MediumRadius);
+            return 0;
+        }
+
+        if (string.Equals(args[0], "snapshot-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            var organisms = args.Length >= 2 ? int.Parse(args[1]) : 10_000;
+            RunSnapshotBenchmark(organisms);
+            return 0;
+        }
+
         if (string.Equals(args[0], "benchmark", StringComparison.OrdinalIgnoreCase))
         {
             var count = args.Length >= 2 ? int.Parse(args[1]) : 10_000;
@@ -78,7 +97,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | environment-verify | bootstrap-test | environment-benchmark [ticks] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -96,6 +115,7 @@ static void RunVerification()
     AssertGeneticDeterminism();
     AssertOrganismStore();
     AssertEnvironment();
+    AssertSteadyStateAllocations();
     RunEnvironmentVerification();
     Console.WriteLine("VERIFY PASS");
 }
@@ -202,6 +222,27 @@ static void AssertOrganismStore()
 
     if (store.Count != 10_000)
         throw new InvalidOperationException($"Unexpected organism count after add/remove cycle: {store.Count}.");
+}
+
+static void AssertSteadyStateAllocations()
+{
+    const int ticks = 1_000;
+    var sim = ScenarioFactory.Create("allocation-guard", 1_000, 24);
+    sim.Step(200);
+
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+
+    var before = GC.GetAllocatedBytesForCurrentThread();
+    sim.Step(ticks);
+    var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+    var perTick = allocated / (double)ticks;
+
+    if (perTick > 64.0)
+        throw new InvalidOperationException($"Core steady-state allocation regression: {perTick:0.##} B/tick.");
+
+    Console.WriteLine($"ALLOC VERIFY PASS alloc_per_tick={perTick:0.##}");
 }
 
 static void AssertEnvironment()
@@ -415,7 +456,7 @@ static (string Snapshot, int Ticks, bool Converged, double FinalChange, double C
         SimulationMode.Bootstrap);
     var coreConstructionMs = Stopwatch.GetElapsedTime(coreStart).TotalMilliseconds;
     var bootstrapStart = Stopwatch.GetTimestamp();
-    var previous = simulation.Environment.CaptureSnapshot();
+    var previous = simulation.Environment.CaptureConvergenceState();
     var finalChange = double.PositiveInfinity;
     var ticks = 0;
     var converged = false;
@@ -423,9 +464,8 @@ static (string Snapshot, int Ticks, bool Converged, double FinalChange, double C
     for (; ticks < BootstrapPolicy.MaximumTicks; ticks += BootstrapPolicy.CheckIntervalTicks)
     {
         simulation.Step(BootstrapPolicy.CheckIntervalTicks);
-        finalChange = simulation.Environment.MeasureChange(previous);
+        finalChange = simulation.Environment.MeasureChangeAndRefresh(previous);
         AssertPhysicalBounds(simulation);
-        previous = simulation.Environment.CaptureSnapshot();
         if (ticks + BootstrapPolicy.CheckIntervalTicks >= BootstrapPolicy.MinimumTicks &&
             finalChange <= BootstrapPolicy.ConvergenceThreshold)
         {
@@ -499,14 +539,13 @@ static void RunBootstrapTest()
     var b = ScenarioFactory.Create("bootstrap", 0, 32);
     a.Mode = SimulationMode.Bootstrap;
     b.Mode = SimulationMode.Bootstrap;
-    var before = a.Environment.CaptureSnapshot();
+    var convergence = a.Environment.CaptureConvergenceState();
     a.Step(2_500);
     b.Step(2_500);
-    var middle = a.Environment.CaptureSnapshot();
-    var firstChange = a.Environment.MeasureChange(before);
+    var firstChange = a.Environment.MeasureChangeAndRefresh(convergence);
     a.Step(2_500);
     b.Step(2_500);
-    var secondChange = a.Environment.MeasureChange(middle);
+    var secondChange = a.Environment.MeasureChangeAndRefresh(convergence);
     if (!string.Equals(CoreSnapshotSerializer.Serialize(a.CaptureSnapshot()), CoreSnapshotSerializer.Serialize(b.CaptureSnapshot()), StringComparison.Ordinal))
         throw new InvalidOperationException("Bootstrap replay diverged.");
     AssertPhysicalBounds(a);
@@ -519,20 +558,38 @@ static void RunBootstrapTest()
 
 static void AssertPhysicalBounds(CoreSimulation sim)
 {
-    foreach (var id in sim.Topology.Cells)
-    {
-        var cell = sim.Environment.Get(id);
-        var physical = sim.Environment.GetPhysical(id);
-        if (!float.IsFinite(cell.TemperatureCelsius) || cell.TemperatureCelsius is < -80f or > 65f ||
-            !float.IsFinite(cell.Humidity) || cell.Humidity is < 0f or > 1f ||
-            !float.IsFinite(cell.PressureKPa) || cell.PressureKPa is < 0f or > 115f ||
-            !float.IsFinite(cell.WaterDepthMeters) || cell.WaterDepthMeters < 0f ||
-            !float.IsFinite(physical.WindX) || !float.IsFinite(physical.WindY) ||
-            physical.WaterAvailability is < 0f or > 1f ||
-            cell.NutrientPotential is < 0f or > 1f ||
-            cell.SubstrateDevelopment is < 0f or > 1f)
-            throw new InvalidOperationException($"Physical environment invariant failed in {id}.");
-    }
+    sim.Environment.ValidatePhysicalBounds();
+}
+
+static void RunSnapshotBenchmark(int organismCount)
+{
+    var sim = ScenarioFactory.Create(
+        "snapshot-benchmark",
+        organismCount,
+        WorldGenerationScale.MediumRadius);
+    sim.Step(100);
+
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+
+    var captureAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+    var captureStart = Stopwatch.GetTimestamp();
+    var snapshot = sim.CaptureSnapshot();
+    var captureMs = Stopwatch.GetElapsedTime(captureStart).TotalMilliseconds;
+    var captureAllocated = GC.GetAllocatedBytesForCurrentThread() - captureAllocatedBefore;
+
+    var serializeAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+    var serializeStart = Stopwatch.GetTimestamp();
+    var json = CoreSnapshotSerializer.Serialize(snapshot);
+    var serializeMs = Stopwatch.GetElapsedTime(serializeStart).TotalMilliseconds;
+    var serializeAllocated = GC.GetAllocatedBytesForCurrentThread() - serializeAllocatedBefore;
+    var utf8Bytes = Encoding.UTF8.GetByteCount(json);
+
+    Console.WriteLine(
+        $"SNAPSHOT_BENCH cells={sim.Topology.Count} organisms={organismCount} " +
+        $"capture_ms={captureMs:0.###} capture_alloc={captureAllocated} " +
+        $"serialize_ms={serializeMs:0.###} serialize_alloc={serializeAllocated} json_bytes={utf8Bytes}");
 }
 
 static void RunEnvironmentBenchmark(int radius, int ticks, string seed)
@@ -541,32 +598,59 @@ static void RunEnvironmentBenchmark(int radius, int ticks, string seed)
     var sim = ScenarioFactory.Create(seed + radius, 0, radius);
     var initMs = Stopwatch.GetElapsedTime(initStart).TotalMilliseconds;
     sim.Step(100);
+
     var samples = new double[ticks];
     GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+
     var beforeMemory = GC.GetTotalMemory(true);
     var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+    var gen0Before = GC.CollectionCount(0);
+    var gen1Before = GC.CollectionCount(1);
+    var gen2Before = GC.CollectionCount(2);
+
+    sim.Scheduler.ResetProfile();
+    sim.Scheduler.ProfilingEnabled = true;
+
     var totalStart = Stopwatch.GetTimestamp();
     for (var i = 0; i < ticks; i++)
     {
-        var start = Stopwatch.GetTimestamp();
+        var tickStart = Stopwatch.GetTimestamp();
         sim.Step();
-        samples[i] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        samples[i] = Stopwatch.GetElapsedTime(tickStart).TotalMilliseconds;
     }
     var totalMs = Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds;
+
+    sim.Scheduler.ProfilingEnabled = false;
     var allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAllocated;
+    var profiles = sim.Scheduler.CaptureProfile();
     var memory = Math.Max(0, GC.GetTotalMemory(false) - beforeMemory);
+    var gen0 = GC.CollectionCount(0) - gen0Before;
+    var gen1 = GC.CollectionCount(1) - gen1Before;
+    var gen2 = GC.CollectionCount(2) - gen2Before;
+
     Array.Sort(samples);
-    Console.WriteLine($"ENV_BENCH cells={sim.Topology.Count} ticks={ticks} init_ms={initMs:0.###} avg_ms={(totalMs/ticks):0.######} p50_ms={Percentile(samples,0.5):0.######} p95_ms={Percentile(samples,0.95):0.######} p99_ms={Percentile(samples,0.99):0.######} ticks_per_sec={(ticks/Math.Max(0.000001,totalMs/1000.0)):0.##} alloc_per_tick={(allocated/(double)ticks):0.##} memory_delta={memory} cells_per_sec={(sim.Topology.Count*ticks/Math.Max(0.000001,totalMs/1000.0)):0.##}");
+    Console.WriteLine(
+        $"ENV_BENCH radius={radius} cells={sim.Topology.Count} ticks={ticks} init_ms={initMs:0.###} " +
+        $"avg_ms={(totalMs/ticks):0.######} p50_ms={Percentile(samples,0.5):0.######} " +
+        $"p95_ms={Percentile(samples,0.95):0.######} p99_ms={Percentile(samples,0.99):0.######} " +
+        $"ticks_per_sec={(ticks/Math.Max(0.000001,totalMs/1000.0)):0.##} " +
+        $"alloc_per_tick={(allocated/(double)ticks):0.##} memory_delta={memory} " +
+        $"gc0={gen0} gc1={gen1} gc2={gen2} " +
+        $"cells_per_sec={(sim.Topology.Count*ticks/Math.Max(0.000001,totalMs/1000.0)):0.##}");
+
+    PrintSystemProfiles(profiles);
 }
 
-static void RunBenchmark(int organismCount, int ticks, string seed)
+static void RunBenchmark(int organismCount, int ticks, string seed, int radius = 40)
 {
     if (organismCount <= 0 || ticks <= 0)
         throw new ArgumentOutOfRangeException("Benchmark counts must be positive.");
 
     var beforeMemory = GC.GetTotalMemory(true);
     var initStart = Stopwatch.GetTimestamp();
-    var sim = ScenarioFactory.Create(seed, organismCount);
+    var sim = ScenarioFactory.Create(seed, organismCount, radius);
     var initMs = Stopwatch.GetElapsedTime(initStart).TotalMilliseconds;
     var afterInitMemory = GC.GetTotalMemory(true);
 
@@ -579,6 +663,11 @@ static void RunBenchmark(int organismCount, int ticks, string seed)
     // alloc_per_tick reflects the simulation hot path rather than the harness.
     var samples = new double[ticks];
     var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+    var gen0Before = GC.CollectionCount(0);
+    var gen1Before = GC.CollectionCount(1);
+    var gen2Before = GC.CollectionCount(2);
+    sim.Scheduler.ResetProfile();
+    sim.Scheduler.ProfilingEnabled = true;
     var totalStart = Stopwatch.GetTimestamp();
     for (var index = 0; index < ticks; index++)
     {
@@ -587,7 +676,12 @@ static void RunBenchmark(int organismCount, int ticks, string seed)
         samples[index] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
     var totalMs = Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds;
+    sim.Scheduler.ProfilingEnabled = false;
     var allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAllocated;
+    var profiles = sim.Scheduler.CaptureProfile();
+    var gen0 = GC.CollectionCount(0) - gen0Before;
+    var gen1 = GC.CollectionCount(1) - gen1Before;
+    var gen2 = GC.CollectionCount(2) - gen2Before;
 
     Array.Sort(samples);
     var avg = totalMs / ticks;
@@ -598,10 +692,23 @@ static void RunBenchmark(int organismCount, int ticks, string seed)
     var bytesPerOrganism = organismCount == 0 ? 0 : memoryDelta / (double)organismCount;
 
     Console.WriteLine(
-        $"BENCH organisms={organismCount} ticks={ticks} init_ms={initMs:0.###} " +
+        $"BENCH radius={radius} cells={sim.Topology.Count} organisms={organismCount} ticks={ticks} init_ms={initMs:0.###} " +
         $"avg_ms={avg:0.######} p50_ms={p50:0.######} p95_ms={p95:0.######} p99_ms={p99:0.######} " +
         $"ticks_per_sec={(ticks / Math.Max(0.000001, totalMs / 1000.0)):0.##} " +
-        $"alloc_per_tick={(allocated / (double)ticks):0.##} memory_delta={memoryDelta} bytes_per_organism={bytesPerOrganism:0.##}");
+        $"alloc_per_tick={(allocated / (double)ticks):0.##} memory_delta={memoryDelta} bytes_per_organism={bytesPerOrganism:0.##} " +
+        $"gc0={gen0} gc1={gen1} gc2={gen2}");
+
+    PrintSystemProfiles(profiles);
+}
+
+static void PrintSystemProfiles(SimulationSystemProfile[] profiles)
+{
+    foreach (var profile in profiles)
+    {
+        Console.WriteLine(
+            $"SYSTEM name={profile.Name} calls={profile.Calls} total_ms={profile.TotalMilliseconds:0.###} " +
+            $"avg_ms={profile.AverageMilliseconds:0.######} max_ms={profile.MaxMilliseconds:0.######}");
+    }
 }
 
 static double Percentile(double[] sorted, double p)

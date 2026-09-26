@@ -60,20 +60,41 @@ public sealed class GameTimeController
         }
 
         var multiplier = _speed.Multiplier;
-        _minuteOfDay += delta * MinutesPerRealSecond * multiplier;
-
-        while (_minuteOfDay >= MinutesPerDay)
-        {
-            _minuteOfDay -= MinutesPerDay;
-            Day++;
-        }
-
         _tickFraction += delta * BaseTicksPerSecond * multiplier;
         var completedTicks = (long)Math.Floor(_tickFraction);
         if (completedTicks > 0)
+            _tickFraction -= completedTicks;
+
+        AdvanceByCompletedTicks(delta, completedTicks);
+    }
+
+    public void AdvanceFromSimulation(double delta, int completedTicks)
+    {
+        if (delta <= 0)
+            return;
+
+        if (_speed.Paused)
+        {
+            UpdateMeasuredTps(delta, 0);
+            return;
+        }
+
+        _tickFraction = 0;
+        AdvanceByCompletedTicks(delta, Math.Max(0, completedTicks));
+    }
+
+    private void AdvanceByCompletedTicks(double delta, long completedTicks)
+    {
+        if (completedTicks > 0)
         {
             TickCount += completedTicks;
-            _tickFraction -= completedTicks;
+            _minuteOfDay += completedTicks / BaseTicksPerSecond * MinutesPerRealSecond;
+
+            while (_minuteOfDay >= MinutesPerDay)
+            {
+                _minuteOfDay -= MinutesPerDay;
+                Day++;
+            }
         }
 
         UpdateMeasuredTps(delta, completedTicks);

@@ -15,6 +15,11 @@ public readonly record struct CoreRuntimeDiagnostics(
     double LastTickMilliseconds,
     double AverageTickMilliseconds,
     double AllocatedBytesPerTick,
+    double P95TickMilliseconds,
+    double BacklogSimulationSeconds,
+    double DroppedSimulationSeconds,
+    long CappedFrames,
+    int LastFrameSteps,
     SimulationMode Mode,
     int BootstrapTicks,
     bool BootstrapConverged,
@@ -26,6 +31,13 @@ public sealed class CoreSimulationHost
     private double _lastTickMilliseconds;
     private double _averageTickMilliseconds;
     private double _allocatedBytesPerTick;
+    private readonly double[] _tickSamples = new double[128];
+    private readonly double[] _tickSampleScratch = new double[128];
+    private int _tickSampleCount;
+    private int _tickSampleCursor;
+    private double _droppedSimulationSeconds;
+    private long _cappedFrames;
+    private int _lastFrameSteps;
     private readonly int _bootstrapTicks;
     private readonly bool _bootstrapConverged;
     private readonly double _bootstrapFinalChange;
@@ -70,28 +82,97 @@ public sealed class CoreSimulationHost
 
     public int AdvanceFrame(double deltaSeconds, SimulationSpeedState speed)
     {
+        _lastFrameSteps = 0;
         if (deltaSeconds <= 0 || speed.Paused)
             return 0;
 
         _accumulator += deltaSeconds * speed.Multiplier;
+        var cappedThisFrame = false;
+
+        // Keep an explicit bounded backlog so a slow frame cannot create an
+        // unbounded catch-up spiral. Any cap is surfaced through diagnostics.
+        var maximumBacklog = speed.Multiplier >= SimulationSpeedState.MaxMultiplier
+            ? 4.0
+            : speed.Multiplier >= 16
+                ? 2.5
+                : 1.5;
+        if (_accumulator > maximumBacklog)
+        {
+            _droppedSimulationSeconds += _accumulator - maximumBacklog;
+            _accumulator = maximumBacklog;
+            cappedThisFrame = true;
+        }
+
         var fixedStep = Simulation.Clock.FixedDeltaSeconds;
-        var steps = (int)Math.Floor(_accumulator / fixedStep);
-        if (steps <= 0)
+        var requestedSteps = (int)Math.Floor(_accumulator / fixedStep);
+        if (requestedSteps <= 0)
             return 0;
 
-        _accumulator -= steps * fixedStep;
+        // High speed is best-effort and must leave time for rendering/input.
+        // Normal speeds get a slightly smaller budget because they usually need
+        // at most one or a few fixed steps per render frame.
+        var frameBudgetMs = speed.Multiplier >= SimulationSpeedState.MaxMultiplier
+            ? 10.0
+            : speed.Multiplier >= 16
+                ? 8.0
+                : 6.0;
+
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        var started = Stopwatch.GetTimestamp();
-        Simulation.Step(steps);
-        var totalMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var frameStarted = Stopwatch.GetTimestamp();
+        var steps = 0;
+        var totalTickMs = 0.0;
+
+        while (steps < requestedSteps)
+        {
+            var tickStarted = Stopwatch.GetTimestamp();
+            Simulation.Step();
+            var tickMs = Stopwatch.GetElapsedTime(tickStarted).TotalMilliseconds;
+            RecordTickSample(tickMs);
+            totalTickMs += tickMs;
+            steps++;
+
+            if (steps < requestedSteps &&
+                Stopwatch.GetElapsedTime(frameStarted).TotalMilliseconds >= frameBudgetMs)
+            {
+                cappedThisFrame = true;
+                break;
+            }
+        }
+
+        _accumulator -= steps * fixedStep;
+        if (cappedThisFrame)
+            _cappedFrames++;
         var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
 
-        _lastTickMilliseconds = totalMs / steps;
+        _lastFrameSteps = steps;
+        _lastTickMilliseconds = totalTickMs / steps;
         _averageTickMilliseconds = _averageTickMilliseconds <= 0
             ? _lastTickMilliseconds
             : _averageTickMilliseconds * 0.92 + _lastTickMilliseconds * 0.08;
         _allocatedBytesPerTick = allocated / (double)steps;
         return steps;
+    }
+
+    private void RecordTickSample(double milliseconds)
+    {
+        _tickSamples[_tickSampleCursor] = milliseconds;
+        _tickSampleCursor = (_tickSampleCursor + 1) % _tickSamples.Length;
+        if (_tickSampleCount < _tickSamples.Length)
+            _tickSampleCount++;
+    }
+
+    private double GetP95TickMilliseconds()
+    {
+        if (_tickSampleCount == 0)
+            return 0;
+
+        Array.Copy(_tickSamples, _tickSampleScratch, _tickSampleCount);
+        Array.Sort(_tickSampleScratch, 0, _tickSampleCount);
+        var index = Math.Clamp(
+            (int)Math.Ceiling(_tickSampleCount * 0.95) - 1,
+            0,
+            _tickSampleCount - 1);
+        return _tickSampleScratch[index];
     }
 
     public CoreSimulationSnapshot CaptureSnapshot() => Simulation.CaptureSnapshot();
@@ -122,6 +203,11 @@ public sealed class CoreSimulationHost
             _lastTickMilliseconds,
             _averageTickMilliseconds,
             _allocatedBytesPerTick,
+            GetP95TickMilliseconds(),
+            _accumulator,
+            _droppedSimulationSeconds,
+            _cappedFrames,
+            _lastFrameSteps,
             Simulation.Mode,
             _bootstrapTicks,
             _bootstrapConverged,
@@ -171,7 +257,7 @@ public sealed class CoreSimulationHost
 
     private static BootstrapDiagnostics StabilizeEnvironment(CoreSimulation simulation)
     {
-        var previous = simulation.Environment.CaptureSnapshot();
+        var previous = simulation.Environment.CaptureConvergenceState();
         var finalChange = double.PositiveInfinity;
         var ticks = 0;
         var converged = false;
@@ -179,9 +265,8 @@ public sealed class CoreSimulationHost
         for (; ticks < BootstrapPolicy.MaximumTicks; ticks += BootstrapPolicy.CheckIntervalTicks)
         {
             simulation.Step(BootstrapPolicy.CheckIntervalTicks);
-            finalChange = simulation.Environment.MeasureChange(previous);
-            ValidateEnvironment(simulation);
-            previous = simulation.Environment.CaptureSnapshot();
+            finalChange = simulation.Environment.MeasureChangeAndRefresh(previous);
+            simulation.Environment.ValidatePhysicalBounds();
             if (ticks + BootstrapPolicy.CheckIntervalTicks >= BootstrapPolicy.MinimumTicks &&
                 finalChange <= BootstrapPolicy.ConvergenceThreshold)
             {
@@ -192,22 +277,6 @@ public sealed class CoreSimulationHost
         }
 
         return new BootstrapDiagnostics(Math.Min(ticks, BootstrapPolicy.MaximumTicks), converged, finalChange);
-    }
-
-    private static void ValidateEnvironment(CoreSimulation simulation)
-    {
-        foreach (var id in simulation.Topology.Cells)
-        {
-            var state = simulation.Environment.Get(id);
-            var physical = simulation.Environment.GetPhysical(id);
-            if (!float.IsFinite(state.ElevationMeters) ||
-                !float.IsFinite(state.WaterDepthMeters) || state.WaterDepthMeters < 0f ||
-                !float.IsFinite(state.TemperatureCelsius) ||
-                !float.IsFinite(state.Humidity) || state.Humidity is < 0f or > 1f ||
-                !float.IsFinite(state.PressureKPa) || state.PressureKPa <= 0f ||
-                !float.IsFinite(physical.WindX) || !float.IsFinite(physical.WindY))
-                throw new InvalidOperationException($"Bootstrap produced an invalid environment cell {id}.");
-        }
     }
 
     private readonly record struct BootstrapDiagnostics(int Ticks, bool Converged, double FinalChange);

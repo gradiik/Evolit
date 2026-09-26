@@ -77,9 +77,16 @@ public sealed partial class GameScreen : Control
 
     public override void _Process(double delta)
     {
-        _time?.Advance(delta);
-        if (_core is not null && _speed is not null)
-            _core.AdvanceFrame(delta, _speed);
+        if (_core is not null && _speed is not null && _time is not null)
+        {
+            var completedSteps = _core.AdvanceFrame(delta, _speed);
+            _time.AdvanceFromSimulation(delta, completedSteps);
+        }
+        else
+        {
+            _time?.Advance(delta);
+        }
+
         _demoSimulation?.Tick();
     }
 

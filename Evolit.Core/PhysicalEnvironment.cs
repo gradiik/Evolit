@@ -26,6 +26,21 @@ public readonly record struct PhysicalEnvironmentState(
     float WaterAvailability,
     EnvironmentRegion Region);
 
+public sealed class EnvironmentConvergenceState
+{
+    internal EnvironmentConvergenceState(float[] temperature, float[] humidity, float[] waterDepth)
+    {
+        TemperatureCelsius = temperature;
+        Humidity = humidity;
+        WaterDepthMeters = waterDepth;
+    }
+
+    internal float[] TemperatureCelsius { get; }
+    internal float[] Humidity { get; }
+    internal float[] WaterDepthMeters { get; }
+}
+
+
 public sealed partial class EnvironmentStore
 {
     private float[]? _windX;
@@ -42,6 +57,7 @@ public sealed partial class EnvironmentStore
     private float[]? _nutrientScratch;
     private float[]? _baseClimateTemperature;
     private float[]? _targetPressure;
+    private int[]? _staticDownhill;
 
     public PhysicalEnvironmentState GetPhysical(CellId id)
     {
@@ -79,7 +95,7 @@ public sealed partial class EnvironmentStore
                 65f);
         }
 
-        SwapInto(_temperatureScratch!, _temperatureCelsius);
+        SwapTemperatureBuffers();
     }
 
     internal void UpdateAtmosphere(float rate)
@@ -96,15 +112,15 @@ public sealed partial class EnvironmentStore
 
             var gx = 0f;
             var gy = 0f;
-            var id = _topology.GetCellId(i);
             var neighbors = _topology.GetNeighborIndices(i);
+            var deltaQ = _topology.GetNeighborDeltaQ(i);
+            var deltaR = _topology.GetNeighborDeltaR(i);
             for (var n = 0; n < neighbors.Length; n++)
             {
                 var ni = neighbors[n];
-                var neighborId = _topology.GetCellId(ni);
                 var dp = _pressureKPa[i] - _pressureKPa[ni];
-                gx += dp * (neighborId.Q - id.Q);
-                gy += dp * (neighborId.R - id.R);
+                gx += dp * deltaQ[n];
+                gy += dp * deltaR[n];
             }
 
             var scale = neighbors.Length == 0 ? 0f : 0.18f / neighbors.Length;
@@ -112,7 +128,7 @@ public sealed partial class EnvironmentStore
             _windY![i] = Math.Clamp(gy * scale, -1f, 1f);
         }
 
-        SwapInto(_pressureScratch!, _pressureKPa);
+        SwapPressureBuffers();
     }
 
     internal void UpdateHydrology(float rate)
@@ -131,30 +147,50 @@ public sealed partial class EnvironmentStore
             _precipitation![i] = precipitation;
             _waterDelta![i] += precipitation - evaporation;
 
-            var neighbors = _topology.GetNeighborIndices(i);
-            var best = -1;
-            var sourceSurface = _elevationMeters[i] + water;
-            var bestSurface = sourceSurface;
-            for (var n = 0; n < neighbors.Length; n++)
+            var available = Math.Max(0f, water + precipitation - evaporation);
+            var flow = 0f;
+
+            // Deep ocean cells only need local precipitation/evaporation here.
+            // Ocean circulation is deliberately outside the 0.0.8 terrain-scale
+            // hydrology model, so scanning six neighbors for every ocean cell adds
+            // substantial cost without improving the intended simulation.
+            if (available > 0f && !(_elevationMeters[i] < 0f && water > 8f))
             {
-                var ni = neighbors[n];
-                var surface = _elevationMeters[ni] + _waterDepthMeters[ni];
-                if (surface < bestSurface)
+                var sourceSurface = _elevationMeters[i] + water;
+                var best = _staticDownhill![i];
+                var bestSurface = best >= 0
+                    ? _elevationMeters[best] + _waterDepthMeters[best]
+                    : sourceSurface;
+
+                // Static terrain drainage handles the common land/river case.
+                // Only flooded local minima or a temporarily blocked downhill path
+                // need a dynamic water-surface neighbor scan.
+                if (best < 0 || bestSurface >= sourceSurface)
                 {
-                    bestSurface = surface;
-                    best = ni;
+                    best = -1;
+                    bestSurface = sourceSurface;
+                    var neighbors = _topology.GetNeighborIndices(i);
+                    for (var n = 0; n < neighbors.Length; n++)
+                    {
+                        var ni = neighbors[n];
+                        var surface = _elevationMeters[ni] + _waterDepthMeters[ni];
+                        if (surface < bestSurface)
+                        {
+                            bestSurface = surface;
+                            best = ni;
+                        }
+                    }
+                }
+
+                if (best >= 0)
+                {
+                    var head = sourceSurface - bestSurface;
+                    flow = Math.Min(available, Math.Max(0f, head) * 0.015f * rate);
+                    _waterDelta[i] -= flow;
+                    _waterDelta[best] += flow;
                 }
             }
 
-            var available = Math.Max(0f, water + precipitation - evaporation);
-            var flow = 0f;
-            if (best >= 0 && available > 0f)
-            {
-                var head = sourceSurface - bestSurface;
-                flow = Math.Min(available, Math.Max(0f, head) * 0.015f * rate);
-                _waterDelta[i] -= flow;
-                _waterDelta[best] += flow;
-            }
             _runoff![i] = flow;
         }
 
@@ -163,7 +199,7 @@ public sealed partial class EnvironmentStore
             _waterScratch![i] = Math.Max(0f, _waterDepthMeters[i] + _waterDelta![i]);
             _waterAvailability![i] = Math.Clamp(_waterScratch[i] > 0f ? 1f : _humidity[i] * 0.72f + _precipitation![i] * 8f, 0f, 1f);
         }
-        SwapInto(_waterScratch!, _waterDepthMeters);
+        SwapWaterBuffers();
     }
 
     internal void UpdateHumidity(float rate)
@@ -183,7 +219,7 @@ public sealed partial class EnvironmentStore
             var target = Math.Clamp(waterSource + neighborHumidity * 0.28f - _precipitation![i] * 0.8f, 0f, 1f);
             _humidityScratch![i] = Math.Clamp(_humidity[i] + (target - _humidity[i]) * blend, 0f, 1f);
         }
-        SwapInto(_humidityScratch!, _humidity);
+        SwapHumidityBuffers();
     }
 
     internal void UpdateResources(float rate)
@@ -200,7 +236,7 @@ public sealed partial class EnvironmentStore
                 _substrateDevelopment[i] + (_waterAvailability[i] * _mineralPotential[i] + _organicMatter[i]) * 0.00005f * rate,
                 0f, 1f);
         }
-        SwapInto(_nutrientScratch!, _nutrientPotential);
+        SwapNutrientBuffers();
     }
 
     internal void UpdateLight(double simulationSeconds)
@@ -221,6 +257,60 @@ public sealed partial class EnvironmentStore
             total += Math.Abs(_waterDepthMeters[i] - before.WaterDepthMeters[i]) * 0.01;
         }
         return Count == 0 ? 0 : total / Count;
+    }
+
+    public EnvironmentConvergenceState CaptureConvergenceState()
+    {
+        var temperature = new float[Count];
+        var humidity = new float[Count];
+        var water = new float[Count];
+        Array.Copy(_temperatureCelsius, temperature, Count);
+        Array.Copy(_humidity, humidity, Count);
+        Array.Copy(_waterDepthMeters, water, Count);
+        return new EnvironmentConvergenceState(temperature, humidity, water);
+    }
+
+    public double MeasureChangeAndRefresh(EnvironmentConvergenceState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.TemperatureCelsius.Length != Count ||
+            state.Humidity.Length != Count ||
+            state.WaterDepthMeters.Length != Count)
+            throw new InvalidOperationException("Convergence state size does not match environment.");
+
+        var total = 0.0;
+        for (var i = 0; i < Count; i++)
+        {
+            total += Math.Abs(_temperatureCelsius[i] - state.TemperatureCelsius[i]);
+            total += Math.Abs(_humidity[i] - state.Humidity[i]) * 20.0;
+            total += Math.Abs(_waterDepthMeters[i] - state.WaterDepthMeters[i]) * 0.01;
+
+            state.TemperatureCelsius[i] = _temperatureCelsius[i];
+            state.Humidity[i] = _humidity[i];
+            state.WaterDepthMeters[i] = _waterDepthMeters[i];
+        }
+
+        return Count == 0 ? 0 : total / Count;
+    }
+
+    public void ValidatePhysicalBounds()
+    {
+        EnsurePhysicalStorage();
+        for (var i = 0; i < Count; i++)
+        {
+            if (!float.IsFinite(_elevationMeters[i]) ||
+                !float.IsFinite(_waterDepthMeters[i]) || _waterDepthMeters[i] < 0f ||
+                !float.IsFinite(_temperatureCelsius[i]) || _temperatureCelsius[i] is < -80f or > 65f ||
+                !float.IsFinite(_humidity[i]) || _humidity[i] is < 0f or > 1f ||
+                !float.IsFinite(_pressureKPa[i]) || _pressureKPa[i] is < 0f or > 115f ||
+                !float.IsFinite(_windX![i]) || !float.IsFinite(_windY![i]) ||
+                _waterAvailability![i] is < 0f or > 1f ||
+                _nutrientPotential[i] is < 0f or > 1f ||
+                _substrateDevelopment[i] is < 0f or > 1f)
+            {
+                throw new InvalidOperationException($"Physical environment invariant failed at dense cell index {i}.");
+            }
+        }
     }
 
     internal void CapturePhysical(EnvironmentSnapshot snapshot)
@@ -271,6 +361,8 @@ public sealed partial class EnvironmentStore
         _waterScratch = new float[Count]; _waterDelta = new float[Count]; _pressureScratch = new float[Count]; _nutrientScratch = new float[Count];
         _baseClimateTemperature = new float[Count];
         _targetPressure = new float[Count];
+        _staticDownhill = new int[Count];
+        Array.Fill(_staticDownhill, -1);
 
         var maxAbsR = 1;
         for (var i = 0; i < Count; i++)
@@ -287,10 +379,58 @@ public sealed partial class EnvironmentStore
             _targetPressure[i] = Math.Max(
                 20f,
                 101.325f * MathF.Exp(-Math.Max(-500f, _elevationMeters[i]) / 8434f));
+
+            var neighbors = _topology.GetNeighborIndices(i);
+            var bestElevation = _elevationMeters[i];
+            var best = -1;
+            for (var n = 0; n < neighbors.Length; n++)
+            {
+                var ni = neighbors[n];
+                if (_elevationMeters[ni] < bestElevation)
+                {
+                    bestElevation = _elevationMeters[ni];
+                    best = ni;
+                }
+            }
+            _staticDownhill[i] = best;
         }
     }
 
-    private static void SwapInto(float[] source, float[] target) => Array.Copy(source, target, source.Length);
+    private void SwapTemperatureBuffers()
+    {
+        var previous = _temperatureCelsius;
+        _temperatureCelsius = _temperatureScratch!;
+        _temperatureScratch = previous;
+    }
+
+    private void SwapHumidityBuffers()
+    {
+        var previous = _humidity;
+        _humidity = _humidityScratch!;
+        _humidityScratch = previous;
+    }
+
+    private void SwapWaterBuffers()
+    {
+        var previous = _waterDepthMeters;
+        _waterDepthMeters = _waterScratch!;
+        _waterScratch = previous;
+    }
+
+    private void SwapPressureBuffers()
+    {
+        var previous = _pressureKPa;
+        _pressureKPa = _pressureScratch!;
+        _pressureScratch = previous;
+    }
+
+    private void SwapNutrientBuffers()
+    {
+        var previous = _nutrientPotential;
+        _nutrientPotential = _nutrientScratch!;
+        _nutrientScratch = previous;
+    }
+
     private static void CopyOptional(float[] source, float[] target)
     {
         if (source.Length == 0) return;

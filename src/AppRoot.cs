@@ -549,7 +549,7 @@ public sealed partial class AppRoot : Control
 
     private void RefreshDebugOverlay()
     {
-        if (_debug is null)
+        if (_debug is null || !_debug.Visible)
             return;
 
         var session = _session;
@@ -558,12 +558,15 @@ public sealed partial class AppRoot : Control
         var render = _activeGameScreen?.GetRenderDiagnostics();
         var renderText = render.HasValue
             ? $"\nMap: {render.Value.VisibleHexes}/{render.Value.TotalHexes} hex · {render.Value.VisibleChunks}/{render.Value.TotalChunks} chunks" +
-              $"\nMap cmds≈{render.Value.EstimatedDrawCommands} · rebuilds {render.Value.TerrainRebuilds} · overlay redraw/s {render.Value.OverlayRedrawsPerSecond:0}"
+              $"\nMap cmds≈{render.Value.EstimatedDrawCommands} · base draws {render.Value.BaseDrawCalls} · terrain nodes {render.Value.TerrainNodeCount}" +
+              $"\nMap rebuilds {render.Value.TerrainRebuilds} · overlay redraw/s {render.Value.OverlayRedrawsPerSecond:0}"
             : string.Empty;
         var core = _coreRuntime?.GetDiagnostics();
         var coreText = core.HasValue
             ? $"\nCore: tick {core.Value.Tick} · t={core.Value.SimulationSeconds:0.0}s · org {core.Value.OrganismCount} · genomes {core.Value.GenomeCount} · lineages {core.Value.LineageCount}" +
-              $"\nCore cells {core.Value.CellCount} · mode {core.Value.Mode} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · alloc/tick {core.Value.AllocatedBytesPerTick:0} B" +
+              $"\nCore cells {core.Value.CellCount} · mode {core.Value.Mode} · last {core.Value.LastTickMilliseconds:0.000} ms · avg {core.Value.AverageTickMilliseconds:0.000} ms · p95 {core.Value.P95TickMilliseconds:0.000} ms" +
+              $"\nCore alloc/tick {core.Value.AllocatedBytesPerTick:0} B · frame steps {core.Value.LastFrameSteps} · backlog {core.Value.BacklogSimulationSeconds:0.000}s" +
+              $"\nCatch-up caps {core.Value.CappedFrames} · dropped {core.Value.DroppedSimulationSeconds:0.000}s" +
               $"\nBootstrap: {core.Value.BootstrapTicks} ticks · converged {core.Value.BootstrapConverged} · change {core.Value.BootstrapFinalChange:0.######}"
             : string.Empty;
 

@@ -123,7 +123,7 @@ public sealed class OrganismStore
                 continue;
 
             _ageSeconds[index] += fixedDeltaSeconds;
-            var phenotype = PhenotypeCompiler.Compile(genomes.Get(_genomes[index]));
+            var phenotype = genomes.GetPhenotype(_genomes[index]);
             var energyDrain = (float)(fixedDeltaSeconds * 0.000015 * phenotype.MetabolicRate);
             _energy[index] = Math.Max(0f, _energy[index] - energyDrain);
             if (_energy[index] <= 0.0001f)

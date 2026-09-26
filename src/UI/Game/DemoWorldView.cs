@@ -33,7 +33,9 @@ public readonly record struct WorldRenderDiagnostics(
     int VisibleChunks,
     int TerrainRebuilds,
     double OverlayRedrawsPerSecond,
-    int EstimatedDrawCommands);
+    int EstimatedDrawCommands,
+    int BaseDrawCalls,
+    int TerrainNodeCount);
 
 public sealed partial class DemoWorldView : Control
 {
@@ -308,7 +310,9 @@ public sealed partial class DemoWorldView : Control
             _visibleChunks,
             _terrainRebuilds,
             _overlayRedrawsPerSecond,
-            _estimatedDrawCommands);
+            _estimatedDrawCommands,
+            _visibleChunks,
+            _chunks.Count * 3);
     }
 
     private void BuildWorldLayers()
@@ -511,6 +515,9 @@ public sealed partial class DemoWorldView : Control
             return;
 
         var active = Input.IsActionPressed("terrain_inspect");
+        if (!active && !_inspectorActive)
+            return;
+
         var mouse = GetLocalMousePosition();
         var inside = new Rect2(Vector2.Zero, Size).HasPoint(mouse);
         var nextCell = active && inside

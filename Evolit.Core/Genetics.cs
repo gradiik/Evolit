@@ -66,6 +66,7 @@ public static class PhenotypeCompiler
 public sealed class GenomeStore
 {
     private Genome[] _items = new Genome[16];
+    private Phenotype[] _phenotypes = new Phenotype[16];
     private int _count;
 
     public int Count => _count;
@@ -74,6 +75,7 @@ public sealed class GenomeStore
     {
         EnsureCapacity(_count + 1);
         _items[_count] = genome;
+        _phenotypes[_count] = PhenotypeCompiler.Compile(genome);
         _count++;
         return new GenomeId(_count);
     }
@@ -84,6 +86,14 @@ public sealed class GenomeStore
         if ((uint)index >= (uint)_count)
             throw new KeyNotFoundException($"Unknown genome {id.Value}.");
         return _items[index];
+    }
+
+    public Phenotype GetPhenotype(GenomeId id)
+    {
+        var index = id.Value - 1;
+        if ((uint)index >= (uint)_count)
+            throw new KeyNotFoundException($"Unknown genome {id.Value}.");
+        return _phenotypes[index];
     }
 
     public GenomeSnapshot CaptureSnapshot()
@@ -99,6 +109,8 @@ public sealed class GenomeStore
         var source = snapshot.Items ?? Array.Empty<Genome>();
         store.EnsureCapacity(source.Length);
         Array.Copy(source, store._items, source.Length);
+        for (var index = 0; index < source.Length; index++)
+            store._phenotypes[index] = PhenotypeCompiler.Compile(source[index]);
         store._count = source.Length;
         return store;
     }
@@ -109,6 +121,7 @@ public sealed class GenomeStore
             return;
         var next = Math.Max(required, _items.Length * 2);
         Array.Resize(ref _items, next);
+        Array.Resize(ref _phenotypes, next);
     }
 }
 

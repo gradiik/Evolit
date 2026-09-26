@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Evolit.Core;
 
@@ -31,18 +32,33 @@ public interface ISimulationSystem
     void Execute(CoreSimulation simulation);
 }
 
+public readonly record struct SimulationSystemProfile(
+    string Name,
+    long Calls,
+    double TotalMilliseconds,
+    double AverageMilliseconds,
+    double MaxMilliseconds);
+
 public sealed class SimulationScheduler
 {
     private readonly List<ISimulationSystem> _systems = new();
+    private long[] _profileElapsedTicks = Array.Empty<long>();
+    private long[] _profileCalls = Array.Empty<long>();
+    private long[] _profileMaxTicks = Array.Empty<long>();
 
     public IReadOnlyList<ISimulationSystem> Systems => _systems;
+    public bool ProfilingEnabled { get; set; }
 
     public void Register(ISimulationSystem system)
     {
         ArgumentNullException.ThrowIfNull(system);
         if (system.IntervalTicks <= 0)
             throw new ArgumentOutOfRangeException(nameof(system), "System interval must be positive.");
+
         _systems.Add(system);
+        Array.Resize(ref _profileElapsedTicks, _systems.Count);
+        Array.Resize(ref _profileCalls, _systems.Count);
+        Array.Resize(ref _profileMaxTicks, _systems.Count);
     }
 
     internal void RunDue(CoreSimulation simulation)
@@ -51,9 +67,50 @@ public sealed class SimulationScheduler
         for (var index = 0; index < _systems.Count; index++)
         {
             var system = _systems[index];
-            if (tick % system.IntervalTicks == 0)
+            if (tick % system.IntervalTicks != 0)
+                continue;
+
+            if (!ProfilingEnabled)
+            {
                 system.Execute(simulation);
+                continue;
+            }
+
+            var started = Stopwatch.GetTimestamp();
+            system.Execute(simulation);
+            var elapsed = Stopwatch.GetTimestamp() - started;
+            _profileElapsedTicks[index] += elapsed;
+            _profileCalls[index]++;
+            if (elapsed > _profileMaxTicks[index])
+                _profileMaxTicks[index] = elapsed;
         }
+    }
+
+    public void ResetProfile()
+    {
+        Array.Clear(_profileElapsedTicks);
+        Array.Clear(_profileCalls);
+        Array.Clear(_profileMaxTicks);
+    }
+
+    public SimulationSystemProfile[] CaptureProfile()
+    {
+        var result = new SimulationSystemProfile[_systems.Count];
+        var millisecondsPerTimestampTick = 1000.0 / Stopwatch.Frequency;
+
+        for (var index = 0; index < _systems.Count; index++)
+        {
+            var calls = _profileCalls[index];
+            var totalMs = _profileElapsedTicks[index] * millisecondsPerTimestampTick;
+            result[index] = new SimulationSystemProfile(
+                _systems[index].Name,
+                calls,
+                totalMs,
+                calls == 0 ? 0 : totalMs / calls,
+                _profileMaxTicks[index] * millisecondsPerTimestampTick);
+        }
+
+        return result;
     }
 }
 
