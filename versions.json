@@ -17,8 +17,8 @@
       "status": "development",
       "branch": "feature/evolit-0.0.9-world-generation",
       "tag": null,
-      "commit": "de12fb8fe1899421fa990c44423f9168f77c1e24",
-      "note": "Parallel 0.0.9 World Generation Rework branch. Commit de12fb8fe1899421fa990c44423f9168f77c1e24 is the exact base used to start 0.1.0; 0.0.9 may continue to advance independently until its own finalization."
+      "commit": "2f25e0acfd5ee3fc9906b1a872a575058fc5dedf",
+      "note": "Parallel 0.0.9 World Generation Rework branch. Current synchronized checkpoint 2f25e0acfd5ee3fc9906b1a872a575058fc5dedf; 0.1.0 originally branched earlier and later imported compatible flat-world changes without merging the branches."
     },
     {
       "version": "0.0.8",

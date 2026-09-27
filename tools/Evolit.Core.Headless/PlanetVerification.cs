@@ -157,6 +157,8 @@ internal static class PlanetVerification
                 $"hydrology_ms={m.HydrologyMs:0.###} climate_ms={m.ClimateMs:0.###} " +
                 $"resources_ms={m.ResourcesMs:0.###} environment_ms={m.EnvironmentBuildMs:0.###} " +
                 $"reported_total_ms={m.TotalMs:0.###} measured_total_ms={elapsed:0.###} " +
+                $"min_elevation_m={world.Summary.MinElevationMeters:0} max_elevation_m={world.Summary.MaxElevationMeters:0} " +
+                $"max_water_depth_m={world.Summary.MaxWaterDepthMeters:0} " +
                 $"allocated_bytes={allocated} memory_delta={memoryDelta}");
         }
 
@@ -223,7 +225,14 @@ internal static class PlanetVerification
                 var corner = polygon[p];
                 if (!IsFinite(corner) || Math.Abs(corner.Length - 1f) > 0.0005f)
                     throw new InvalidOperationException($"Planet cell {i} has an invalid polygon corner.");
-                areaNormal += CoreVector3.Cross(corner, polygon[(p + 1) % polygon.Length]);
+
+                var nextCorner = polygon[(p + 1) % polygon.Length];
+                var edgeLength = (corner - nextCorner).Length;
+                if (!float.IsFinite(edgeLength) || edgeLength <= 0.000001f || edgeLength > 0.75f)
+                    throw new InvalidOperationException(
+                        $"Planet cell {i} has an implausible polygon edge {edgeLength:0.000000}.");
+
+                areaNormal += CoreVector3.Cross(corner, nextCorner);
             }
             if (CoreVector3.Dot(areaNormal, direction) <= 0f)
                 throw new InvalidOperationException($"Planet cell {i} polygon winding is inverted.");
@@ -356,6 +365,11 @@ internal static class PlanetVerification
                 !float.IsFinite(cell.PressureKPa) || cell.PressureKPa <= 0f ||
                 !float.IsFinite(cell.FlowAccumulation) || cell.FlowAccumulation < 0f ||
                 !float.IsFinite(cell.Slope) || cell.Slope < 0f ||
+                !float.IsFinite(cell.LocalReliefMeters) || cell.LocalReliefMeters < 0f ||
+                cell.GeologicalRegionId < 0 ||
+                cell.MacroplateId < 0 ||
+                !float.IsFinite(cell.PlateBoundaryStrength) ||
+                cell.PlateBoundaryStrength is < 0f or > 1f ||
                 cell.MineralPotential is < 0f or > 1f ||
                 cell.NutrientPotential is < 0f or > 1f ||
                 cell.GeothermalPotential is < 0f or > 1f)

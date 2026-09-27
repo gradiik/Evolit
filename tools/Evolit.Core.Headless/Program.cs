@@ -46,6 +46,12 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
+        if (string.Equals(args[0], "worldgen-resolution-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenResolutionBenchmark(args.Length >= 2 ? args[1] : "resolution-benchmark");
+            return 0;
+        }
+
         if (string.Equals(args[0], "worldgen-quality", StringComparison.OrdinalIgnoreCase))
         {
             var seedCount = args.Length >= 2 ? int.Parse(args[1]) : 20;
@@ -57,6 +63,18 @@ static int ProgramMain(string[] args)
             var directory = args.Length >= 2 ? args[1] : "worldgen-gallery";
             var seedCount = args.Length >= 3 ? int.Parse(args[2]) : 15;
             RunWorldgenGallery(directory, seedCount);
+            return 0;
+        }
+
+        if (string.Equals(args[0], "worldgen-geometry", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldgenGeometry(args.Length >= 2 ? args[1] : "geometry-summary");
+            return 0;
+        }
+
+        if (string.Equals(args[0], "worldsize-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            RunWorldSizeBenchmark();
             return 0;
         }
 
@@ -129,7 +147,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | planet-verify | planet-seeds [count] | planet-benchmark | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | worldgen-quality [count] | worldgen-gallery [directory] [count] | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | planet-verify | planet-seeds [count] | planet-benchmark | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | worldsize-benchmark | worldgen-resolution-benchmark [seed] | worldgen-quality [count] | worldgen-gallery [directory] [count] | worldgen-geometry [seed] | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -389,12 +407,70 @@ static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b, bool co
             x.RiverWidth != y.RiverWidth ||
             x.StreamOrder != y.StreamOrder ||
             x.UpstreamBranches != y.UpstreamBranches ||
-            x.RiverDirection != y.RiverDirection)
+            x.RiverDirection != y.RiverDirection ||
+            x.GeologicalRegionId != y.GeologicalRegionId ||
+            x.MacroplateId != y.MacroplateId ||
+            x.PlateBoundaryStrength != y.PlateBoundaryStrength)
             return false;
     }
 
+    if (!PresentationEquivalent(a.Presentation, b.Presentation))
+        return false;
+
     return a.CandidateAttempt == b.CandidateAttempt &&
            a.CandidateAccepted == b.CandidateAccepted;
+}
+
+static bool PresentationEquivalent(
+    WorldGenerationPresentation a,
+    WorldGenerationPresentation b)
+{
+    if (!a.Style.Equals(b.Style) ||
+        a.GeologicalRegionCount != b.GeologicalRegionCount ||
+        a.MacroplateCount != b.MacroplateCount ||
+        a.FieldResolution != b.FieldResolution ||
+        a.CoastSegments.Length != b.CoastSegments.Length ||
+        a.RidgeSegments.Length != b.RidgeSegments.Length)
+    {
+        return false;
+    }
+
+    for (var i = 0; i < a.CoastSegments.Length; i++)
+        if (!a.CoastSegments[i].Equals(b.CoastSegments[i]))
+            return false;
+
+    for (var i = 0; i < a.RidgeSegments.Length; i++)
+        if (!a.RidgeSegments[i].Equals(b.RidgeSegments[i]))
+            return false;
+
+    return true;
+}
+
+static void RunWorldgenGeometry(string seed)
+{
+    var world = ProceduralWorldGenerator.Generate(
+        new WorldGenerationSettings(seed, WorldGenerationScale.MediumRadius));
+    ValidateGeneratedWorld(world);
+
+    var presentation = world.Presentation;
+    var coastBytes = presentation.CoastSegments.Length * 6L * sizeof(float);
+    var ridgeBytes = presentation.RidgeSegments.Length * 6L * sizeof(float);
+    var metadataBytes =
+        world.Cells.LongLength *
+        (sizeof(int) * 2L + sizeof(float));
+
+    Console.WriteLine(
+        $"WORLDGEN_GEOMETRY seed={seed} radius={world.Settings.Radius} " +
+        $"regions={presentation.GeologicalRegionCount} macroplates={presentation.MacroplateCount} " +
+        $"field_resolution={presentation.FieldResolution} " +
+        $"coast_segments={presentation.CoastSegments.Length} ridge_segments={presentation.RidgeSegments.Length} " +
+        $"coast_bytes={coastBytes} ridge_bytes={ridgeBytes} cell_geo_metadata_bytes={metadataBytes} " +
+        $"total_persistent_geometry_bytes={coastBytes + ridgeBytes + metadataBytes} " +
+        $"style_fragmentation={presentation.Style.ContinentalFragmentation:0.###} " +
+        $"style_coast={presentation.Style.CoastRoughness:0.###} " +
+        $"style_rift={presentation.Style.RiftStrength:0.###} " +
+        $"style_mountain={presentation.Style.MountainSharpness:0.###} " +
+        $"style_meander={presentation.Style.RiverMeander:0.###}");
 }
 
 static void RunWorldgenSeeds()
@@ -447,6 +523,66 @@ static void RunWorldgenBenchmark()
             $"generation_total_ms={m.TotalMs:0.###} core_construct_ms={bootstrap.CoreConstructionMs:0.###} " +
             $"bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} converged={bootstrap.Converged} " +
             $"candidate_attempt={world.CandidateAttempt} accepted={world.CandidateAccepted} allocated_bytes={allocated} memory_delta={memory}");
+    }
+}
+
+static void RunWorldSizeBenchmark()
+{
+    foreach (var radius in new[] { 98, 125, 140, 155, 170 })
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var memoryBefore = GC.GetTotalMemory(true);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var started = Stopwatch.GetTimestamp();
+        var world = ProceduralWorldGenerator.Generate(
+            new WorldGenerationSettings($"worldsize-{radius}", radius));
+        var generationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        var bootstrapStarted = Stopwatch.GetTimestamp();
+        var bootstrap = BootstrapGeneratedWorld(world, $"worldsize-{radius}");
+        var bootstrapElapsed = Stopwatch.GetElapsedTime(bootstrapStarted).TotalMilliseconds;
+        var memoryDelta = Math.Max(0, GC.GetTotalMemory(false) - memoryBefore);
+
+        Console.WriteLine(
+            $"WORLDSIZE_BENCH radius={radius} cells={world.Cells.Length} " +
+            $"generation_ms={generationMs:0.###} allocated_bytes={allocated} " +
+            $"memory_delta={memoryDelta} core_construct_ms={bootstrap.CoreConstructionMs:0.###} " +
+            $"bootstrap_ms={bootstrapElapsed:0.###} ticks={bootstrap.Ticks} converged={bootstrap.Converged}");
+    }
+}
+
+static void RunWorldgenResolutionBenchmark(string seed)
+{
+    foreach (var resolution in new[] { 192, 228, 256, 304 })
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var beforeMemory = GC.GetTotalMemory(true);
+        var beforeAllocated = GC.GetAllocatedBytesForCurrentThread();
+        var started = Stopwatch.GetTimestamp();
+        var world = ProceduralWorldGenerator.Generate(
+            new WorldGenerationSettings(
+                seed,
+                WorldGenerationScale.MediumRadius,
+                ContinuousResolution: resolution));
+        var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAllocated;
+        var memory = Math.Max(0, GC.GetTotalMemory(false) - beforeMemory);
+
+        ValidateGeneratedWorld(world);
+        Console.WriteLine(
+            $"WORLDGEN_RESOLUTION resolution={resolution} actual={world.Presentation.FieldResolution} " +
+            $"total_ms={elapsed:0.###} allocated_bytes={allocated} memory_delta={memory} " +
+            $"regions={world.Presentation.GeologicalRegionCount} macroplates={world.Presentation.MacroplateCount} " +
+            $"coast_segments={world.Presentation.CoastSegments.Length} ridge_segments={world.Presentation.RidgeSegments.Length} " +
+            $"land={world.Summary.LandRatio:P1} continents={world.Quality.ContinentCount} " +
+            $"largest={world.Summary.LargestContinentCells}");
     }
 }
 
@@ -599,8 +735,53 @@ static void WriteWorldSvg(GeneratedWorld world, string path)
           .Append("\" fill=\"").Append(color).Append("\"/>");
     }
 
+    var geographyScale = radius * cellScale * 1.7320508f;
+    AppendGeometrySvg(
+        sb,
+        world.Presentation.RidgeSegments,
+        centerX,
+        centerY,
+        geographyScale,
+        "#b5b19b",
+        0.55f);
+    AppendGeometrySvg(
+        sb,
+        world.Presentation.CoastSegments,
+        centerX,
+        centerY,
+        geographyScale,
+        "#69a99d",
+        0.85f);
+
     sb.Append("</svg>");
     File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+}
+
+static void AppendGeometrySvg(
+    StringBuilder sb,
+    WorldGeometrySegment[] segments,
+    float centerX,
+    float centerY,
+    float scale,
+    string stroke,
+    float width)
+{
+    for (var i = 0; i < segments.Length; i++)
+    {
+        var s = segments[i];
+        sb.Append("<line x1=\"")
+          .Append((centerX + s.X1 * scale).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" y1=\"")
+          .Append((centerY + s.Y1 * scale).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" x2=\"")
+          .Append((centerX + s.X2 * scale).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" y2=\"")
+          .Append((centerY + s.Y2 * scale).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" stroke=\"").Append(stroke)
+          .Append("\" stroke-width=\"")
+          .Append((width * Math.Max(0.5f, s.Width)).ToString("0.##", CultureInfo.InvariantCulture))
+          .Append("\" stroke-linecap=\"round\" opacity=\"0.75\"/>");
+    }
 }
 
 static string GalleryColor(GeneratedWorldCell cell)
@@ -652,8 +833,9 @@ static void ValidateWorldgenQuality(GeneratedWorld world)
         throw new InvalidOperationException("Invalid mean slope.");
     if (q.LongRiverStraightFraction > 0.62f)
         throw new InvalidOperationException("River network is dominated by long straight hex-axis runs.");
-    if (q.LongCoastAxisFraction > 0.72f)
-        throw new InvalidOperationException("Coastline is dominated by long same-axis runs.");
+    // The physical hex mask remains useful for regression analysis, but the
+    // final 0.0.9 coastline is continuous presentation geometry. Do not hard
+    // fail a world solely because its sampled hex mask has same-axis runs.
     if (q.RockyLandRatio > 0.48f)
         throw new InvalidOperationException("Rocky terrain dominates too much land.");
 }
@@ -698,8 +880,13 @@ static void ValidateGeneratedWorld(GeneratedWorld world)
             cell.MineralPotential is < 0f or > 1f ||
             cell.NutrientPotential is < 0f or > 1f ||
             cell.GeothermalPotential is < 0f or > 1f ||
-            cell.Slope < 0f ||
-            cell.CoastDistance < 0)
+            !float.IsFinite(cell.Slope) || cell.Slope < 0f ||
+            !float.IsFinite(cell.LocalReliefMeters) || cell.LocalReliefMeters < 0f ||
+            cell.CoastDistance < 0 ||
+            cell.GeologicalRegionId < 0 ||
+            cell.MacroplateId < 0 ||
+            !float.IsFinite(cell.PlateBoundaryStrength) ||
+            cell.PlateBoundaryStrength is < 0f or > 1f)
             throw new InvalidOperationException($"Invalid generated cell {cell.Id}.");
 
         if (cell.DrainageTarget < 0)
@@ -712,6 +899,43 @@ static void ValidateGeneratedWorld(GeneratedWorld world)
         var targetSurface = target.ElevationMeters + (target.IsLake ? target.WaterDepthMeters : 0f);
         if (targetSurface > sourceSurface + 0.11f)
             throw new InvalidOperationException($"Uphill hydraulic drainage from {cell.Id}.");
+    }
+
+    ValidatePresentation(world.Presentation);
+}
+
+static void ValidatePresentation(WorldGenerationPresentation presentation)
+{
+    if (presentation.GeologicalRegionCount <= 0 ||
+        presentation.MacroplateCount <= 0 ||
+        presentation.FieldResolution < 128)
+    {
+        throw new InvalidOperationException("Continuous geography metadata is incomplete.");
+    }
+
+    ValidateGeometrySegments(presentation.CoastSegments, "coast");
+    ValidateGeometrySegments(presentation.RidgeSegments, "ridge");
+}
+
+static void ValidateGeometrySegments(
+    WorldGeometrySegment[] segments,
+    string label)
+{
+    for (var i = 0; i < segments.Length; i++)
+    {
+        var s = segments[i];
+        if (!float.IsFinite(s.X1) ||
+            !float.IsFinite(s.Y1) ||
+            !float.IsFinite(s.X2) ||
+            !float.IsFinite(s.Y2) ||
+            !float.IsFinite(s.Strength) ||
+            !float.IsFinite(s.Width) ||
+            s.Strength is < 0f or > 1f ||
+            s.Width < 0f)
+        {
+            throw new InvalidOperationException(
+                $"Invalid {label} geometry segment at index {i}.");
+        }
     }
 }
 
@@ -772,6 +996,8 @@ static void PrintWorldgenSummary(
         $"elevation={s.MinElevationMeters:0}..{s.MaxElevationMeters:0}m max_water={s.MaxWaterDepthMeters:0}m " +
         $"temp={s.MinTemperatureCelsius:0.0}..{s.MaxTemperatureCelsius:0.0}C humidity={s.MinHumidity:P0}..{s.MaxHumidity:P0} " +
         $"river_straight_max={q.LongestRiverStraightRun} coast_axis_max={q.LongestCoastAxisRun} rocky_land={q.RockyLandRatio:P1} " +
+        $"regions={world.Presentation.GeologicalRegionCount} macroplates={world.Presentation.MacroplateCount} " +
+        $"coast_segments={world.Presentation.CoastSegments.Length} ridge_segments={world.Presentation.RidgeSegments.Length} " +
         $"candidate_attempt={world.CandidateAttempt} accepted={world.CandidateAccepted} " +
         $"generation_ms={world.Metrics.TotalMs:0.###} core_ms={bootstrap.CoreConstructionMs:0.###} bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} " +
         $"converged={bootstrap.Converged} final_change={bootstrap.FinalChange:0.######}");

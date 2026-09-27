@@ -26,7 +26,15 @@ public static class WorldMapGenerator
         foreach (var source in generated.Cells)
             cells.Add(FromGenerated(source, seed));
 
-        return new WorldMap(seed, sizeName, radius, HexSize, cells, generated.Topology, generated.Environment);
+        return new WorldMap(
+            seed,
+            sizeName,
+            radius,
+            HexSize,
+            cells,
+            generated.Topology,
+            generated.Environment,
+            generated.Presentation);
     }
 
     public static WorldMap Restore(string seed, string sizeName, WorldMapSaveState state)
@@ -37,6 +45,10 @@ public static class WorldMapGenerator
 
         var hexSize = state.HexSize > 0f ? state.HexSize : HexSize;
         var radius = state.Radius > 0 ? state.Radius : RadiusFor(sizeName);
+        var savedByCoord = new Dictionary<HexCoord, WorldHexCellSaveState>(state.Cells.Count);
+        foreach (var saved in state.Cells)
+            savedByCoord[new HexCoord(saved.Q, saved.R)] = saved;
+
         var cells = new List<WorldHexCell>(state.Cells.Count);
         foreach (var saved in state.Cells)
         {
@@ -45,25 +57,20 @@ public static class WorldMapGenerator
                 ? (HexWaterKind)saved.WaterKind : HexWaterKind.None;
             var substrate = saved.Substrate is >= 0 and <= byte.MaxValue && Enum.IsDefined((SubstrateKind)saved.Substrate)
                 ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown;
-            var terrain = Enum.IsDefined(typeof(HexTerrainType), saved.Terrain)
-                ? (HexTerrainType)saved.Terrain : HexTerrainType.Grassland;
-
-            // Old 0.0.8/early-0.0.9 saves encoded a river by turning the whole
-            // terrain hex blue. Keep WaterKind.River, but recover the physical
-            // land surface underneath so the cached river overlay can render it.
-            if (waterKind == HexWaterKind.River &&
-                terrain == HexTerrainType.River &&
-                saved.RiverDirection is >= 0 and <= 5)
-            {
-                terrain = ClassifyTerrain(
-                    saved.ElevationMeters,
-                    saved.WaterDepthMeters,
-                    saved.TemperatureCelsius,
-                    saved.Humidity,
-                    substrate,
-                    HexWaterKind.None,
-                    Math.Max(0f, saved.Slope));
-            }
+            var localSlope = Math.Max(0f, saved.Slope);
+            var localRelief = saved.LocalReliefMeters > 0f
+                ? saved.LocalReliefMeters
+                : DeriveSavedLocalRelief(saved, savedByCoord);
+            var terrain = ClassifyTerrain(
+                saved.ElevationMeters,
+                Math.Max(0f, saved.WaterDepthMeters),
+                saved.TemperatureCelsius,
+                saved.Humidity,
+                substrate,
+                waterKind,
+                localSlope,
+                localRelief,
+                saved.TectonicUplift);
 
             cells.Add(new WorldHexCell
             {
@@ -82,7 +89,8 @@ public static class WorldMapGenerator
                 MovementSpeedMultiplier = Math.Max(0.01f, saved.MovementSpeedMultiplier),
                 VisualVariation = Math.Clamp(saved.VisualVariation, 0f, 1f),
                 FlowAccumulation = Math.Max(0f, saved.FlowAccumulation),
-                Slope = Math.Max(0f, saved.Slope),
+                Slope = localSlope,
+                LocalReliefMeters = localRelief,
                 MineralPotential = Math.Clamp(saved.MineralPotential, 0f, 1f),
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
@@ -96,11 +104,20 @@ public static class WorldMapGenerator
                 RiverWidth = saved.RiverWidth,
                 StreamOrder = saved.StreamOrder,
                 UpstreamBranches = saved.UpstreamBranches,
-                RiverDirection = saved.RiverDirection
+                RiverDirection = saved.RiverDirection,
+                GeologicalRegionId = saved.GeologicalRegionId,
+                MacroplateId = saved.MacroplateId,
+                PlateBoundaryStrength = Math.Clamp(saved.PlateBoundaryStrength, 0f, 1f)
             });
         }
 
-        return new WorldMap(seed, sizeName, radius, hexSize, cells);
+        return new WorldMap(
+            seed,
+            sizeName,
+            radius,
+            hexSize,
+            cells,
+            presentation: RestorePresentation(state.Presentation));
     }
 
     public static WorldMap RestoreFromCore(string seed, string sizeName, CoreSimulationSnapshot snapshot)
@@ -154,6 +171,7 @@ public static class WorldMapGenerator
                 VisualVariation = VisualVariation(id, seed),
                 FlowAccumulation = 0f,
                 Slope = 0f,
+                LocalReliefMeters = 0f,
                 MineralPotential = environment.MineralPotential[i],
                 NutrientPotential = environment.NutrientPotential[i],
                 GeothermalPotential = environment.GeothermalPotential[i],
@@ -197,6 +215,7 @@ public static class WorldMapGenerator
             VisualVariation = VisualVariation(source.Id, seed),
             FlowAccumulation = source.FlowAccumulation,
             Slope = source.Slope,
+            LocalReliefMeters = source.LocalReliefMeters,
             MineralPotential = source.MineralPotential,
             NutrientPotential = source.NutrientPotential,
             GeothermalPotential = source.GeothermalPotential,
@@ -210,7 +229,10 @@ public static class WorldMapGenerator
             RiverWidth = source.RiverWidth,
             StreamOrder = source.StreamOrder,
             UpstreamBranches = source.UpstreamBranches,
-            RiverDirection = source.RiverDirection
+            RiverDirection = source.RiverDirection,
+            GeologicalRegionId = source.GeologicalRegionId,
+            MacroplateId = source.MacroplateId,
+            PlateBoundaryStrength = source.PlateBoundaryStrength
         };
         cell.MovementCost = WorldMovementRules.BaseMovementCost(cell);
         cell.MovementSpeedMultiplier = WorldMovementRules.SpeedMultiplier(cell, DemoEntityKind.Creature);
@@ -225,7 +247,9 @@ public static class WorldMapGenerator
             cell.Humidity,
             cell.Substrate,
             water,
-            cell.Slope);
+            cell.Slope,
+            cell.LocalReliefMeters,
+            cell.TectonicUplift);
 
     private static HexTerrainType ClassifyTerrain(
         float elevationMeters,
@@ -234,24 +258,45 @@ public static class WorldMapGenerator
         float humidity,
         SubstrateKind substrate,
         HexWaterKind water,
-        float slope = 0f)
+        float slope = 0f,
+        float localReliefMeters = 0f,
+        float tectonicUplift = 0f) =>
+        WorldTerrainClassifier.Classify(
+            elevationMeters,
+            waterDepthMeters,
+            temperature,
+            humidity,
+            substrate,
+            water,
+            slope,
+            localReliefMeters,
+            tectonicUplift);
+
+    private static float DeriveSavedLocalRelief(
+        WorldHexCellSaveState source,
+        IReadOnlyDictionary<HexCoord, WorldHexCellSaveState> savedByCoord)
     {
-        // Rivers are a hydrology overlay over the physical land surface. They
-        // must not replace the entire hex terrain with a blue River tile.
-        if (water == HexWaterKind.Lake) return HexTerrainType.Lake;
-        if (water == HexWaterKind.Ocean) return waterDepthMeters > 180f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
-        if ((elevationMeters > 1600f && slope > 150f) || elevationMeters > 3000f)
-            return HexTerrainType.Mountain;
-        if (slope > 175f ||
-            elevationMeters > 1950f ||
-            (substrate == SubstrateKind.BareRock && elevationMeters > 1100f && slope > 85f) ||
-            (substrate == SubstrateKind.Basalt && elevationMeters > 850f))
-            return HexTerrainType.Rocky;
-        if (elevationMeters > 900f && slope < 175f)
-            return HexTerrainType.Highland;
-        if (substrate == SubstrateKind.Sand && elevationMeters < 180f) return HexTerrainType.Sand;
-        if (humidity < 0.28f && temperature > 18f) return HexTerrainType.Desert;
-        return HexTerrainType.Grassland;
+        var land = source.ElevationMeters >= 0f;
+        var min = source.ElevationMeters;
+        var max = source.ElevationMeters;
+
+        for (var dq = -2; dq <= 2; dq++)
+        {
+            var minDr = Math.Max(-2, -dq - 2);
+            var maxDr = Math.Min(2, -dq + 2);
+            for (var dr = minDr; dr <= maxDr; dr++)
+            {
+                var coord = new HexCoord(source.Q + dq, source.R + dr);
+                if (!savedByCoord.TryGetValue(coord, out var candidate) ||
+                    (candidate.ElevationMeters >= 0f) != land)
+                    continue;
+
+                min = Math.Min(min, candidate.ElevationMeters);
+                max = Math.Max(max, candidate.ElevationMeters);
+            }
+        }
+
+        return Math.Max(0f, max - min);
     }
 
     private static float NormalizeWater(float depthMeters, HexWaterKind kind) => kind switch
@@ -270,6 +315,7 @@ public static class WorldMapGenerator
             {
                 "Маленький" => WorldGenerationScale.LegacySmallRadius,
                 "Большой" => WorldGenerationScale.LegacyLargeRadius,
+                "Очень большой" => WorldGenerationScale.HugeRadius,
                 _ => WorldGenerationScale.LegacyMediumRadius
             };
         }
@@ -280,6 +326,7 @@ public static class WorldMapGenerator
         {
             "Маленький" => WorldGenerationScale.SmallRadius,
             "Большой" => WorldGenerationScale.LargeRadius,
+            "Очень большой" => WorldGenerationScale.HugeRadius,
             _ => WorldGenerationScale.MediumRadius
         };
     }

@@ -270,6 +270,7 @@ public static class PlanetWorldGenerator
         var continentalness = new float[count];
         var uplift = new float[count];
         var province = new int[count];
+        var plateBoundaryStrength = new float[count];
         var plates = BuildPlates(settings, seed);
         var continentAnchors = BuildContinentAnchors(seed);
         var raw = new float[count];
@@ -321,6 +322,7 @@ public static class PlanetWorldGenerator
             var plateBias = plate.Continental ? 0.30f : -0.22f;
             var tectonic = boundary * (0.35f + plate.Uplift * 0.65f) * geologyScale;
             province[i] = bestPlate;
+            plateBoundaryStrength[i] = boundary;
             uplift[i] = Math.Clamp(tectonic, 0f, 1f);
             raw[i] =
                 continentShape * 1.30f +
@@ -355,14 +357,17 @@ public static class PlanetWorldGenerator
             if (c >= 0f)
             {
                 var normalized = Math.Clamp(c / 0.9f, 0f, 1f);
-                elevation[i] = normalized * 2350f + Math.Max(0f, uplift[i] - 0.30f) * 1550f + detail * 230f;
+                elevation[i] =
+                    normalized * 3300f +
+                    Math.Max(0f, uplift[i] - 0.22f) * 4200f +
+                    detail * 360f;
             }
             else
             {
                 var normalized = Math.Clamp(-c / 0.9f, 0f, 1f);
-                elevation[i] = -(90f + normalized * 2100f + Math.Max(0f, -detail) * 240f);
+                elevation[i] = -(70f + normalized * 3600f + Math.Max(0f, -detail) * 520f);
             }
-            elevation[i] = Math.Clamp(elevation[i], -4300f, 3900f);
+            elevation[i] = Math.Clamp(elevation[i], -7200f, 8800f);
         }
         var macroElevationMs = Stopwatch.GetElapsedTime(elevationStarted).TotalMilliseconds;
 
@@ -374,8 +379,8 @@ public static class PlanetWorldGenerator
         {
             if (!oceanCells[i])
                 continue;
-            var deepening = Math.Min(1900f, Math.Max(0, coastDistance[i] - 1) * 95f);
-            elevation[i] = Math.Max(-5200f, elevation[i] - deepening);
+            var deepening = Math.Min(3200f, Math.Max(0, coastDistance[i] - 1) * 165f);
+            elevation[i] = Math.Max(-10_500f, elevation[i] - deepening);
         }
         var coastBathymetryMs = Stopwatch.GetElapsedTime(coastStarted).TotalMilliseconds;
 
@@ -526,6 +531,7 @@ public static class PlanetWorldGenerator
             if (target >= 0 && rivers[target])
                 upstreamBranches[target]++;
         }
+        var (terrainSlope, localRelief) = WorldTerrainMetrics.Compute(topology, elevation);
         var hydrologyMs = Stopwatch.GetElapsedTime(hydroStarted).TotalMilliseconds;
 
         var climateStarted = Stopwatch.GetTimestamp();
@@ -604,7 +610,8 @@ public static class PlanetWorldGenerator
                 substrate[i],
                 drainage[i],
                 accumulation[i],
-                slope[i],
+                terrainSlope[i],
+                localRelief[i],
                 river,
                 lake,
                 province[i],
@@ -616,7 +623,10 @@ public static class PlanetWorldGenerator
                 riverWidth[i],
                 streamOrder[i],
                 upstreamBranches[i],
-                riverDirection[i]);
+                riverDirection[i],
+                province[i],
+                province[i],
+                plateBoundaryStrength[i]);
 
             environment.SetInitial(topology.GetCellId(i), new EnvironmentCellState(
                 elevation[i],

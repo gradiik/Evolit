@@ -2,7 +2,9 @@
 
 Development branch: `feature/evolit-0.1.0-3d-planet`
 
-Base 0.0.9 commit: `de12fb8fe1899421fa990c44423f9168f77c1e24`
+Original 0.0.9 branch point: `de12fb8fe1899421fa990c44423f9168f77c1e24`
+
+Synchronized flat-world checkpoint: `2f25e0acfd5ee3fc9906b1a872a575058fc5dedf`
 
 ## World shapes
 
@@ -125,3 +127,38 @@ The completed 0.1.0 pipeline also applies these spherical-specific rules:
 The planet cell spatial lookup now evaluates the complete local bucket neighbourhood before accepting a nearest-cell result. This avoids incorrect selection near quantization boundaries while keeping normal picking bounded to a small local candidate set instead of an O(N) scan.
 
 Planet river ribbon tangent construction is also pole-safe: when the projected downstream tangent degenerates, the renderer chooses a reference axis that is not parallel to the local radial direction. This prevents zero-width/invalid river geometry near the poles.
+
+
+## Stabilization and physical-scale pass
+
+The 0.1.0 branch synchronizes the compatible flat-world implementation from the current 0.0.9 checkpoint without merging the two development branches.
+
+Physical vertical semantics are shared by Flat and Planet:
+
+- sea level is exactly 0 m;
+- land elevation is positive;
+- seabed elevation is negative;
+- water depth is a positive water-column thickness;
+- terrain classification uses absolute elevation together with local slope, two-ring local relief, tectonic uplift and substrate.
+
+The largest flat preset is `Очень большой` with radius 170 and exactly 87,211 axial cells. Planet Huge remains disabled until a real renderer/topology benchmark proves it usable.
+
+Flat rivers remain hydrology overlays over physical terrain. The cached chunk river mesh now uses a deterministic sub-cell junction per hex, a shared edge crossing and two curved segments so tributaries meet instead of drawing centre-to-centre sticks.
+
+Planet presentation uses `PlanetVisualScale` as the single physical-metres-to-visual-radius conversion for terrain, water, rivers, grid, selection and markers. Physical elevation is never modified for presentation. Relief is visually exaggerated uniformly on the radius-3 globe.
+
+Planet river meshes are cached in three LOD batches. Their centreline follows spherical interpolation, meander is applied in the tangent plane, and every sample is projected onto the visible terrain/water surface before a minimal z-fighting offset is added.
+
+The planet camera zoom changes camera distance only. Minimum distance is derived from the maximum visual surface radius, the camera near plane and a safety margin. Grid and river LOD visibility changes do not rebuild meshes.
+
+The planet scene uses ambient environment light in addition to the directional light so the shadow hemisphere remains readable. F6 cycles render diagnostics for unshaded terrain, double-sided terrain, normal visualization, edge overlay, terrain-only, water-only, rivers-only and grid-only views.
+
+Terrain and water triangle construction validates finite vertices, non-zero area, outward winding and bounded edge length before a mesh is accepted. Headless topology verification additionally rejects invalid or giant polygon edges.
+
+### Added local tools
+
+- `worldsize-benchmark` measures candidate radii 98, 125, 140, 155 and 170 and prints cells, generation time, allocations, memory delta and bootstrap timings.
+- `planet-benchmark` also prints generated physical elevation/depth extrema.
+- `planet-verify` validates local relief and spherical geological metadata in addition to the existing topology/hydrology checks.
+
+These tools are local verification entry points. GitHub Actions remain disabled for ordinary development.

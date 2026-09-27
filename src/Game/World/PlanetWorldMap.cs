@@ -22,11 +22,15 @@ public sealed class PlanetWorldCell
     public float VisualVariation { get; init; }
     public float FlowAccumulation { get; init; }
     public float Slope { get; init; }
+    public float LocalReliefMeters { get; init; }
     public float MineralPotential { get; init; }
     public float NutrientPotential { get; init; }
     public float GeothermalPotential { get; init; }
     public SubstrateKind Substrate { get; init; }
     public int ProvinceId { get; init; }
+    public int GeologicalRegionId { get; init; } = -1;
+    public int MacroplateId { get; init; } = -1;
+    public float PlateBoundaryStrength { get; init; }
     public float Continentalness { get; init; }
     public float TectonicUplift { get; init; }
     public int CoastDistance { get; init; }
@@ -279,6 +283,14 @@ public static class PlanetWorldMapGenerator
             savedById[saved.Id] = saved;
 
         var environment = new EnvironmentStore(topology);
+        var savedElevation = new float[topology.Count];
+        for (var i = 0; i < topology.Count; i++)
+        {
+            var id = topology.GetCellId(i);
+            if (savedById.TryGetValue(id.Value, out var saved))
+                savedElevation[i] = saved.ElevationMeters;
+        }
+        var (derivedSlope, derivedRelief) = WorldTerrainMetrics.Compute(topology, savedElevation);
         var cells = new PlanetWorldCell[topology.Count];
         for (var i = 0; i < topology.Count; i++)
         {
@@ -286,23 +298,24 @@ public static class PlanetWorldMapGenerator
             if (!savedById.TryGetValue(id.Value, out var saved))
                 throw new InvalidOperationException($"Saved planet is missing cell {id}.");
 
-            var terrain = Enum.IsDefined(typeof(HexTerrainType), saved.Terrain)
-                ? (HexTerrainType)saved.Terrain : HexTerrainType.Grassland;
             var water = Enum.IsDefined(typeof(HexWaterKind), saved.WaterKind)
                 ? (HexWaterKind)saved.WaterKind : HexWaterKind.None;
             var substrate = Enum.IsDefined((SubstrateKind)saved.Substrate)
                 ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown;
-            if (water == HexWaterKind.River && terrain == HexTerrainType.River)
-            {
-                terrain = ClassifyTerrain(
-                    saved.ElevationMeters,
-                    saved.WaterDepthMeters,
-                    saved.TemperatureCelsius,
-                    saved.Humidity,
-                    substrate,
-                    HexWaterKind.None,
-                    Math.Max(0f, saved.Slope));
-            }
+            var localSlope = saved.Slope > 0f ? saved.Slope : derivedSlope[i];
+            var localRelief = saved.LocalReliefMeters > 0f
+                ? saved.LocalReliefMeters
+                : derivedRelief[i];
+            var terrain = ClassifyTerrain(
+                saved.ElevationMeters,
+                Math.Max(0f, saved.WaterDepthMeters),
+                saved.TemperatureCelsius,
+                saved.Humidity,
+                substrate,
+                water,
+                localSlope,
+                localRelief,
+                saved.TectonicUplift);
 
             var drainageTarget = saved.DrainageTarget is >= 0 && saved.DrainageTarget < topology.Count
                 ? saved.DrainageTarget
@@ -343,12 +356,16 @@ public static class PlanetWorldMapGenerator
                     : Math.Max(0f, saved.MovementSpeedMultiplier),
                 VisualVariation = Math.Clamp(saved.VisualVariation, 0f, 1f),
                 FlowAccumulation = Math.Max(0f, saved.FlowAccumulation),
-                Slope = Math.Max(0f, saved.Slope),
+                Slope = Math.Max(0f, localSlope),
+                LocalReliefMeters = Math.Max(0f, localRelief),
                 MineralPotential = Math.Clamp(saved.MineralPotential, 0f, 1f),
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
                 Substrate = substrate,
                 ProvinceId = saved.ProvinceId,
+                GeologicalRegionId = saved.GeologicalRegionId >= 0 ? saved.GeologicalRegionId : saved.ProvinceId,
+                MacroplateId = saved.MacroplateId >= 0 ? saved.MacroplateId : saved.ProvinceId,
+                PlateBoundaryStrength = Math.Clamp(saved.PlateBoundaryStrength, 0f, 1f),
                 Continentalness = saved.Continentalness,
                 TectonicUplift = saved.TectonicUplift,
                 CoastDistance = saved.CoastDistance,
@@ -382,7 +399,9 @@ public static class PlanetWorldMapGenerator
             source.Humidity,
             source.Substrate,
             water,
-            source.Slope);
+            source.Slope,
+            source.LocalReliefMeters,
+            source.TectonicUplift);
         var cost = MovementCost(terrain, water, source.ElevationMeters);
         var mixed = SeedMixer.Combine(SeedMixer.FromString(seed), unchecked((ulong)source.Id.Value));
         return new PlanetWorldCell
@@ -402,11 +421,15 @@ public static class PlanetWorldMapGenerator
             VisualVariation = (float)(mixed >> 40) * (1f / 16_777_215f),
             FlowAccumulation = source.FlowAccumulation,
             Slope = source.Slope,
+            LocalReliefMeters = source.LocalReliefMeters,
             MineralPotential = source.MineralPotential,
             NutrientPotential = source.NutrientPotential,
             GeothermalPotential = source.GeothermalPotential,
             Substrate = source.Substrate,
             ProvinceId = source.ProvinceId,
+            GeologicalRegionId = source.GeologicalRegionId,
+            MacroplateId = source.MacroplateId,
+            PlateBoundaryStrength = source.PlateBoundaryStrength,
             Continentalness = source.Continentalness,
             TectonicUplift = source.TectonicUplift,
             CoastDistance = source.CoastDistance,
@@ -486,26 +509,19 @@ public static class PlanetWorldMapGenerator
         float humidity,
         SubstrateKind substrate,
         HexWaterKind water,
-        float slope)
-    {
-        if (water == HexWaterKind.Lake) return HexTerrainType.Lake;
-        if (water == HexWaterKind.Ocean)
-            return waterDepthMeters > 700f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
-        if ((elevationMeters > 1600f && slope > 150f) || elevationMeters > 3000f)
-            return HexTerrainType.Mountain;
-        if (slope > 175f ||
-            elevationMeters > 1950f ||
-            (substrate == SubstrateKind.BareRock && elevationMeters > 1100f && slope > 85f) ||
-            (substrate == SubstrateKind.Basalt && elevationMeters > 850f))
-            return HexTerrainType.Rocky;
-        if (elevationMeters > 900f && slope < 175f)
-            return HexTerrainType.Highland;
-        if (substrate == SubstrateKind.Sand && elevationMeters < 220f)
-            return HexTerrainType.Sand;
-        if (humidity < 0.28f && temperature > 18f)
-            return HexTerrainType.Desert;
-        return HexTerrainType.Grassland;
-    }
+        float slope,
+        float localReliefMeters = 0f,
+        float tectonicUplift = 0f) =>
+        WorldTerrainClassifier.Classify(
+            elevationMeters,
+            waterDepthMeters,
+            temperature,
+            humidity,
+            substrate,
+            water,
+            slope,
+            localReliefMeters,
+            tectonicUplift);
 
     private static float MovementCost(
         HexTerrainType terrain,

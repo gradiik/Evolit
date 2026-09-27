@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Evolit.Core;
 using System.Linq;
 using Evolit.Game;
 using Evolit.Game.Core;
@@ -13,6 +14,9 @@ public enum GenerationDebugMode
     None,
     Continentalness,
     Province,
+    GeologicalRegion,
+    Macroplate,
+    PlateBoundary,
     Elevation,
     Slope,
     CoastDistance,
@@ -38,7 +42,13 @@ public readonly record struct WorldRenderDiagnostics(
     double OverlayRedrawsPerSecond,
     int EstimatedDrawCommands,
     int BaseDrawCalls,
-    int TerrainNodeCount);
+    int TerrainNodeCount,
+    int GeologicalRegionCount,
+    int MacroplateCount,
+    int CoastSegments,
+    int RidgeSegments,
+    int RiverSegments,
+    long CachedGeometryBytes);
 
 public sealed partial class DemoWorldView : Control
 {
@@ -87,6 +97,8 @@ public sealed partial class DemoWorldView : Control
     private int _visibleHexes;
     private int _visibleChunks;
     private int _estimatedDrawCommands;
+    private int _riverGeometrySegments;
+    private long _cachedGeometryBytes;
     private int _overlayRedrawsThisSample;
     private double _diagnosticSeconds;
     private double _overlayRedrawsPerSecond;
@@ -309,6 +321,12 @@ public sealed partial class DemoWorldView : Control
 
     public WorldRenderDiagnostics GetDiagnostics()
     {
+        var presentation = _world?.Map.Presentation ?? WorldGenerationPresentation.Empty;
+        var baseDrawCalls = 0;
+        foreach (var chunk in _chunks)
+            if (chunk.Base.Visible)
+                baseDrawCalls += chunk.Base.EstimatedCommands;
+
         return new WorldRenderDiagnostics(
             _world?.Map.Cells.Count ?? 0,
             _chunks.Count,
@@ -317,8 +335,14 @@ public sealed partial class DemoWorldView : Control
             _terrainRebuilds,
             _overlayRedrawsPerSecond,
             _estimatedDrawCommands,
-            _visibleChunks,
-            _chunks.Count * 3);
+            baseDrawCalls,
+            _chunks.Count * 3,
+            presentation.GeologicalRegionCount,
+            presentation.MacroplateCount,
+            presentation.CoastSegments.Length,
+            presentation.RidgeSegments.Length,
+            _riverGeometrySegments,
+            _cachedGeometryBytes);
     }
 
     private void BuildWorldLayers()
@@ -333,7 +357,26 @@ public sealed partial class DemoWorldView : Control
         };
         AddChild(_worldRoot);
 
+        _riverGeometrySegments = 0;
+        foreach (var cell in _world.Map.Cells)
+            if (cell.WaterKind == HexWaterKind.River &&
+                cell.RiverDirection is >= 0 and <= 5)
+                _riverGeometrySegments++;
+
+        var presentation = _world.Map.Presentation;
+        _cachedGeometryBytes =
+            presentation.CoastSegments.LongLength * 240L +
+            presentation.RidgeSegments.LongLength * 240L +
+            _riverGeometrySegments * 336L;
+
         var grouped = new Dictionary<ChunkKey, List<WorldHexCell>>();
+        var coastByChunk = GroupPresentationSegments(
+            _world.Map,
+            _world.Map.Presentation.CoastSegments);
+        var ridgeByChunk = GroupPresentationSegments(
+            _world.Map,
+            _world.Map.Presentation.RidgeSegments);
+
         foreach (var cell in _world.Map.Cells)
         {
             var key = new ChunkKey(
@@ -354,7 +397,22 @@ public sealed partial class DemoWorldView : Control
             var baseLayer = new TerrainChunkLayer();
             var detailLayer = new TerrainChunkLayer();
             var fineLayer = new TerrainChunkLayer();
-            baseLayer.Configure(cells, bounds, _world.Map.HexSize, _quality, TerrainLayerKind.Base);
+            var coastSegments = coastByChunk.TryGetValue(pair.Key, out var coast)
+                ? coast.ToArray()
+                : Array.Empty<WorldOverlaySegment>();
+            var ridgeSegments = ridgeByChunk.TryGetValue(pair.Key, out var ridge)
+                ? ridge.ToArray()
+                : Array.Empty<WorldOverlaySegment>();
+
+            baseLayer.Configure(
+                cells,
+                bounds,
+                _world.Map.HexSize,
+                _quality,
+                TerrainLayerKind.Base,
+                coastSegments,
+                ridgeSegments,
+                _world.Map.Presentation.Style);
             detailLayer.Configure(cells, bounds, _world.Map.HexSize, _quality, TerrainLayerKind.Detail);
             fineLayer.Configure(cells, bounds, _world.Map.HexSize, _quality, TerrainLayerKind.Fine);
 
@@ -379,6 +437,38 @@ public sealed partial class DemoWorldView : Control
         _entityOverlay.Configure(_world, _quality);
         _entityOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         AddChild(_entityOverlay);
+    }
+
+    private static Dictionary<ChunkKey, List<WorldOverlaySegment>> GroupPresentationSegments(
+        WorldMap map,
+        WorldGeometrySegment[] segments)
+    {
+        var grouped = new Dictionary<ChunkKey, List<WorldOverlaySegment>>();
+        for (var i = 0; i < segments.Length; i++)
+        {
+            var source = segments[i];
+            var start = map.NormalizedGeographyToWorld(source.X1, source.Y1);
+            var end = map.NormalizedGeographyToWorld(source.X2, source.Y2);
+            var midpoint = (start + end) * 0.5f;
+            var coord = WorldMap.WorldToHex(midpoint, map.HexSize);
+            var key = new ChunkKey(
+                FloorDiv(coord.Q, ChunkHexSpan),
+                FloorDiv(coord.R, ChunkHexSpan));
+
+            if (!grouped.TryGetValue(key, out var list))
+            {
+                list = new List<WorldOverlaySegment>();
+                grouped[key] = list;
+            }
+
+            list.Add(new WorldOverlaySegment(
+                start,
+                end,
+                source.Strength,
+                source.Width));
+        }
+
+        return grouped;
     }
 
     private void UpdateViewTransform(bool forceVisibility = false)
@@ -591,9 +681,7 @@ public sealed partial class DemoWorldView : Control
         if (_core is null || !_core.TryGetEnvironment(cell.Coord.Q, cell.Coord.R, out var env, out var physical))
             return $"{location}\n{terrain}\nCore environment: недоступен";
 
-        var vertical = env.WaterDepthMeters > 0.01f
-            ? $"Вода: {env.WaterDepthMeters:0.0} м"
-            : $"Высота: {env.ElevationMeters:0} м";
+        var vertical = FormatVertical(cell, env.ElevationMeters, env.WaterDepthMeters);
         var wind = MathF.Sqrt(physical.WindX * physical.WindX + physical.WindY * physical.WindY);
 
         return
@@ -604,10 +692,34 @@ public sealed partial class DemoWorldView : Control
             $"Минералы: {env.MineralPotential * 100f:0}% · nutrients {env.NutrientPotential * 100f:0}%\n" +
             $"Органика: {env.OrganicMatter:0.000} · substrate dev {env.SubstrateDevelopment * 100f:0}%\n" +
             $"Субстрат: {env.Substrate} · регион: {physical.Region}\n" +
-            $"Сток: {cell.FlowAccumulation:0.0} · уклон {cell.Slope:0.0} м\n" +
+            $"Сток: {cell.FlowAccumulation:0.0} · уклон {cell.Slope:0.0} м · локальный рельеф {cell.LocalReliefMeters:0} м\n" +
             $"Река: длина {cell.RiverLength} · ширина {cell.RiverWidth:0.00} · order {cell.StreamOrder} · ветви {cell.UpstreamBranches} · dir {cell.RiverDirection} · basin {cell.BasinId}\n" +
-            $"Plate: {cell.ProvinceId} · continental {cell.Continentalness:0.00} · coast {cell.CoastDistance}\n" +
+            $"Geo region: {cell.GeologicalRegionId} · macroplate {cell.MacroplateId} · boundary {cell.PlateBoundaryStrength:0.00}\n" +
+            $"Legacy province: {cell.ProvinceId} · continental {cell.Continentalness:0.00} · coast {cell.CoastDistance}\n" +
             $"Uplift: {cell.TectonicUplift * 100f:0}% · geo {cell.GeothermalPotential * 100f:0}% · mineral {cell.MineralPotential * 100f:0}%";
+    }
+
+    private static string FormatVertical(
+        WorldHexCell cell,
+        float elevationMeters,
+        float waterDepthMeters)
+    {
+        if (cell.WaterKind == HexWaterKind.Ocean)
+        {
+            var depth = Math.Max(waterDepthMeters, Math.Max(0f, -elevationMeters));
+            return $"Глубина: {depth:0} м\nДно: {elevationMeters:+0;-0;0} м относительно уровня моря";
+        }
+
+        if (cell.WaterKind == HexWaterKind.Lake)
+        {
+            var surface = elevationMeters + Math.Max(0f, waterDepthMeters);
+            return $"Высота поверхности воды: {surface:+0;-0;0} м\nГлубина: {waterDepthMeters:0.0} м";
+        }
+
+        var altitude = elevationMeters >= 0f
+            ? $"{elevationMeters:+0;-0;0} м над уровнем моря"
+            : $"{elevationMeters:+0;-0;0} м относительно уровня моря";
+        return $"Высота: {altitude}";
     }
 
     private static float WaterDepthMeters(WorldHexCell cell)

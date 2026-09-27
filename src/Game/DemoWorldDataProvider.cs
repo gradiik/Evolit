@@ -192,6 +192,51 @@ public sealed class DemoWorldDataProvider
         .DefaultIfEmpty(0)
         .Average();
 
+    private static WorldGeographyPresentationSaveState CapturePresentation(
+        WorldGenerationPresentation presentation)
+    {
+        var style = presentation.Style;
+        var state = new WorldGeographyPresentationSaveState
+        {
+            GeologicalRegionCount = presentation.GeologicalRegionCount,
+            MacroplateCount = presentation.MacroplateCount,
+            FieldResolution = presentation.FieldResolution,
+            Style = new WorldGeographyStyleSaveState
+            {
+                ContinentalFragmentation = style.ContinentalFragmentation,
+                CoastRoughness = style.CoastRoughness,
+                CoastScale = style.CoastScale,
+                PeninsulaStrength = style.PeninsulaStrength,
+                BayStrength = style.BayStrength,
+                IslandArcDensity = style.IslandArcDensity,
+                RiftStrength = style.RiftStrength,
+                MountainSharpness = style.MountainSharpness,
+                MountainWidth = style.MountainWidth,
+                PlateauStrength = style.PlateauStrength,
+                PlainSmoothness = style.PlainSmoothness,
+                RiverMeander = style.RiverMeander,
+                ShelfWidth = style.ShelfWidth,
+                OceanBasinDepth = style.OceanBasinDepth
+            }
+        };
+
+        foreach (var segment in presentation.CoastSegments)
+            state.CoastSegments.Add(ToSaveSegment(segment));
+        foreach (var segment in presentation.RidgeSegments)
+            state.RidgeSegments.Add(ToSaveSegment(segment));
+        return state;
+    }
+
+    private static WorldGeometrySegmentSaveState ToSaveSegment(WorldGeometrySegment segment) => new()
+    {
+        X1 = segment.X1,
+        Y1 = segment.Y1,
+        X2 = segment.X2,
+        Y2 = segment.Y2,
+        Strength = segment.Strength,
+        Width = segment.Width
+    };
+
     public DemoWorldSaveState CaptureSaveState()
     {
         return new DemoWorldSaveState
@@ -277,6 +322,7 @@ public sealed class DemoWorldDataProvider
         {
             Radius = map.Radius,
             HexSize = map.HexSize,
+            Presentation = CapturePresentation(map.Presentation),
             Cells = map.Cells.Select(cell => new WorldHexCellSaveState
             {
                 Q = cell.Coord.Q,
@@ -295,6 +341,7 @@ public sealed class DemoWorldDataProvider
                 VisualVariation = cell.VisualVariation,
                 FlowAccumulation = cell.FlowAccumulation,
                 Slope = cell.Slope,
+                LocalReliefMeters = cell.LocalReliefMeters,
                 MineralPotential = cell.MineralPotential,
                 NutrientPotential = cell.NutrientPotential,
                 GeothermalPotential = cell.GeothermalPotential,
@@ -308,7 +355,10 @@ public sealed class DemoWorldDataProvider
                 RiverWidth = cell.RiverWidth,
                 StreamOrder = cell.StreamOrder,
                 UpstreamBranches = cell.UpstreamBranches,
-                RiverDirection = cell.RiverDirection
+                RiverDirection = cell.RiverDirection,
+                GeologicalRegionId = cell.GeologicalRegionId,
+                MacroplateId = cell.MacroplateId,
+                PlateBoundaryStrength = cell.PlateBoundaryStrength
             }).ToList()
         };
     }
@@ -334,11 +384,15 @@ public sealed class DemoWorldDataProvider
                 VisualVariation = cell.VisualVariation,
                 FlowAccumulation = cell.FlowAccumulation,
                 Slope = cell.Slope,
+                LocalReliefMeters = cell.LocalReliefMeters,
                 MineralPotential = cell.MineralPotential,
                 NutrientPotential = cell.NutrientPotential,
                 GeothermalPotential = cell.GeothermalPotential,
                 Substrate = (int)cell.Substrate,
                 ProvinceId = cell.ProvinceId,
+                GeologicalRegionId = cell.GeologicalRegionId,
+                MacroplateId = cell.MacroplateId,
+                PlateBoundaryStrength = cell.PlateBoundaryStrength,
                 Continentalness = cell.Continentalness,
                 TectonicUplift = cell.TectonicUplift,
                 CoastDistance = cell.CoastDistance,

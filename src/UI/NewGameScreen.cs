@@ -102,7 +102,10 @@ public sealed partial class NewGameScreen : Control
         _worldSize.AddItem("Маленький");
         _worldSize.AddItem("Средний");
         _worldSize.AddItem("Большой");
+        _worldSize.AddItem("Очень большой");
         _worldSize.Select(1);
+        _worldShape.ItemSelected += _ => UpdateWorldSizeAvailability();
+        UpdateWorldSizeAvailability();
         root.AddChild(_worldSize);
 
         var generationGrid = new GridContainer { Columns = 3 };
@@ -141,7 +144,7 @@ public sealed partial class NewGameScreen : Control
 
         var hint = new Label
         {
-            Text = "Обычный мир остаётся вариантом по умолчанию. Для 3D планеты размер задаёт разрешение сферической сетки; одинаковые seed и параметры воспроизводят тот же стартовый мир.",
+            Text = "Обычный мир остаётся вариантом по умолчанию. Очень большой размер доступен для плоского мира; Planet Huge появится только после отдельного performance benchmark. Для 3D планеты размер задаёт разрешение сферической сетки.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         hint.AddThemeFontSizeOverride("font_size", 13);
@@ -180,6 +183,18 @@ public sealed partial class NewGameScreen : Control
         var label = new Label { Text = text };
         label.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         return label;
+    }
+
+    private void UpdateWorldSizeAvailability()
+    {
+        if (_worldShape is null || _worldSize is null)
+            return;
+
+        const int hugeIndex = 3;
+        var planet = (WorldShape)_worldShape.Selected == WorldShape.Planet;
+        _worldSize.SetItemDisabled(hugeIndex, planet);
+        if (planet && _worldSize.Selected == hugeIndex)
+            _worldSize.Select(2);
     }
 
     private void Create()

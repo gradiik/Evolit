@@ -13,6 +13,7 @@ public static class WorldGenerationScale
     public const int SmallRadius = 56;
     public const int MediumRadius = 76;
     public const int LargeRadius = 98;
+    public const int HugeRadius = 170;
 
     public const int LegacySmallRadius = 28;
     public const int LegacyMediumRadius = 38;
@@ -25,7 +26,44 @@ public readonly record struct WorldGenerationSettings(
     int Radius,
     WorldLandAmount LandAmount = WorldLandAmount.Normal,
     WorldClimate Climate = WorldClimate.Temperate,
-    GeologicalActivity Geology = GeologicalActivity.Normal);
+    GeologicalActivity Geology = GeologicalActivity.Normal,
+    int ContinuousResolution = 0);
+
+public readonly record struct WorldGeographyStyle(
+    float ContinentalFragmentation,
+    float CoastRoughness,
+    float CoastScale,
+    float PeninsulaStrength,
+    float BayStrength,
+    float IslandArcDensity,
+    float RiftStrength,
+    float MountainSharpness,
+    float MountainWidth,
+    float PlateauStrength,
+    float PlainSmoothness,
+    float RiverMeander,
+    float ShelfWidth,
+    float OceanBasinDepth);
+
+public readonly record struct WorldGeometrySegment(
+    float X1,
+    float Y1,
+    float X2,
+    float Y2,
+    float Strength,
+    float Width);
+
+public sealed class WorldGenerationPresentation
+{
+    public static WorldGenerationPresentation Empty { get; } = new();
+
+    public WorldGeographyStyle Style { get; init; }
+    public int GeologicalRegionCount { get; init; }
+    public int MacroplateCount { get; init; }
+    public int FieldResolution { get; init; }
+    public WorldGeometrySegment[] CoastSegments { get; init; } = Array.Empty<WorldGeometrySegment>();
+    public WorldGeometrySegment[] RidgeSegments { get; init; } = Array.Empty<WorldGeometrySegment>();
+}
 
 public readonly record struct GeneratedWorldCell(
     CellId Id,
@@ -41,6 +79,7 @@ public readonly record struct GeneratedWorldCell(
     int DrainageTarget,
     float FlowAccumulation,
     float Slope,
+    float LocalReliefMeters,
     bool IsRiver,
     bool IsLake,
     int ProvinceId,
@@ -52,7 +91,10 @@ public readonly record struct GeneratedWorldCell(
     float RiverWidth,
     int StreamOrder,
     int UpstreamBranches,
-    int RiverDirection);
+    int RiverDirection,
+    int GeologicalRegionId,
+    int MacroplateId,
+    float PlateBoundaryStrength);
 
 
 public readonly record struct WorldGenerationQuality(
@@ -109,6 +151,7 @@ public sealed class GeneratedWorld
     public WorldGenerationMetrics Metrics { get; internal set; }
     public int CandidateAttempt { get; internal set; }
     public bool CandidateAccepted { get; internal set; }
+    public WorldGenerationPresentation Presentation { get; init; } = WorldGenerationPresentation.Empty;
 }
 
 public readonly record struct WorldGenerationSummary(
@@ -316,8 +359,7 @@ public static class ProceduralWorldGenerator
             quality.BoundaryOceanRatio >= 0.90f &&
             quality.MountainRangeCount > 0 &&
             quality.LongestRiver >= 5 &&
-            quality.LongRiverStraightFraction <= 0.50f &&
-            quality.LongCoastAxisFraction <= 0.60f;
+            quality.LongRiverStraightFraction <= 0.50f;
 
         // Two-continent worlds remain valid, but 3–4 major landmasses score
         // better so candidate selection no longer converges on the same macro
@@ -350,9 +392,9 @@ public static class ProceduralWorldGenerator
             Math.Abs(summary.LandRatio - targetLand) * 4.0 -
             dominantPenalty -
             quality.LongRiverStraightFraction * 2.8 -
-            quality.LongCoastAxisFraction * 2.4 -
+            quality.LongCoastAxisFraction * 0.45 -
             Math.Max(0, quality.LongestRiverStraightRun - 6) * 0.05 -
-            Math.Max(0, quality.LongestCoastAxisRun - 9) * 0.035 -
+            Math.Max(0, quality.LongestCoastAxisRun - 12) * 0.010 -
             Math.Max(0f, quality.RockyLandRatio - 0.22f) * 3.0 -
             Math.Min(1.5, quality.TinyIslandCount / 20.0) -
             Math.Max(0.0, 0.94 - quality.BoundaryOceanRatio) * 6.0;

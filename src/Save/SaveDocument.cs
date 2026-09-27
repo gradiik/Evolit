@@ -155,6 +155,45 @@ public sealed class WorldMapSaveState
     public int Radius { get; set; }
     public float HexSize { get; set; } = 42f;
     public List<WorldHexCellSaveState> Cells { get; set; } = new();
+    public WorldGeographyPresentationSaveState? Presentation { get; set; }
+}
+
+public sealed class WorldGeographyPresentationSaveState
+{
+    public int GeologicalRegionCount { get; set; }
+    public int MacroplateCount { get; set; }
+    public int FieldResolution { get; set; }
+    public WorldGeographyStyleSaveState Style { get; set; } = new();
+    public List<WorldGeometrySegmentSaveState> CoastSegments { get; set; } = new();
+    public List<WorldGeometrySegmentSaveState> RidgeSegments { get; set; } = new();
+}
+
+public sealed class WorldGeographyStyleSaveState
+{
+    public float ContinentalFragmentation { get; set; }
+    public float CoastRoughness { get; set; }
+    public float CoastScale { get; set; }
+    public float PeninsulaStrength { get; set; }
+    public float BayStrength { get; set; }
+    public float IslandArcDensity { get; set; }
+    public float RiftStrength { get; set; }
+    public float MountainSharpness { get; set; }
+    public float MountainWidth { get; set; }
+    public float PlateauStrength { get; set; }
+    public float PlainSmoothness { get; set; }
+    public float RiverMeander { get; set; }
+    public float ShelfWidth { get; set; }
+    public float OceanBasinDepth { get; set; }
+}
+
+public sealed class WorldGeometrySegmentSaveState
+{
+    public float X1 { get; set; }
+    public float Y1 { get; set; }
+    public float X2 { get; set; }
+    public float Y2 { get; set; }
+    public float Strength { get; set; }
+    public float Width { get; set; }
 }
 
 public sealed class WorldHexCellSaveState
@@ -175,6 +214,7 @@ public sealed class WorldHexCellSaveState
     public float VisualVariation { get; set; }
     public float FlowAccumulation { get; set; }
     public float Slope { get; set; }
+    public float LocalReliefMeters { get; set; }
     public float MineralPotential { get; set; }
     public float NutrientPotential { get; set; }
     public float GeothermalPotential { get; set; }
@@ -189,6 +229,9 @@ public sealed class WorldHexCellSaveState
     public int StreamOrder { get; set; }
     public int UpstreamBranches { get; set; }
     public int RiverDirection { get; set; } = -1;
+    public int GeologicalRegionId { get; set; } = -1;
+    public int MacroplateId { get; set; } = -1;
+    public float PlateBoundaryStrength { get; set; }
 }
 
 
@@ -213,11 +256,15 @@ public sealed class PlanetWorldCellSaveState
     public float VisualVariation { get; set; }
     public float FlowAccumulation { get; set; }
     public float Slope { get; set; }
+    public float LocalReliefMeters { get; set; }
     public float MineralPotential { get; set; }
     public float NutrientPotential { get; set; }
     public float GeothermalPotential { get; set; }
     public int Substrate { get; set; }
     public int ProvinceId { get; set; } = -1;
+    public int GeologicalRegionId { get; set; } = -1;
+    public int MacroplateId { get; set; } = -1;
+    public float PlateBoundaryStrength { get; set; }
     public float Continentalness { get; set; }
     public float TectonicUplift { get; set; }
     public int CoastDistance { get; set; } = -1;

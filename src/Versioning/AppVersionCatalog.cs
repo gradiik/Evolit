@@ -16,7 +16,7 @@ public static class AppVersionCatalog
 {
     public const string CurrentVersion = "0.1.0";
     public const string PreviousVersion = "0.0.9";
-    public const string PreviousCommit = "de12fb8fe1899421fa990c44423f9168f77c1e24";
+    public const string PreviousCommit = "2f25e0acfd5ee3fc9906b1a872a575058fc5dedf";
     public const string BaselineVersion = "0.0.4";
     public const string BaselineCommit = "268fce1dd4d1d4b9f4d644a789e3110868201ff6";
     public const string LegacyVersion = "0.0.3";
@@ -34,7 +34,7 @@ public static class AppVersionCatalog
         new(
             PreviousVersion,
             "27 сентября 2026",
-            "0.0.9 World Generation Rework: pseudo-plate macro geography, structured relief, hydrology, climate/resources and quality tooling; base checkpoint for the parallel 0.1.0 planet branch.",
+            "0.0.9 World Generation Rework: continuous geography, geological regions, macroplates, continuous coast/ridge geometry, hydrology and quality tooling; synchronized checkpoint for 0.1.0.",
             PreviousCommit,
             false),
         new(

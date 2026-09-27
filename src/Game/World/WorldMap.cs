@@ -74,6 +74,7 @@ public sealed class WorldHexCell
     public float VisualVariation { get; init; }
     public float FlowAccumulation { get; init; }
     public float Slope { get; init; }
+    public float LocalReliefMeters { get; init; }
     public float MineralPotential { get; init; }
     public float NutrientPotential { get; init; }
     public float GeothermalPotential { get; init; }
@@ -88,6 +89,9 @@ public sealed class WorldHexCell
     public int StreamOrder { get; init; }
     public int UpstreamBranches { get; init; }
     public int RiverDirection { get; init; } = -1;
+    public int GeologicalRegionId { get; init; } = -1;
+    public int MacroplateId { get; init; } = -1;
+    public float PlateBoundaryStrength { get; init; }
 
     public bool IsWater => WaterKind != HexWaterKind.None;
 }
@@ -103,7 +107,8 @@ public sealed class WorldMap
         float hexSize,
         IReadOnlyList<WorldHexCell> cells,
         WorldTopology? initialTopology = null,
-        EnvironmentStore? initialEnvironment = null)
+        EnvironmentStore? initialEnvironment = null,
+        WorldGenerationPresentation? presentation = null)
     {
         Seed = seed;
         SizeName = sizeName;
@@ -112,6 +117,7 @@ public sealed class WorldMap
         Cells = cells;
         InitialTopology = initialTopology;
         InitialEnvironment = initialEnvironment;
+        Presentation = presentation ?? WorldGenerationPresentation.Empty;
         _lookup = cells.ToDictionary(cell => cell.Coord);
         Bounds = CalculateBounds(cells, hexSize);
     }
@@ -123,7 +129,14 @@ public sealed class WorldMap
     public IReadOnlyList<WorldHexCell> Cells { get; }
     public WorldTopology? InitialTopology { get; }
     public EnvironmentStore? InitialEnvironment { get; }
+    public WorldGenerationPresentation Presentation { get; }
     public Rect2 Bounds { get; }
+
+    public Vector2 NormalizedGeographyToWorld(float x, float y)
+    {
+        var scale = Mathf.Sqrt(3f) * HexSize * Radius;
+        return new Vector2(x * scale, y * scale);
+    }
 
     public bool TryGetCell(HexCoord coord, out WorldHexCell cell)
     {

@@ -13,15 +13,6 @@ internal static class WorldGeneration009Pipeline
         (1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)
     ];
 
-    private readonly record struct Plate(
-        float X,
-        float Y,
-        float MotionX,
-        float MotionY,
-        bool Continental,
-        float Crust,
-        float Volcanism);
-
     private sealed class HydrologyResult
     {
         public required int[] Drainage { get; init; }
@@ -58,47 +49,44 @@ internal static class WorldGeneration009Pipeline
         var substrate = new SubstrateKind[count];
 
         var province = new int[count];
+        var geologicalRegion = new int[count];
         var continentalness = new float[count];
         var tectonicUplift = new float[count];
         var convergence = new float[count];
         var divergence = new float[count];
+        var plateBoundaryStrength = new float[count];
         var coastDistance = new int[count];
 
         var macroSeed = SeedMixer.Combine(attemptSeed, 0x1001UL);
         var geologySeed = SeedMixer.Combine(attemptSeed, 0x2001UL);
-        var islandSeed = SeedMixer.Combine(attemptSeed, 0x3001UL);
         var erosionSeed = SeedMixer.Combine(attemptSeed, 0x4001UL);
         var climateSeed = SeedMixer.Combine(attemptSeed, 0x5001UL);
 
         var macroStart = Stopwatch.GetTimestamp();
-        var plates = BuildPlates(macroSeed);
-        GenerateMacroGeography(
-            settings,
-            ids,
-            plates,
-            macroSeed,
-            elevation,
-            province,
-            continentalness,
-            convergence,
-            divergence,
-            tectonicUplift);
+        var geography = ContinuousWorldGeography.Build(settings, macroSeed);
+        for (var i = 0; i < count; i++)
+        {
+            var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
+            var sample = geography.Sample(x, y);
+            elevation[i] = sample.ElevationMeters;
+            province[i] = sample.MacroplateId;
+            geologicalRegion[i] = sample.GeologicalRegionId;
+            continentalness[i] = sample.Continentalness;
+            convergence[i] = sample.Convergence;
+            divergence[i] = sample.Divergence;
+            tectonicUplift[i] = sample.TectonicUplift;
+            plateBoundaryStrength[i] = sample.BoundaryStrength;
+        }
         var macroMs = Stopwatch.GetElapsedTime(macroStart).TotalMilliseconds;
 
         var coastStart = Stopwatch.GetTimestamp();
         var seaLevel = ChooseSeaLevel(settings, elevation);
+        var presentation = geography.BuildPresentation(seaLevel);
         for (var i = 0; i < count; i++)
             elevation[i] -= seaLevel;
 
-        // Coast detail is applied in continuous world space before the land/water
-        // mask is compressed to hex cells. This weakens long shoreline runs that
-        // merely follow one of the six grid axes without adding noisy teeth.
-        ApplyContinuousCoastCurvature(
-            settings,
-            ids,
-            macroSeed,
-            elevation,
-            province);
+        // The macro silhouette now comes from the higher-resolution continuous
+        // field. Hex cleanup is limited to pathological one-cell artifacts.
         RefineNarrowCoastalFeatures(topology, ids, macroSeed, elevation);
 
         for (var i = 0; i < count; i++)
@@ -109,25 +97,12 @@ internal static class WorldGeneration009Pipeline
                 elevation[i] *= 0.38f;
         }
 
-        AddContinentalShelfIslands(
-            settings,
-            ids,
-            topology,
-            plates,
-            islandSeed,
-            elevation,
-            province);
-        RefineNarrowCoastalFeatures(
-            topology,
-            ids,
-            SeedMixer.Combine(macroSeed, 0xC05FUL),
-            elevation);
         CleanupLandMask(topology, elevation);
         ApplyTectonicRelief(
             settings,
             ids,
             topology,
-            plates,
+            geography,
             geologySeed,
             elevation,
             province,
@@ -135,30 +110,19 @@ internal static class WorldGeneration009Pipeline
             divergence,
             tectonicUplift,
             geothermal);
-        AddIslandArcs(
-            settings,
-            ids,
-            topology,
-            plates,
-            islandSeed,
-            elevation,
-            province,
-            convergence,
-            tectonicUplift,
-            geothermal);
         RelaxExtremeSlopes(topology, elevation, 2);
 
         // Re-clean only tiny artifacts after geological uplift; meaningful island arcs survive.
         CleanupLandMask(topology, elevation, preserveSmallIslands: true);
         BuildCoastDistance(topology, elevation, coastDistance);
-        ApplyOceanBathymetry(ids, settings, climateSeed, elevation, water, coastDistance);
+        ApplyOceanBathymetry(ids, settings, geography.Style, climateSeed, elevation, water, coastDistance);
         var coastMs = Stopwatch.GetElapsedTime(coastStart).TotalMilliseconds;
 
         var geologyStart = Stopwatch.GetTimestamp();
         GenerateGeologyAndSubstrate(
             settings,
             ids,
-            plates,
+            geography,
             geologySeed,
             elevation,
             water,
@@ -183,6 +147,7 @@ internal static class WorldGeneration009Pipeline
         ApplyLakeWaterDepth(elevation, water, hydro);
         ApplyRiverWaterDepth(water, hydro);
         FinalizeHydrologicSubstrate(water, hydro, substrate);
+        var (localSlope, localRelief) = WorldTerrainMetrics.Compute(topology, elevation);
         var hydrologyMs = Stopwatch.GetElapsedTime(hydrologyStart).TotalMilliseconds;
 
         var climateStart = Stopwatch.GetTimestamp();
@@ -231,7 +196,8 @@ internal static class WorldGeneration009Pipeline
                 substrate[i],
                 hydro.Drainage[i],
                 hydro.Accumulation[i],
-                hydro.Slope[i],
+                localSlope[i],
+                localRelief[i],
                 hydro.Rivers[i],
                 hydro.Lakes[i],
                 province[i],
@@ -243,7 +209,10 @@ internal static class WorldGeneration009Pipeline
                 hydro.RiverWidth[i],
                 hydro.StreamOrder[i],
                 hydro.UpstreamBranches[i],
-                hydro.RiverDirection[i]);
+                hydro.RiverDirection[i],
+                geologicalRegion[i],
+                province[i],
+                plateBoundaryStrength[i]);
         }
 
         var summary = Summarize(topology, cells);
@@ -256,6 +225,7 @@ internal static class WorldGeneration009Pipeline
             Cells = cells,
             Summary = summary,
             Quality = quality,
+            Presentation = presentation,
             Metrics = new WorldGenerationMetrics(
                 topologyMs,
                 macroMs,
@@ -308,205 +278,6 @@ internal static class WorldGeneration009Pipeline
             m.ResourcesMs,
             environmentMs,
             m.TotalMs + environmentMs);
-    }
-
-    private static Plate[] BuildPlates(ulong seed)
-    {
-        var count = 10 + (int)(SeedMixer.Combine(seed, 17) % 6UL);
-        var continentalCount = 3 + (int)(SeedMixer.Combine(seed, 23) % 4UL);
-        var continentalScores = new (float Score, int Index)[count];
-
-        for (var i = 0; i < count; i++)
-            continentalScores[i] = (Hash01(i + 11, 71, seed), i);
-
-        Array.Sort(continentalScores, static (a, b) => b.Score.CompareTo(a.Score));
-        var continental = new bool[count];
-        for (var i = 0; i < continentalCount; i++)
-            continental[continentalScores[i].Index] = true;
-
-        var plates = new Plate[count];
-        const float goldenAngle = 2.39996323f;
-        var rotation = Hash01(31, 47, seed) * MathF.PI * 2f;
-
-        for (var i = 0; i < count; i++)
-        {
-            var radial01 = (i + 0.55f) / count;
-            var radius = MathF.Sqrt(radial01) * (0.72f + Hash01(i + 17, 91, seed) * 0.13f);
-            var angle = rotation + i * goldenAngle + SignedHash(seed, 100 + i) * 0.28f;
-            var x = MathF.Cos(angle) * radius + SignedHash(seed, 200 + i) * 0.085f;
-            var y = MathF.Sin(angle) * radius + SignedHash(seed, 300 + i) * 0.085f;
-
-            var motionAngle = Hash01(i + 101, 131, SeedMixer.Combine(seed, 41)) * MathF.PI * 2f;
-            var speed = 0.35f + Hash01(i + 151, 181, SeedMixer.Combine(seed, 43)) * 0.65f;
-            var crust = continental[i]
-                ? 0.60f + Hash01(i + 211, 227, seed) * 0.42f
-                : -0.66f - Hash01(i + 229, 241, seed) * 0.28f;
-            var volcanism = Hash01(i + 251, 269, SeedMixer.Combine(seed, 47));
-
-            plates[i] = new Plate(
-                x,
-                y,
-                MathF.Cos(motionAngle) * speed,
-                MathF.Sin(motionAngle) * speed,
-                continental[i],
-                crust,
-                volcanism);
-        }
-
-        return plates;
-    }
-
-    private static void GenerateMacroGeography(
-        WorldGenerationSettings settings,
-        CellId[] ids,
-        Plate[] plates,
-        ulong macroSeed,
-        float[] elevation,
-        int[] province,
-        float[] continentalness,
-        float[] convergence,
-        float[] divergence,
-        float[] tectonicUplift)
-    {
-        var landBias = settings.LandAmount switch
-        {
-            WorldLandAmount.Low => -0.09f,
-            WorldLandAmount.High => 0.09f,
-            _ => 0f
-        };
-        var fragmentationStyle = Hash01(401, 419, SeedMixer.Combine(macroSeed, 131));
-
-        for (var i = 0; i < ids.Length; i++)
-        {
-            var (x0, y0) = NormalizedWorldPosition(ids[i], settings.Radius);
-
-            // Domain warp affects plate borders and coast shape, but not the underlying
-            // RNG streams for geology/hydrology.
-            var warpX = (Fbm(x0 * 2.3f + 3.1f, y0 * 2.3f - 5.4f, SeedMixer.Combine(macroSeed, 101), 3) - 0.5f) * 0.72f;
-            var warpY = (Fbm(x0 * 2.3f - 4.7f, y0 * 2.3f + 2.8f, SeedMixer.Combine(macroSeed, 103), 3) - 0.5f) * 0.72f;
-            var x = x0 + warpX;
-            var y = y0 + warpY;
-
-            FindNearestPlates(plates, x, y, out var first, out var second, out var d1, out var d2);
-            province[i] = first;
-
-            var p = plates[first];
-            var s = plates[second];
-            var gap = Math.Max(0f, MathF.Sqrt(d2) - MathF.Sqrt(d1));
-            var boundaryStrength = MathF.Exp(-gap * 17f);
-
-            var nx = s.X - p.X;
-            var ny = s.Y - p.Y;
-            var nLength = MathF.Sqrt(nx * nx + ny * ny);
-            if (nLength > 0.0001f)
-            {
-                nx /= nLength;
-                ny /= nLength;
-            }
-
-            var relative = (p.MotionX - s.MotionX) * nx + (p.MotionY - s.MotionY) * ny;
-            convergence[i] = Math.Clamp(relative, 0f, 1.5f) * boundaryStrength;
-            divergence[i] = Math.Clamp(-relative, 0f, 1.5f) * boundaryStrength;
-
-            // Nearest-plate assignment is discontinuous at a Voronoi edge.
-            // Blend halfway there so plate borders do not become straight coasts.
-            var continentalBlend = Lerp(p.Crust, s.Crust, 0.5f * MathF.Exp(-gap * 5.5f));
-
-            var broad = Fbm(x0 * 1.25f + 7f, y0 * 1.25f - 11f, SeedMixer.Combine(macroSeed, 107), 4) - 0.5f;
-            var regional = Fbm(x0 * 3.3f - 13f, y0 * 3.3f + 17f, SeedMixer.Combine(macroSeed, 109), 3) - 0.5f;
-            var local = Fbm(x0 * 8.5f + 19f, y0 * 8.5f - 23f, SeedMixer.Combine(macroSeed, 113), 2) - 0.5f;
-            var coastStyle = 0.58f + Hash01(first + 307, 313, SeedMixer.Combine(macroSeed, 127)) * 0.78f;
-
-            // Different seeds get genuinely different macro separation pressure.
-            // It acts through continental plate boundaries rather than drawing a
-            // requested continent count directly.
-            var continentalBoundary = p.Continental && s.Continental ? boundaryStrength : 0f;
-            var rift =
-                p.Continental && s.Continental
-                    ? divergence[i] * (0.22f + fragmentationStyle * 0.28f) +
-                      continentalBoundary * Math.Max(0f, 0.56f - relative) * fragmentationStyle * 0.13f
-                    : 0f;
-
-            // Oceanic convergent borders receive a small arc potential. Whether they
-            // become islands is decided later, after the global land mask.
-            var arc = !p.Continental && !s.Continental
-                ? convergence[i] * (0.10f + (p.Volcanism + s.Volcanism) * 0.08f)
-                : 0f;
-
-            // The playable topology is a hexagon. A circular edge falloff leaves
-            // its six flat sides exposed as clipped continental coastlines.
-            var hexRadius = Math.Max(Math.Abs(ids[i].Q),
-                Math.Max(Math.Abs(ids[i].R), Math.Abs(-ids[i].Q - ids[i].R)));
-            var boundaryProximity = hexRadius / (float)settings.Radius;
-            var edgeOcean = MathF.Pow(
-                Math.Clamp((boundaryProximity - 0.70f) / 0.30f, 0f, 1f), 1.8f) * 3.7f;
-
-            var value =
-                continentalBlend * 0.90f +
-                broad * 0.54f +
-                regional * (0.58f + coastStyle * 0.14f) +
-                local * (0.07f + coastStyle * 0.06f) +
-                arc -
-                rift -
-                edgeOcean +
-                landBias;
-
-            continentalness[i] = Math.Clamp(value, -1.5f, 1.5f);
-            elevation[i] = value * 2600f;
-            tectonicUplift[i] = convergence[i] * 0.25f;
-        }
-    }
-
-    private static void ApplyContinuousCoastCurvature(
-        WorldGenerationSettings settings,
-        CellId[] ids,
-        ulong seed,
-        float[] elevation,
-        int[] province)
-    {
-        var curvatureSeed = SeedMixer.Combine(seed, 0xC051UL);
-
-        for (var i = 0; i < elevation.Length; i++)
-        {
-            var magnitude = Math.Abs(elevation[i]);
-            if (magnitude > 650f)
-                continue;
-
-            var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
-            var regionSeed = SeedMixer.Combine(curvatureSeed, (ulong)(province[i] + 1));
-            var angle = Hash01(province[i] + 37, 911, regionSeed) * MathF.PI * 2f;
-            var cos = MathF.Cos(angle);
-            var sin = MathF.Sin(angle);
-            var u = x * cos + y * sin;
-            var v = -x * sin + y * cos;
-
-            // Anisotropic continuous-space fields produce broad bays/peninsulas
-            // at angles unrelated to the six hex axes. They are strongest only
-            // near sea level, so continental interiors remain unchanged.
-            var broad = Fbm(
-                u * 3.1f + 17f,
-                v * 2.15f - 19f,
-                SeedMixer.Combine(regionSeed, 1),
-                3) - 0.5f;
-            var detail = Fbm(
-                u * 7.2f - 23f,
-                v * 5.4f + 29f,
-                SeedMixer.Combine(regionSeed, 2),
-                2) - 0.5f;
-            var phase = Hash01(province[i] + 53, 929, regionSeed) * MathF.PI * 2f;
-            var curvedWave = MathF.Sin(
-                u * (5.2f + Hash01(province[i] + 71, 947, regionSeed) * 3.2f) +
-                phase) * 0.5f;
-
-            var coastStyle = 0.72f + Hash01(province[i] + 89, 953, regionSeed) * 0.58f;
-            var proximity = 1f - Math.Clamp(magnitude / 650f, 0f, 1f);
-            var perturbation =
-                (broad * 0.70f + detail * 0.22f + curvedWave * 0.08f) *
-                (150f + coastStyle * 115f) *
-                proximity;
-
-            elevation[i] += perturbation;
-        }
     }
 
     private static void RefineNarrowCoastalFeatures(
@@ -577,93 +348,11 @@ internal static class WorldGeneration009Pipeline
         Array.Copy(scratch, elevation, elevation.Length);
     }
 
-    private static void AddContinentalShelfIslands(
-        WorldGenerationSettings settings,
-        CellId[] ids,
-        WorldTopology topology,
-        Plate[] plates,
-        ulong seed,
-        float[] elevation,
-        int[] province)
-    {
-        var distanceToLand = DistanceToLand(topology, elevation);
-
-        for (var i = 0; i < elevation.Length; i++)
-        {
-            if (elevation[i] >= 0f)
-                continue;
-
-            var distance = distanceToLand[i];
-            if (distance is < 2 or > 5)
-                continue;
-
-            var plate = plates[province[i]];
-            if (!plate.Continental)
-                continue;
-
-            var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
-            var regional = Fbm(
-                x * 3.4f + 101f,
-                y * 3.4f - 103f,
-                SeedMixer.Combine(seed, 151),
-                3);
-            var fragment = Fbm(
-                x * 10.5f - 107f,
-                y * 10.5f + 109f,
-                SeedMixer.Combine(seed, 157),
-                2);
-
-            // Continental fragments are deliberately sparse and constrained to
-            // the shelf. Connected-component cleanup removes single-cell noise,
-            // leaving larger coastal islands and small archipelagos.
-            if (regional < 0.67f || fragment < 0.60f)
-                continue;
-
-            var strength =
-                (regional - 0.67f) * 950f +
-                (fragment - 0.60f) * 620f;
-            elevation[i] = Math.Clamp(18f + strength, 18f, 620f);
-        }
-    }
-
-    private static int[] DistanceToLand(WorldTopology topology, float[] elevation)
-    {
-        var distance = new int[elevation.Length];
-        Array.Fill(distance, int.MaxValue);
-        var queue = new Queue<int>();
-
-        for (var i = 0; i < elevation.Length; i++)
-        {
-            if (elevation[i] < 0f)
-                continue;
-            distance[i] = 0;
-            queue.Enqueue(i);
-        }
-
-        while (queue.Count > 0)
-        {
-            var at = queue.Dequeue();
-            var next = distance[at] + 1;
-            var neighbors = topology.GetNeighborIndices(at);
-
-            for (var n = 0; n < neighbors.Length; n++)
-            {
-                var ni = neighbors[n];
-                if (distance[ni] <= next)
-                    continue;
-                distance[ni] = next;
-                queue.Enqueue(ni);
-            }
-        }
-
-        return distance;
-    }
-
     private static void ApplyTectonicRelief(
         WorldGenerationSettings settings,
         CellId[] ids,
         WorldTopology topology,
-        Plate[] plates,
+        ContinuousWorldGeography geography,
         ulong seed,
         float[] elevation,
         int[] province,
@@ -689,20 +378,38 @@ internal static class WorldGeneration009Pipeline
                 continue;
             }
 
-            var plate = plates[province[i]];
+            var plateVolcanism = geography.MacroplateVolcanism(province[i]);
             var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
             var ridgeNoise = 0.72f + Fbm(x * 7.5f, y * 7.5f, SeedMixer.Combine(seed, 211), 3) * 0.56f;
 
-            var convergentUplift = MathF.Pow(Math.Clamp(convergence[i], 0f, 1f), 0.72f) * 2600f * activity * ridgeNoise;
-            var volcanicUplift = convergence[i] * plate.Volcanism * 650f * activity;
-            var riftValley = divergence[i] * 520f * activity;
+            var style = geography.Style;
+            var convergentUplift =
+                MathF.Pow(Math.Clamp(convergence[i], 0f, 1f), 0.72f) *
+                (1900f + style.MountainSharpness * 1300f) *
+                activity *
+                ridgeNoise;
+            var volcanicUplift =
+                convergence[i] *
+                plateVolcanism *
+                (420f + style.MountainSharpness * 420f) *
+                activity;
+            var riftValley =
+                divergence[i] *
+                (360f + style.RiftStrength * 480f) *
+                activity;
 
             // Stable continental interiors receive broad plateaus/plains rather than
             // uniform high-frequency relief.
             var interior = 1f - Math.Clamp(convergence[i] + divergence[i], 0f, 1f);
             var plateauField = Fbm(x * 1.8f + 31f, y * 1.8f - 37f, SeedMixer.Combine(seed, 223), 3);
-            var plateau = interior * Math.Max(0f, plateauField - 0.62f) * 900f;
-            var plainRelaxation = interior * Math.Max(0f, 0.52f - plateauField) * 260f;
+            var plateau =
+                interior *
+                Math.Max(0f, plateauField - (0.68f - geography.Style.PlateauStrength * 0.10f)) *
+                (520f + geography.Style.PlateauStrength * 780f);
+            var plainRelaxation =
+                interior *
+                Math.Max(0f, 0.56f - plateauField) *
+                (160f + geography.Style.PlainSmoothness * 300f);
 
             reliefScratch[i] = Math.Clamp(
                 elevation[i] +
@@ -712,11 +419,11 @@ internal static class WorldGeneration009Pipeline
                 riftValley -
                 plainRelaxation,
                 8f,
-                6500f);
+                8800f);
 
             uplift[i] = Math.Clamp((convergentUplift + volcanicUplift) / 3200f, 0f, 1f);
             geothermal[i] = Math.Clamp(
-                plates[province[i]].Volcanism * 0.20f +
+                plateVolcanism * 0.20f +
                 convergence[i] * 0.45f +
                 divergence[i] * 0.18f,
                 0f,
@@ -748,81 +455,6 @@ internal static class WorldGeneration009Pipeline
                 : elevation[i];
         }
         Array.Copy(smoothed, elevation, elevation.Length);
-    }
-
-    private static void AddIslandArcs(
-        WorldGenerationSettings settings,
-        CellId[] ids,
-        WorldTopology topology,
-        Plate[] plates,
-        ulong seed,
-        float[] elevation,
-        int[] province,
-        float[] convergence,
-        float[] uplift,
-        float[] geothermal)
-    {
-        var activity = settings.Geology switch
-        {
-            GeologicalActivity.Calm => 0.7f,
-            GeologicalActivity.Active => 1.25f,
-            _ => 1f
-        };
-
-        var candidate = new bool[elevation.Length];
-        for (var i = 0; i < elevation.Length; i++)
-        {
-            if (elevation[i] >= 0f)
-                continue;
-
-            var hexRadius = Math.Max(Math.Abs(ids[i].Q),
-                Math.Max(Math.Abs(ids[i].R), Math.Abs(-ids[i].Q - ids[i].R)));
-            if (hexRadius >= settings.Radius - 3)
-                continue;
-
-            var p = plates[province[i]];
-            if (p.Continental || convergence[i] < 0.18f)
-                continue;
-
-            var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
-            var chain = Fbm(x * 12f + 43f, y * 12f - 41f, SeedMixer.Combine(seed, 301), 2);
-            if (chain < 0.62f)
-                continue;
-
-            var strength = convergence[i] * (0.55f + p.Volcanism * 0.55f) * activity;
-            if (strength < 0.22f)
-                continue;
-
-            candidate[i] = true;
-        }
-
-        // Grow only short deterministic chains, never a second pseudo-continent.
-        var grown = (bool[])candidate.Clone();
-        for (var i = 0; i < candidate.Length; i++)
-        {
-            if (!candidate[i])
-                continue;
-
-            var neighbors = topology.GetNeighborIndices(i);
-            for (var n = 0; n < neighbors.Length; n++)
-            {
-                var ni = neighbors[n];
-                if (elevation[ni] >= 0f || Hash01(i + n, ni + 401, seed) < 0.46f)
-                    continue;
-                grown[ni] = true;
-            }
-        }
-
-        for (var i = 0; i < grown.Length; i++)
-        {
-            if (!grown[i])
-                continue;
-
-            var local = Hash01(i + 503, province[i] + 509, seed);
-            elevation[i] = 25f + local * 780f;
-            uplift[i] = Math.Max(uplift[i], 0.45f + local * 0.45f);
-            geothermal[i] = Math.Max(geothermal[i], 0.55f + local * 0.35f);
-        }
     }
 
     private static void RelaxExtremeSlopes(WorldTopology topology, float[] elevation, int passes)
@@ -1018,6 +650,7 @@ internal static class WorldGeneration009Pipeline
     private static void ApplyOceanBathymetry(
         CellId[] ids,
         WorldGenerationSettings settings,
+        WorldGeographyStyle style,
         ulong seed,
         float[] elevation,
         float[] water,
@@ -1032,17 +665,25 @@ internal static class WorldGeneration009Pipeline
                 elevation[i] = Math.Clamp(
                     elevation[i] + Math.Min(420f, inland * 22f),
                     6f,
-                    6500f);
+                    8800f);
                 continue;
             }
 
             var d = coastDistance[i] == int.MaxValue ? settings.Radius : coastDistance[i];
             var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
             var basin = Fbm(x * 1.9f + 61f, y * 1.9f - 67f, SeedMixer.Combine(seed, 401), 3);
-            var shelf = d <= 2
-                ? 22f + d * 55f
-                : 130f + MathF.Pow(d - 1, 1.30f) * 38f;
-            var depth = Math.Clamp(shelf + basin * Math.Min(1400f, d * 62f), 18f, 6000f);
+            var shelfCells = 1.5f + style.ShelfWidth * 2.8f;
+            var shelf = d <= shelfCells
+                ? 18f + d * (38f + style.ShelfWidth * 42f)
+                : 110f + MathF.Pow(Math.Max(0f, d - shelfCells + 1f), 1.28f) *
+                  (30f + style.OceanBasinDepth * 26f);
+            var basinDepth = Math.Min(
+                2300f + style.OceanBasinDepth * 2600f,
+                d * (48f + style.OceanBasinDepth * 56f));
+            var depth = Math.Clamp(
+                shelf + basin * basinDepth,
+                18f,
+                7600f + style.OceanBasinDepth * 2400f);
             elevation[i] = -depth;
             water[i] = depth;
         }
@@ -1051,7 +692,7 @@ internal static class WorldGeneration009Pipeline
     private static void GenerateGeologyAndSubstrate(
         WorldGenerationSettings settings,
         CellId[] ids,
-        Plate[] plates,
+        ContinuousWorldGeography geography,
         ulong seed,
         float[] elevation,
         float[] water,
@@ -1066,7 +707,7 @@ internal static class WorldGeneration009Pipeline
         {
             var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
             var provinceNoise = Fbm(x * 2.6f + 71f, y * 2.6f - 73f, SeedMixer.Combine(seed, 501), 3);
-            var plate = plates[province[i]];
+            var plateVolcanism = geography.MacroplateVolcanism(province[i]);
 
             minerals[i] = Math.Clamp(
                 0.18f +
@@ -1083,7 +724,7 @@ internal static class WorldGeneration009Pipeline
             }
 
             if (geothermal[i] > 0.80f &&
-                plate.Volcanism > 0.72f &&
+                plateVolcanism > 0.72f &&
                 uplift[i] > 0.42f)
             {
                 substrate[i] = SubstrateKind.Basalt;
@@ -2243,41 +1884,6 @@ internal static class WorldGeneration009Pipeline
 
         var difference = Math.Abs(a - b);
         return Math.Min(difference, 6 - difference);
-    }
-
-    private static void FindNearestPlates(
-        Plate[] plates,
-        float x,
-        float y,
-        out int first,
-        out int second,
-        out float firstDistance,
-        out float secondDistance)
-    {
-        first = 0;
-        second = 0;
-        firstDistance = float.MaxValue;
-        secondDistance = float.MaxValue;
-
-        for (var i = 0; i < plates.Length; i++)
-        {
-            var dx = x - plates[i].X;
-            var dy = y - plates[i].Y;
-            var distance = dx * dx + dy * dy;
-
-            if (distance < firstDistance)
-            {
-                second = first;
-                secondDistance = firstDistance;
-                first = i;
-                firstDistance = distance;
-            }
-            else if (distance < secondDistance)
-            {
-                second = i;
-                secondDistance = distance;
-            }
-        }
     }
 
     private static (float X, float Y) NormalizedWorldPosition(CellId id, int radius)
