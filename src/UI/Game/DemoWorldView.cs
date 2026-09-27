@@ -8,11 +8,6 @@ using Godot;
 
 namespace Evolit.UI.Game;
 
-public readonly record struct GameViewState(
-    Vector2 CameraPosition,
-    float Zoom,
-    string? SelectedEntityId);
-
 public enum GenerationDebugMode
 {
     None,
@@ -285,7 +280,7 @@ public sealed partial class DemoWorldView : Control
 
     public GameViewState CaptureViewState()
     {
-        return new GameViewState(
+        return GameViewState.Flat(
             _cameraPosition,
             _zoom,
             _selected?.Id);
@@ -293,6 +288,9 @@ public sealed partial class DemoWorldView : Control
 
     public void RestoreViewState(GameViewState state)
     {
+        if (state.Shape != Evolit.Core.WorldShape.Flat)
+            return;
+
         _cameraPosition = state.CameraPosition;
         _zoom = Mathf.Clamp(state.Zoom, MinZoom, MaxZoom);
         _targetZoom = _zoom;

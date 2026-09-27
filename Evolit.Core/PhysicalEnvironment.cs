@@ -113,14 +113,38 @@ public sealed partial class EnvironmentStore
             var gx = 0f;
             var gy = 0f;
             var neighbors = _topology.GetNeighborIndices(i);
-            var deltaQ = _topology.GetNeighborDeltaQ(i);
-            var deltaR = _topology.GetNeighborDeltaR(i);
-            for (var n = 0; n < neighbors.Length; n++)
+            if (_topology.Kind == WorldTopologyKind.Planet &&
+                _topology.TryGetSurfaceDirection(i, out var sourceDirection))
             {
-                var ni = neighbors[n];
-                var dp = _pressureKPa[i] - _pressureKPa[ni];
-                gx += dp * deltaQ[n];
-                gy += dp * deltaR[n];
+                var reference = Math.Abs(sourceDirection.Y) < 0.92f
+                    ? CoreVector3.UnitY
+                    : CoreVector3.UnitX;
+                var east = CoreVector3.Cross(reference, sourceDirection).Normalized();
+                var north = CoreVector3.Cross(sourceDirection, east).Normalized();
+
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var ni = neighbors[n];
+                    if (!_topology.TryGetSurfaceDirection(ni, out var neighborDirection))
+                        continue;
+
+                    var dp = _pressureKPa[i] - _pressureKPa[ni];
+                    var tangent = neighborDirection - sourceDirection;
+                    gx += dp * CoreVector3.Dot(tangent, east);
+                    gy += dp * CoreVector3.Dot(tangent, north);
+                }
+            }
+            else
+            {
+                var deltaQ = _topology.GetNeighborDeltaQ(i);
+                var deltaR = _topology.GetNeighborDeltaR(i);
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var ni = neighbors[n];
+                    var dp = _pressureKPa[i] - _pressureKPa[ni];
+                    gx += dp * deltaQ[n];
+                    gy += dp * deltaR[n];
+                }
             }
 
             var scale = neighbors.Length == 0 ? 0f : 0.18f / neighbors.Length;
@@ -365,15 +389,20 @@ public sealed partial class EnvironmentStore
         Array.Fill(_staticDownhill, -1);
 
         var maxAbsR = 1;
-        for (var i = 0; i < Count; i++)
-            maxAbsR = Math.Max(maxAbsR, Math.Abs(_topology.GetCellId(i).R));
+        if (_topology.Kind == WorldTopologyKind.FlatHex)
+        {
+            for (var i = 0; i < Count; i++)
+                maxAbsR = Math.Max(maxAbsR, Math.Abs(_topology.GetCellId(i).R));
+        }
 
         for (var i = 0; i < Count; i++)
         {
             _waterAvailability[i] = _waterDepthMeters[i] > 0 ? 1f : _humidity[i] * 0.72f;
 
-            var id = _topology.GetCellId(i);
-            var latitude = Math.Clamp(Math.Abs(id.R) / (float)maxAbsR, 0f, 1f);
+            var latitude = _topology.Kind == WorldTopologyKind.Planet &&
+                           _topology.TryGetSurfaceDirection(i, out var surfaceDirection)
+                ? Math.Clamp(Math.Abs(surfaceDirection.Y), 0f, 1f)
+                : Math.Clamp(Math.Abs(_topology.GetCellId(i).R) / (float)maxAbsR, 0f, 1f);
             var elevationCooling = Math.Max(0f, _elevationMeters[i]) * 0.0062f;
             _baseClimateTemperature[i] = 29f - latitude * 31f - elevationCooling;
             _targetPressure[i] = Math.Max(

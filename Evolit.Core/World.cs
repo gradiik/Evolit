@@ -3,6 +3,12 @@ using System.Collections.Generic;
 
 namespace Evolit.Core;
 
+public enum WorldTopologyKind : byte
+{
+    FlatHex = 0,
+    Planet = 1
+}
+
 public sealed class WorldTopology
 {
     private readonly CellId[] _cells;
@@ -11,9 +17,15 @@ public sealed class WorldTopology
     private readonly int[] _neighborIndices;
     private readonly sbyte[] _neighborDeltaQ;
     private readonly sbyte[] _neighborDeltaR;
+    private readonly CoreVector3[] _surfaceDirections;
     private readonly Dictionary<CellId, int> _indexById;
 
-    public WorldTopology(CellId[] cells, int[] neighborOffsets, CellId[] neighbors)
+    public WorldTopology(
+        CellId[] cells,
+        int[] neighborOffsets,
+        CellId[] neighbors,
+        WorldTopologyKind kind = WorldTopologyKind.FlatHex,
+        CoreVector3[]? surfaceDirections = null)
     {
         ArgumentNullException.ThrowIfNull(cells);
         ArgumentNullException.ThrowIfNull(neighborOffsets);
@@ -22,10 +34,16 @@ public sealed class WorldTopology
             throw new ArgumentException("Neighbor offsets must contain Count + 1 entries.", nameof(neighborOffsets));
         if (neighborOffsets.Length > 0 && neighborOffsets[^1] != neighbors.Length)
             throw new ArgumentException("Neighbor offsets do not match neighbor storage.", nameof(neighborOffsets));
+        if (surfaceDirections is { Length: > 0 } && surfaceDirections.Length != cells.Length)
+            throw new ArgumentException("Surface direction count must match topology cell count.", nameof(surfaceDirections));
+        if (kind == WorldTopologyKind.Planet && (surfaceDirections is null || surfaceDirections.Length != cells.Length))
+            throw new ArgumentException("Planet topology requires one surface direction per cell.", nameof(surfaceDirections));
 
+        Kind = kind;
         _cells = cells;
         _neighborOffsets = neighborOffsets;
         _neighbors = neighbors;
+        _surfaceDirections = surfaceDirections is null ? Array.Empty<CoreVector3>() : (CoreVector3[])surfaceDirections.Clone();
         _indexById = new Dictionary<CellId, int>(cells.Length);
         for (var index = 0; index < cells.Length; index++)
         {
@@ -49,23 +67,40 @@ public sealed class WorldTopology
                 if (!_indexById.TryGetValue(neighborId, out var neighborIndex))
                     throw new ArgumentException($"Neighbor {neighborId} is not present in topology cells.", nameof(neighbors));
 
-                var dq = neighborId.Q - source.Q;
-                var dr = neighborId.R - source.R;
-                if (dq is < sbyte.MinValue or > sbyte.MaxValue ||
-                    dr is < sbyte.MinValue or > sbyte.MaxValue)
-                    throw new ArgumentException("Neighbor coordinate delta exceeds compact topology storage.", nameof(neighbors));
-
                 _neighborIndices[neighborOffset] = neighborIndex;
-                _neighborDeltaQ[neighborOffset] = (sbyte)dq;
-                _neighborDeltaR[neighborOffset] = (sbyte)dr;
+                if (Kind == WorldTopologyKind.FlatHex)
+                {
+                    var dq = neighborId.Q - source.Q;
+                    var dr = neighborId.R - source.R;
+                    if (dq is < sbyte.MinValue or > sbyte.MaxValue ||
+                        dr is < sbyte.MinValue or > sbyte.MaxValue)
+                        throw new ArgumentException("Neighbor coordinate delta exceeds compact topology storage.", nameof(neighbors));
+
+                    _neighborDeltaQ[neighborOffset] = (sbyte)dq;
+                    _neighborDeltaR[neighborOffset] = (sbyte)dr;
+                }
             }
         }
     }
 
     public int Count => _cells.Length;
+    public WorldTopologyKind Kind { get; }
     public ReadOnlySpan<CellId> Cells => _cells;
+    public ReadOnlySpan<CoreVector3> SurfaceDirections => _surfaceDirections;
 
     public CellId GetCellId(int index) => _cells[index];
+
+    public bool TryGetSurfaceDirection(int index, out CoreVector3 direction)
+    {
+        if ((uint)index >= (uint)_surfaceDirections.Length)
+        {
+            direction = default;
+            return false;
+        }
+
+        direction = _surfaceDirections[index];
+        return true;
+    }
 
     public bool TryGetIndex(CellId id, out int index) => _indexById.TryGetValue(id, out index);
 
@@ -113,9 +148,11 @@ public sealed class WorldTopology
     {
         return new WorldTopologySnapshot
         {
+            Kind = Kind,
             Cells = (CellId[])_cells.Clone(),
             NeighborOffsets = (int[])_neighborOffsets.Clone(),
-            Neighbors = (CellId[])_neighbors.Clone()
+            Neighbors = (CellId[])_neighbors.Clone(),
+            SurfaceDirections = (CoreVector3[])_surfaceDirections.Clone()
         };
     }
 
@@ -124,7 +161,9 @@ public sealed class WorldTopology
         return new WorldTopology(
             snapshot.Cells ?? Array.Empty<CellId>(),
             snapshot.NeighborOffsets ?? Array.Empty<int>(),
-            snapshot.Neighbors ?? Array.Empty<CellId>());
+            snapshot.Neighbors ?? Array.Empty<CellId>(),
+            snapshot.Kind,
+            snapshot.SurfaceDirections ?? Array.Empty<CoreVector3>());
     }
 }
 
@@ -171,9 +210,11 @@ public sealed class WorldTopologyBuilder
 
 public sealed class WorldTopologySnapshot
 {
+    public WorldTopologyKind Kind { get; set; } = WorldTopologyKind.FlatHex;
     public CellId[] Cells { get; set; } = Array.Empty<CellId>();
     public int[] NeighborOffsets { get; set; } = Array.Empty<int>();
     public CellId[] Neighbors { get; set; } = Array.Empty<CellId>();
+    public CoreVector3[] SurfaceDirections { get; set; } = Array.Empty<CoreVector3>();
 }
 
 public enum SubstrateKind : byte

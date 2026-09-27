@@ -176,13 +176,22 @@ public sealed partial class AppRoot : Control
 
     private void CreateNewSession(NewGameRequest request)
     {
-        _session = GameSession.CreateNew(request.WorldName, request.Seed, request.WorldSize, request.LandAmount, request.Climate, request.Geology);
+        _session = GameSession.CreateNew(
+            request.WorldName,
+            request.Seed,
+            request.WorldSize,
+            request.LandAmount,
+            request.Climate,
+            request.Geology,
+            request.WorldShape);
         ClearGameRuntime();
         _gameViewState = null;
 
         ShowLoading(
             "Создание мира",
-            "Генерация карты и подготовка окружения…",
+            request.WorldShape == Evolit.Core.WorldShape.Planet
+                ? "Генерация сферической планеты и подготовка окружения…"
+                : "Генерация карты и подготовка окружения…",
             () =>
             {
                 PrepareGameRuntime();
@@ -291,9 +300,10 @@ public sealed partial class AppRoot : Control
             "Загрузка сохранения",
             document.Runtime?.Core is null
                 ? "Старое сохранение: карта будет совместимо восстановлена по seed."
-                : document.Runtime.World.Map is { Cells.Count: > 0 }
-                    ? "Восстановление сохранённой карты и Core runtime без повторной генерации…"
-                    : "Восстановление карты из Core snapshot без повторной procedural generation…",
+                : document.Runtime.World.Map is { Cells.Count: > 0 } ||
+                  document.Runtime.World.Planet is { Cells.Count: > 0 }
+                    ? "Восстановление сохранённого мира и Core runtime без повторной генерации…"
+                    : "Восстановление мира из Core snapshot без повторной procedural generation…",
             () =>
             {
                 PrepareGameRuntime(document);
@@ -579,7 +589,7 @@ public sealed partial class AppRoot : Control
             $"Save ID: {session?.SaveId ?? "—"}\n" +
             $"World: {session?.WorldName ?? "—"}\n" +
             $"Seed: {session?.Seed ?? "—"}\n" +
-            $"Generation: land {session?.LandAmount.ToString() ?? "—"} · climate {session?.Climate.ToString() ?? "—"} · geology {session?.Geology.ToString() ?? "—"}\n" +
+            $"Generation: shape {session?.WorldShape.ToString() ?? "—"} · land {session?.LandAmount.ToString() ?? "—"} · climate {session?.Climate.ToString() ?? "—"} · geology {session?.Geology.ToString() ?? "—"}\n" +
             $"Playtime: {playtime}\n" +
             $"Saves: {_cachedSaveCount}\n" +
             $"Save schema: {SaveManager.SchemaVersion}" +

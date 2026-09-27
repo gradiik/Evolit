@@ -66,8 +66,12 @@ public sealed class CoreSimulationHost
         if (snapshot is not null)
             return new CoreSimulationHost(CoreSimulation.Restore(snapshot));
 
-        var topology = world.Map.InitialTopology ?? BuildTopology(world.Map);
-        var environment = world.Map.InitialEnvironment ?? BuildEnvironment(world.Map, topology);
+        var topology = world.Shape == WorldShape.Planet
+            ? world.PlanetMap?.InitialTopology ?? throw new InvalidOperationException("Planet topology is unavailable.")
+            : world.Map.InitialTopology ?? BuildTopology(world.Map);
+        var environment = world.Shape == WorldShape.Planet
+            ? world.PlanetMap?.InitialEnvironment ?? throw new InvalidOperationException("Planet environment is unavailable.")
+            : world.Map.InitialEnvironment ?? BuildEnvironment(world.Map, topology);
         var simulation = new CoreSimulation(
             topology,
             environment,
@@ -177,15 +181,18 @@ public sealed class CoreSimulationHost
 
     public CoreSimulationSnapshot CaptureSnapshot() => Simulation.CaptureSnapshot();
 
-    public bool TryGetEnvironment(int q, int r, out EnvironmentCellState environment, out PhysicalEnvironmentState physical)
+    public bool TryGetEnvironment(int q, int r, out EnvironmentCellState environment, out PhysicalEnvironmentState physical) =>
+        TryGetEnvironment(CellId.FromAxial(q, r), out environment, out physical);
+
+    public bool TryGetEnvironment(CellId id, out EnvironmentCellState environment, out PhysicalEnvironmentState physical)
     {
-        var id = CellId.FromAxial(q, r);
         if (!Simulation.Topology.TryGetIndex(id, out _))
         {
             environment = default;
             physical = default;
             return false;
         }
+
         environment = Simulation.Environment.Get(id);
         physical = Simulation.Environment.GetPhysical(id);
         return true;
@@ -290,13 +297,24 @@ public sealed class CoreSimulationHost
 
         foreach (var entity in world.Entities)
         {
-            var cell = world.Map.GetCellAtWorld(entity.WorldPosition);
-            if (cell is null)
-                continue;
+            CellId cellId;
+            if (world.Shape == WorldShape.Planet)
+            {
+                if (!entity.SurfaceCellId.HasValue)
+                    continue;
+                cellId = entity.SurfaceCellId.Value;
+            }
+            else
+            {
+                var cell = world.Map.GetCellAtWorld(entity.WorldPosition);
+                if (cell is null)
+                    continue;
+                cellId = CellId.FromAxial(cell.Coord.Q, cell.Coord.R);
+            }
 
             var isPlant = entity.Kind == DemoEntityKind.Plant;
             simulation.Organisms.Create(
-                CellId.FromAxial(cell.Coord.Q, cell.Coord.R),
+                cellId,
                 isPlant ? plantGenome : creatureGenome,
                 isPlant ? plantLineage : creatureLineage,
                 Math.Clamp(entity.Energy <= 0 ? 0.8f : entity.Energy, 0f, 1f),

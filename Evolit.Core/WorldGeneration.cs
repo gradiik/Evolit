@@ -5,6 +5,7 @@ namespace Evolit.Core;
 public enum WorldLandAmount : byte { Low, Normal, High }
 public enum WorldClimate : byte { Cold, Temperate, Warm }
 public enum GeologicalActivity : byte { Calm, Normal, Active }
+public enum WorldShape : byte { Flat = 0, Planet = 1 }
 
 public static class WorldGenerationScale
 {

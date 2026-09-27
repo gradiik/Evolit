@@ -2,16 +2,66 @@ using System;
 
 namespace Evolit.Core;
 
+public readonly record struct CoreVector3(float X, float Y, float Z)
+{
+    public static CoreVector3 Zero => new(0f, 0f, 0f);
+    public static CoreVector3 UnitX => new(1f, 0f, 0f);
+    public static CoreVector3 UnitY => new(0f, 1f, 0f);
+    public static CoreVector3 UnitZ => new(0f, 0f, 1f);
+
+    public float LengthSquared => X * X + Y * Y + Z * Z;
+    public float Length => MathF.Sqrt(LengthSquared);
+
+    public CoreVector3 Normalized()
+    {
+        var length = Length;
+        return length <= 0.0000001f ? UnitY : this / length;
+    }
+
+    public static float Dot(CoreVector3 a, CoreVector3 b) =>
+        a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+    public static CoreVector3 Cross(CoreVector3 a, CoreVector3 b) => new(
+        a.Y * b.Z - a.Z * b.Y,
+        a.Z * b.X - a.X * b.Z,
+        a.X * b.Y - a.Y * b.X);
+
+    public static CoreVector3 operator +(CoreVector3 a, CoreVector3 b) =>
+        new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+    public static CoreVector3 operator -(CoreVector3 a, CoreVector3 b) =>
+        new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+    public static CoreVector3 operator *(CoreVector3 value, float scale) =>
+        new(value.X * scale, value.Y * scale, value.Z * scale);
+    public static CoreVector3 operator *(float scale, CoreVector3 value) => value * scale;
+    public static CoreVector3 operator /(CoreVector3 value, float scale) =>
+        new(value.X / scale, value.Y / scale, value.Z / scale);
+}
+
 public readonly record struct CellId(long Value)
 {
+    private const int PlanetMarkerQ = int.MinValue;
+
     public static CellId FromAxial(int q, int r)
     {
+        if (q == PlanetMarkerQ)
+            throw new ArgumentOutOfRangeException(nameof(q), "Reserved for spherical planet cell IDs.");
         return new CellId(unchecked(((long)q << 32) | (uint)r));
+    }
+
+    public static CellId FromPlanetIndex(int index)
+    {
+        if (index < 0)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        return new CellId(unchecked(((long)PlanetMarkerQ << 32) | (uint)index));
     }
 
     public int Q => unchecked((int)(Value >> 32));
     public int R => unchecked((int)Value);
-    public override string ToString() => $"{Q}:{R}";
+    public bool IsPlanet => Q == PlanetMarkerQ;
+    public int PlanetIndex => IsPlanet
+        ? R
+        : throw new InvalidOperationException("Cell ID is not a planet cell.");
+    public override string ToString() => IsPlanet ? $"planet:{PlanetIndex}" : $"{Q}:{R}";
 }
 
 public readonly record struct OrganismId(long Value)

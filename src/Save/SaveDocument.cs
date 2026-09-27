@@ -14,6 +14,7 @@ public sealed class SaveDocument
     public int LandAmount { get; set; } = (int)WorldLandAmount.Normal;
     public int Climate { get; set; } = (int)WorldClimate.Temperate;
     public int GeologicalActivity { get; set; } = (int)Evolit.Core.GeologicalActivity.Normal;
+    public int WorldShape { get; set; } = (int)Evolit.Core.WorldShape.Flat;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset SavedAt { get; set; }
     public double PlaytimeSeconds { get; set; }
@@ -52,6 +53,7 @@ public sealed class DemoWorldSaveState
 {
     public int LastSimulatedDay { get; set; } = 1;
     public WorldMapSaveState? Map { get; set; }
+    public PlanetWorldMapSaveState? Planet { get; set; }
     public List<DemoEntitySaveState> Entities { get; set; } = new();
     public List<DemoSpeciesSaveState> Species { get; set; } = new();
     public List<WorldHistorySaveState> History { get; set; } = new();
@@ -68,6 +70,7 @@ public sealed class DemoEntitySaveState
     public string Subspecies { get; set; } = string.Empty;
     public float WorldX { get; set; }
     public float WorldY { get; set; }
+    public long? SurfaceCellId { get; set; }
     public int AgeDays { get; set; }
     public float Health { get; set; }
     public float Energy { get; set; }
@@ -147,6 +150,41 @@ public sealed class WorldHexCellSaveState
     public float Elevation { get; set; }
     public float ElevationMeters { get; set; }
     public float WaterDepth { get; set; }
+    public float WaterDepthMeters { get; set; }
+    public float Humidity { get; set; }
+    public float TemperatureCelsius { get; set; }
+    public float PressureKPa { get; set; }
+    public float MovementCost { get; set; }
+    public float MovementSpeedMultiplier { get; set; }
+    public float VisualVariation { get; set; }
+    public float FlowAccumulation { get; set; }
+    public float Slope { get; set; }
+    public float MineralPotential { get; set; }
+    public float NutrientPotential { get; set; }
+    public float GeothermalPotential { get; set; }
+    public int Substrate { get; set; }
+    public int ProvinceId { get; set; } = -1;
+    public float Continentalness { get; set; }
+    public float TectonicUplift { get; set; }
+    public int CoastDistance { get; set; } = -1;
+    public int BasinId { get; set; } = -1;
+    public int RiverLength { get; set; }
+    public float RiverWidth { get; set; }
+}
+
+
+public sealed class PlanetWorldMapSaveState
+{
+    public int Frequency { get; set; }
+    public List<PlanetWorldCellSaveState> Cells { get; set; } = new();
+}
+
+public sealed class PlanetWorldCellSaveState
+{
+    public long Id { get; set; }
+    public int Terrain { get; set; }
+    public int WaterKind { get; set; }
+    public float ElevationMeters { get; set; }
     public float WaterDepthMeters { get; set; }
     public float Humidity { get; set; }
     public float TemperatureCelsius { get; set; }

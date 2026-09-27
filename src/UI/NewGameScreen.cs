@@ -12,6 +12,7 @@ public sealed class NewGameRequest
     public WorldLandAmount LandAmount { get; init; } = WorldLandAmount.Normal;
     public WorldClimate Climate { get; init; } = WorldClimate.Temperate;
     public GeologicalActivity Geology { get; init; } = GeologicalActivity.Normal;
+    public WorldShape WorldShape { get; init; } = WorldShape.Flat;
 }
 
 public sealed partial class NewGameScreen : Control
@@ -21,6 +22,7 @@ public sealed partial class NewGameScreen : Control
 
     private LineEdit? _worldName;
     private LineEdit? _seed;
+    private OptionButton? _worldShape;
     private OptionButton? _worldSize;
     private OptionButton? _landAmount;
     private OptionButton? _climate;
@@ -56,7 +58,7 @@ public sealed partial class NewGameScreen : Control
         title.AddThemeFontSizeOverride("font_size", 36);
         root.AddChild(title);
 
-        var subtitle = new Label { Text = "Создаём сессию и детерминированную гексагональную карту по seed." };
+        var subtitle = new Label { Text = "Создаём детерминированный мир по seed: обычную карту или полноценную сферическую 3D планету." };
         subtitle.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         subtitle.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         root.AddChild(subtitle);
@@ -87,6 +89,13 @@ public sealed partial class NewGameScreen : Control
                 _seed.Text = Random.Shared.Next(1, int.MaxValue).ToString();
         };
         seedRow.AddChild(randomize);
+
+        root.AddChild(FieldLabel("Тип мира"));
+        _worldShape = new OptionButton { CustomMinimumSize = new Vector2(0, 48) };
+        _worldShape.AddItem("Обычный мир");
+        _worldShape.AddItem("Планета 3D");
+        _worldShape.Select(0);
+        root.AddChild(_worldShape);
 
         root.AddChild(FieldLabel("Размер мира"));
         _worldSize = new OptionButton { CustomMinimumSize = new Vector2(0, 48) };
@@ -132,7 +141,7 @@ public sealed partial class NewGameScreen : Control
 
         var hint = new Label
         {
-            Text = "Размеры 0.0.8 увеличены минимум вдвое по линейному охвату. Один и тот же seed и набор параметров воспроизводят тот же стартовый мир.",
+            Text = "Обычный мир остаётся вариантом по умолчанию. Для 3D планеты размер задаёт разрешение сферической сетки; одинаковые seed и параметры воспроизводят тот же стартовый мир.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart
         };
         hint.AddThemeFontSizeOverride("font_size", 13);
@@ -175,7 +184,7 @@ public sealed partial class NewGameScreen : Control
 
     private void Create()
     {
-        if (_worldName is null || _seed is null || _worldSize is null || _landAmount is null || _climate is null || _geology is null || _error is null)
+        if (_worldName is null || _seed is null || _worldShape is null || _worldSize is null || _landAmount is null || _climate is null || _geology is null || _error is null)
             return;
 
         var name = _worldName.Text.Trim();
@@ -199,6 +208,7 @@ public sealed partial class NewGameScreen : Control
             WorldName = name,
             Seed = seed,
             WorldSize = _worldSize.GetItemText(_worldSize.Selected),
+            WorldShape = (WorldShape)_worldShape.Selected,
             LandAmount = (WorldLandAmount)_landAmount.Selected,
             Climate = (WorldClimate)_climate.Selected,
             Geology = (GeologicalActivity)_geology.Selected

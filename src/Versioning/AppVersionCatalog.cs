@@ -14,9 +14,9 @@ public sealed record AppVersionRecord(
 
 public static class AppVersionCatalog
 {
-    public const string CurrentVersion = "0.0.9";
-    public const string PreviousVersion = "0.0.8";
-    public const string PreviousCommit = "9a5d0f98cdf8921d674740a83cd2cd4e2e2202ff";
+    public const string CurrentVersion = "0.1.0";
+    public const string PreviousVersion = "0.0.9";
+    public const string PreviousCommit = "de12fb8fe1899421fa990c44423f9168f77c1e24";
     public const string BaselineVersion = "0.0.4";
     public const string BaselineCommit = "268fce1dd4d1d4b9f4d644a789e3110868201ff6";
     public const string LegacyVersion = "0.0.3";
@@ -27,15 +27,21 @@ public static class AppVersionCatalog
     [
         new(
             CurrentVersion,
-            "26 сентября 2026",
-            "0.0.9 World Generation Rework: pseudo-plate macro geography, structured relief, priority-flood drainage, river basins, lake outlets, coast-distance bathymetry и multi-seed quality tooling.",
+            "27 сентября 2026",
+            "0.1.0: полноценные сферические 3D миры, geodesic topology, бесшовная генерация планеты, orbit camera, выбор клеток и поддержка Planet save/load.",
             "Текущая разработка",
             true),
         new(
             PreviousVersion,
+            "27 сентября 2026",
+            "0.0.9 World Generation Rework: pseudo-plate macro geography, structured relief, hydrology, climate/resources and quality tooling; base checkpoint for the parallel 0.1.0 planet branch.",
+            PreviousCommit,
+            false),
+        new(
+            "0.0.8",
             "26 сентября 2026",
             "0.0.8: deterministic procedural world generation, enlarged maps, runtime optimization pass 4 and the final pre-0.0.9 checkpoint.",
-            PreviousCommit,
+            "9a5d0f98cdf8921d674740a83cd2cd4e2e2202ff",
             false),
         new(
             "0.0.7",

@@ -161,6 +161,7 @@ public sealed class SaveManager
             LandAmount = (int)session.LandAmount,
             Climate = (int)session.Climate,
             GeologicalActivity = (int)session.Geology,
+            WorldShape = (int)session.WorldShape,
             CreatedAt = session.CreatedAt,
             SavedAt = DateTimeOffset.UtcNow,
             PlaytimeSeconds = session.PlaytimeSeconds,
@@ -312,6 +313,23 @@ public sealed class SaveManager
             if (document.Runtime.World.Map is { Cells.Count: 0 })
             {
                 error = "Сохранённая карта мира не содержит клеток.";
+                return false;
+            }
+            if (document.Runtime.World.Planet is { Cells.Count: 0 })
+            {
+                error = "Сохранённая планета не содержит клеток.";
+                return false;
+            }
+
+            var shape = document.WorldShape is >= 0 and <= byte.MaxValue &&
+                        Enum.IsDefined((WorldShape)document.WorldShape)
+                ? (WorldShape)document.WorldShape
+                : WorldShape.Flat;
+            if (shape == WorldShape.Planet &&
+                document.Runtime.World.Planet is null &&
+                document.Runtime.Core?.Topology?.Kind != WorldTopologyKind.Planet)
+            {
+                error = "Planet save не содержит сферическую topology.";
                 return false;
             }
 

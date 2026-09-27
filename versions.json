@@ -1,16 +1,24 @@
 {
   "schema": 1,
-  "current": "0.0.9",
-  "development_branch": "feature/evolit-0.0.9-world-generation",
+  "current": "0.1.0",
+  "development_branch": "feature/evolit-0.1.0-3d-planet",
   "protocol": "VERSIONING.md",
   "versions": [
+    {
+      "version": "0.1.0",
+      "status": "development",
+      "branch": "feature/evolit-0.1.0-3d-planet",
+      "tag": null,
+      "commit": null,
+      "note": "3D Planet development: geodesic spherical topology, seamless planet generation, orbit renderer, picking and Planet save/load. Branched from 0.0.9 at de12fb8fe1899421fa990c44423f9168f77c1e24. No release/tag until explicit approval."
+    },
     {
       "version": "0.0.9",
       "status": "development",
       "branch": "feature/evolit-0.0.9-world-generation",
       "tag": null,
-      "commit": null,
-      "note": "World Generation Rework development. Pseudo-plates, structured relief, priority-flood hydrology, basin/lake/river quality tooling. No release/tag until explicit approval."
+      "commit": "de12fb8fe1899421fa990c44423f9168f77c1e24",
+      "note": "Parallel 0.0.9 World Generation Rework branch. Commit de12fb8fe1899421fa990c44423f9168f77c1e24 is the exact base used to start 0.1.0; 0.0.9 may continue to advance independently until its own finalization."
     },
     {
       "version": "0.0.8",

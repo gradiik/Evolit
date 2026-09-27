@@ -37,4 +37,4 @@ The in-app Versions screen is informational/selection UI. Selecting an old versi
 
 Before changing code, compare the requested version with `versions.json` and the repository state. If they conflict, do not guess: preserve the existing checkpoint and report the mismatch. Never invent commits, tags, branches, releases, artifacts, or version history.
 
-Current project-specific rule: 0.0.9 is developed on `feature/evolit-0.0.9-world-generation` from the final 0.0.8 checkpoint. Do not merge it into `main`, tag, release, or advance to 0.0.10 without explicit user instruction.
+Current project-specific rule: 0.1.0 is developed on `feature/evolit-0.1.0-3d-planet`, branched from the parallel 0.0.9 branch at exact base commit `de12fb8fe1899421fa990c44423f9168f77c1e24`. The 0.0.9 branch remains independent and may continue to advance. Do not merge either branch into `main`, tag, or release 0.1.0 without explicit user instruction.

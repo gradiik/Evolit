@@ -22,6 +22,7 @@ public sealed class DemoEntity
     public string Species { get; init; } = string.Empty;
     public string Subspecies { get; init; } = string.Empty;
     public Vector2 WorldPosition { get; init; }
+    public CellId? SurfaceCellId { get; init; }
     public int AgeDays { get; set; }
     public float Health { get; set; }
     public float Energy { get; set; }
@@ -47,7 +48,12 @@ public sealed class DemoWorldDataProvider
     private readonly List<WorldHistorySample> _history = new();
     private long _nextHistorySequence;
 
-    public WorldMap Map { get; }
+    private readonly WorldMap? _flatMap;
+
+    public WorldShape Shape { get; }
+    public WorldMap Map => _flatMap ?? throw new InvalidOperationException("Flat map is unavailable for a planet session.");
+    public WorldMap? FlatMap => _flatMap;
+    public PlanetWorldMap? PlanetMap { get; }
 
     public event Action? DataChanged;
     public event Action? HistoryChanged;
@@ -60,23 +66,51 @@ public sealed class DemoWorldDataProvider
         DemoWorldSaveState? savedState = null,
         CoreSimulationSnapshot? coreSnapshot = null)
     {
-        Map = savedState?.Map is { Cells.Count: > 0 }
-            ? WorldMapGenerator.Restore(session.Seed, session.WorldSize, savedState.Map)
-            : coreSnapshot?.Topology?.Cells.Length > 0
-                ? WorldMapGenerator.RestoreFromCore(session.Seed, session.WorldSize, coreSnapshot)
-                : WorldMapGenerator.Generate(
+        Shape = session.WorldShape;
+        if (Shape == WorldShape.Planet)
+        {
+            PlanetMap = savedState?.Planet is { Cells.Count: > 0 }
+                ? PlanetWorldMapGenerator.Restore(session.Seed, session.WorldSize, savedState.Planet)
+                : PlanetWorldMapGenerator.Generate(
                     session.Seed,
                     session.WorldSize,
                     session.LandAmount,
                     session.Climate,
-                    session.Geology,
-                    legacyScale: !session.WasCreatedNew && savedState?.Map is null && coreSnapshot is null);
+                    session.Geology);
+        }
+        else
+        {
+            _flatMap = savedState?.Map is { Cells.Count: > 0 }
+                ? WorldMapGenerator.Restore(session.Seed, session.WorldSize, savedState.Map)
+                : coreSnapshot?.Topology?.Cells.Length > 0 && coreSnapshot.Topology.Kind != WorldTopologyKind.Planet
+                    ? WorldMapGenerator.RestoreFromCore(session.Seed, session.WorldSize, coreSnapshot)
+                    : WorldMapGenerator.Generate(
+                        session.Seed,
+                        session.WorldSize,
+                        session.LandAmount,
+                        session.Climate,
+                        session.Geology,
+                        legacyScale: !session.WasCreatedNew && savedState?.Map is null && coreSnapshot is null);
+        }
         _species = SpeciesDemoData.CreateSpecies();
         _chronicle = SpeciesDemoData.CreateChronicle();
         _events = SpeciesDemoData.CreateEvents(session.WorldName);
 
-        var creatureSpawn = Map.FindNearestLandPosition(new Vector2(-240, 70));
-        var plantSpawn = Map.FindNearestLandPosition(new Vector2(250, -90));
+        var creatureSpawn = Vector2.Zero;
+        var plantSpawn = Vector2.Zero;
+        CellId? creatureSurfaceCell = null;
+        CellId? plantSurfaceCell = null;
+        if (Shape == WorldShape.Planet)
+        {
+            var planet = PlanetMap ?? throw new InvalidOperationException("Planet map was not initialized.");
+            creatureSurfaceCell = planet.FindNearestLandCell(new CoreVector3(-0.72f, 0.18f, 0.67f))?.Id;
+            plantSurfaceCell = planet.FindNearestLandCell(new CoreVector3(0.66f, -0.24f, -0.71f))?.Id;
+        }
+        else
+        {
+            creatureSpawn = Map.FindNearestLandPosition(new Vector2(-240, 70));
+            plantSpawn = Map.FindNearestLandPosition(new Vector2(250, -90));
+        }
 
         _entities =
         [
@@ -88,6 +122,7 @@ public sealed class DemoWorldDataProvider
                 Species = "Motilis",
                 Subspecies = "Motilis Minor",
                 WorldPosition = creatureSpawn,
+                SurfaceCellId = creatureSurfaceCell,
                 AgeDays = 3,
                 Health = 0.86f,
                 Energy = 0.63f,
@@ -106,6 +141,7 @@ public sealed class DemoWorldDataProvider
                 Species = "Viridia",
                 Subspecies = "Viridia Minor",
                 WorldPosition = plantSpawn,
+                SurfaceCellId = plantSurfaceCell,
                 AgeDays = 8,
                 Health = 0.94f,
                 Energy = 0,
@@ -134,6 +170,17 @@ public sealed class DemoWorldDataProvider
 
     public float GetMovementSpeedMultiplier(DemoEntity entity)
     {
+        if (Shape == WorldShape.Planet)
+        {
+            if (entity.Kind == DemoEntityKind.Plant)
+                return 0f;
+            if (!entity.SurfaceCellId.HasValue ||
+                PlanetMap is null ||
+                !PlanetMap.TryGetCell(entity.SurfaceCellId.Value, out var planetCell))
+                return 1f;
+            return Mathf.Clamp(1f / Math.Max(0.35f, planetCell.MovementCost), 0.22f, 1.2f);
+        }
+
         return WorldMovementRules.SpeedMultiplier(
             Map.GetCellAtWorld(entity.WorldPosition),
             entity.Kind);
@@ -150,41 +197,8 @@ public sealed class DemoWorldDataProvider
         return new DemoWorldSaveState
         {
             LastSimulatedDay = LastSimulatedDay,
-            Map = new WorldMapSaveState
-            {
-                Radius = Map.Radius,
-                HexSize = Map.HexSize,
-                Cells = Map.Cells.Select(cell => new WorldHexCellSaveState
-                {
-                    Q = cell.Coord.Q,
-                    R = cell.Coord.R,
-                    Terrain = (int)cell.Terrain,
-                    WaterKind = (int)cell.WaterKind,
-                    Elevation = cell.Elevation,
-                    ElevationMeters = cell.ElevationMeters,
-                    WaterDepth = cell.WaterDepth,
-                    WaterDepthMeters = cell.WaterDepthMeters,
-                    Humidity = cell.Humidity,
-                    TemperatureCelsius = cell.TemperatureCelsius,
-                    PressureKPa = cell.PressureKPa,
-                    MovementCost = cell.MovementCost,
-                    MovementSpeedMultiplier = cell.MovementSpeedMultiplier,
-                    VisualVariation = cell.VisualVariation,
-                    FlowAccumulation = cell.FlowAccumulation,
-                    Slope = cell.Slope,
-                    MineralPotential = cell.MineralPotential,
-                    NutrientPotential = cell.NutrientPotential,
-                    GeothermalPotential = cell.GeothermalPotential,
-                    Substrate = (int)cell.Substrate,
-                    ProvinceId = cell.ProvinceId,
-                    Continentalness = cell.Continentalness,
-                    TectonicUplift = cell.TectonicUplift,
-                    CoastDistance = cell.CoastDistance,
-                    BasinId = cell.BasinId,
-                    RiverLength = cell.RiverLength,
-                    RiverWidth = cell.RiverWidth
-                }).ToList()
-            },
+            Map = Shape == WorldShape.Flat ? CaptureFlatMap() : null,
+            Planet = Shape == WorldShape.Planet ? CapturePlanetMap() : null,
             Entities = _entities.Select(entity => new DemoEntitySaveState
             {
                 Id = entity.Id,
@@ -194,6 +208,7 @@ public sealed class DemoWorldDataProvider
                 Subspecies = entity.Subspecies,
                 WorldX = entity.WorldPosition.X,
                 WorldY = entity.WorldPosition.Y,
+                SurfaceCellId = entity.SurfaceCellId?.Value,
                 AgeDays = entity.AgeDays,
                 Health = entity.Health,
                 Energy = entity.Energy,
@@ -255,6 +270,82 @@ public sealed class DemoWorldDataProvider
         };
     }
 
+    private WorldMapSaveState CaptureFlatMap()
+    {
+        var map = _flatMap ?? throw new InvalidOperationException("Flat map is unavailable.");
+        return new WorldMapSaveState
+        {
+            Radius = map.Radius,
+            HexSize = map.HexSize,
+            Cells = map.Cells.Select(cell => new WorldHexCellSaveState
+            {
+                Q = cell.Coord.Q,
+                R = cell.Coord.R,
+                Terrain = (int)cell.Terrain,
+                WaterKind = (int)cell.WaterKind,
+                Elevation = cell.Elevation,
+                ElevationMeters = cell.ElevationMeters,
+                WaterDepth = cell.WaterDepth,
+                WaterDepthMeters = cell.WaterDepthMeters,
+                Humidity = cell.Humidity,
+                TemperatureCelsius = cell.TemperatureCelsius,
+                PressureKPa = cell.PressureKPa,
+                MovementCost = cell.MovementCost,
+                MovementSpeedMultiplier = cell.MovementSpeedMultiplier,
+                VisualVariation = cell.VisualVariation,
+                FlowAccumulation = cell.FlowAccumulation,
+                Slope = cell.Slope,
+                MineralPotential = cell.MineralPotential,
+                NutrientPotential = cell.NutrientPotential,
+                GeothermalPotential = cell.GeothermalPotential,
+                Substrate = (int)cell.Substrate,
+                ProvinceId = cell.ProvinceId,
+                Continentalness = cell.Continentalness,
+                TectonicUplift = cell.TectonicUplift,
+                CoastDistance = cell.CoastDistance,
+                BasinId = cell.BasinId,
+                RiverLength = cell.RiverLength,
+                RiverWidth = cell.RiverWidth
+            }).ToList()
+        };
+    }
+
+    private PlanetWorldMapSaveState CapturePlanetMap()
+    {
+        var map = PlanetMap ?? throw new InvalidOperationException("Planet map is unavailable.");
+        return new PlanetWorldMapSaveState
+        {
+            Frequency = map.Frequency,
+            Cells = map.Cells.Select(cell => new PlanetWorldCellSaveState
+            {
+                Id = cell.Id.Value,
+                Terrain = (int)cell.Terrain,
+                WaterKind = (int)cell.WaterKind,
+                ElevationMeters = cell.ElevationMeters,
+                WaterDepthMeters = cell.WaterDepthMeters,
+                Humidity = cell.Humidity,
+                TemperatureCelsius = cell.TemperatureCelsius,
+                PressureKPa = cell.PressureKPa,
+                MovementCost = cell.MovementCost,
+                MovementSpeedMultiplier = cell.MovementSpeedMultiplier,
+                VisualVariation = cell.VisualVariation,
+                FlowAccumulation = cell.FlowAccumulation,
+                Slope = cell.Slope,
+                MineralPotential = cell.MineralPotential,
+                NutrientPotential = cell.NutrientPotential,
+                GeothermalPotential = cell.GeothermalPotential,
+                Substrate = (int)cell.Substrate,
+                ProvinceId = cell.ProvinceId,
+                Continentalness = cell.Continentalness,
+                TectonicUplift = cell.TectonicUplift,
+                CoastDistance = cell.CoastDistance,
+                BasinId = cell.BasinId,
+                RiverLength = cell.RiverLength,
+                RiverWidth = cell.RiverWidth
+            }).ToList()
+        };
+    }
+
     public void RestoreSaveState(DemoWorldSaveState state)
     {
         LastSimulatedDay = Math.Max(1, state.LastSimulatedDay);
@@ -270,6 +361,7 @@ public sealed class DemoWorldDataProvider
                 Species = entity.Species,
                 Subspecies = entity.Subspecies,
                 WorldPosition = new Vector2(entity.WorldX, entity.WorldY),
+                SurfaceCellId = entity.SurfaceCellId.HasValue ? new CellId(entity.SurfaceCellId.Value) : null,
                 AgeDays = entity.AgeDays,
                 Health = entity.Health,
                 Energy = entity.Energy,

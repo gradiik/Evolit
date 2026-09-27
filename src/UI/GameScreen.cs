@@ -22,7 +22,8 @@ public sealed partial class GameScreen : Control
     private CoreSimulationHost? _core;
     private DemoSimulationController? _demoSimulation;
     private GameHud? _hud;
-    private DemoWorldView? _worldView;
+    private DemoWorldView? _flatWorldView;
+    private PlanetWorldView? _planetWorldView;
     private GameViewState? _initialViewState;
 
     public void Configure(
@@ -52,10 +53,20 @@ public sealed partial class GameScreen : Control
         var stats = new DemoSimulationStatsProvider(_session, _world, _time);
         var quality = GraphicsQualityProfile.From(_settings);
 
-        _worldView = new DemoWorldView();
-        _worldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _worldView.Configure(_world, _core!, _settings.CameraSpeed, _settings.SmoothZoom, quality);
-        AddChild(_worldView);
+        if (_session.WorldShape == Evolit.Core.WorldShape.Planet)
+        {
+            _planetWorldView = new PlanetWorldView();
+            _planetWorldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            _planetWorldView.Configure(_world, _core!, _settings.CameraSpeed, _settings.SmoothZoom, quality);
+            AddChild(_planetWorldView);
+        }
+        else
+        {
+            _flatWorldView = new DemoWorldView();
+            _flatWorldView.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            _flatWorldView.Configure(_world, _core!, _settings.CameraSpeed, _settings.SmoothZoom, quality);
+            AddChild(_flatWorldView);
+        }
 
         _hud = new GameHud();
         _hud.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -63,16 +74,22 @@ public sealed partial class GameScreen : Control
         _hud.SaveRequested += () => SaveRequested?.Invoke();
         _hud.SettingsRequested += () => SettingsRequested?.Invoke();
         _hud.PauseRequested += () => PauseRequested?.Invoke();
-        _hud.CameraZoomInRequested += _worldView.ZoomIn;
-        _hud.CameraZoomOutRequested += _worldView.ZoomOut;
-        _hud.CameraCenterRequested += _worldView.CenterCamera;
-        _hud.CameraResetRequested += _worldView.ResetCamera;
+        _hud.CameraZoomInRequested += ZoomIn;
+        _hud.CameraZoomOutRequested += ZoomOut;
+        _hud.CameraCenterRequested += CenterCamera;
+        _hud.CameraResetRequested += ResetCamera;
         AddChild(_hud);
 
-        _worldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+        if (_flatWorldView is not null)
+            _flatWorldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
+        if (_planetWorldView is not null)
+            _planetWorldView.SelectionChanged += entity => _hud.SetSelectedEntity(entity);
 
         if (_initialViewState.HasValue)
-            _worldView.RestoreViewState(_initialViewState.Value);
+        {
+            _flatWorldView?.RestoreViewState(_initialViewState.Value);
+            _planetWorldView?.RestoreViewState(_initialViewState.Value);
+        }
     }
 
     public override void _Process(double delta)
@@ -136,11 +153,39 @@ public sealed partial class GameScreen : Control
 
     public GameViewState? CaptureViewState()
     {
-        return _worldView?.CaptureViewState();
+        if (_planetWorldView is not null)
+            return _planetWorldView.CaptureViewState();
+        return _flatWorldView?.CaptureViewState();
     }
 
     public WorldRenderDiagnostics? GetRenderDiagnostics()
     {
-        return _worldView?.GetDiagnostics();
+        if (_planetWorldView is not null)
+            return _planetWorldView.GetDiagnostics();
+        return _flatWorldView?.GetDiagnostics();
+    }
+
+    private void ZoomIn()
+    {
+        _planetWorldView?.ZoomIn();
+        _flatWorldView?.ZoomIn();
+    }
+
+    private void ZoomOut()
+    {
+        _planetWorldView?.ZoomOut();
+        _flatWorldView?.ZoomOut();
+    }
+
+    private void CenterCamera()
+    {
+        _planetWorldView?.CenterCamera();
+        _flatWorldView?.CenterCamera();
+    }
+
+    private void ResetCamera()
+    {
+        _planetWorldView?.ResetCamera();
+        _flatWorldView?.ResetCamera();
     }
 }

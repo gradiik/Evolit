@@ -129,6 +129,7 @@ static void RunVerification()
     AssertEnvironment();
     AssertSteadyStateAllocations();
     RunEnvironmentVerification();
+    PlanetVerification.Run();
     Console.WriteLine("VERIFY PASS");
 }
 
