@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 
 namespace Evolit.Core;
 
@@ -1051,10 +1050,17 @@ internal static class WorldGeneration009Pipeline
                 continue;
             }
 
-            if (geothermal[i] > 0.72f && plate.Volcanism > 0.62f)
+            if (geothermal[i] > 0.80f &&
+                plate.Volcanism > 0.72f &&
+                uplift[i] > 0.42f)
+            {
                 substrate[i] = SubstrateKind.Basalt;
-            else if (elevation[i] > 1900f || uplift[i] > 0.72f)
+            }
+            else if (elevation[i] > 2350f ||
+                     (elevation[i] > 1250f && uplift[i] > 0.80f))
+            {
                 substrate[i] = SubstrateKind.BareRock;
+            }
             else if (coastDistance[i] <= 1 && elevation[i] < 180f)
                 substrate[i] = SubstrateKind.Sand;
             else
@@ -1642,7 +1648,10 @@ internal static class WorldGeneration009Pipeline
         var landSizes = ComponentSizes(topology, cells, static c => c.ElevationMeters >= 0f);
         var largest = landSizes.Count == 0 ? 0 : landSizes[0];
         var islandLimit = Math.Max(4, cells.Length / 250);
-        var islands = landSizes.Count(size => size < islandLimit);
+        var islands = 0;
+        for (var i = 0; i < landSizes.Count; i++)
+            if (landSizes[i] < islandLimit)
+                islands++;
 
         return new WorldGenerationSummary(
             cells.Length,
