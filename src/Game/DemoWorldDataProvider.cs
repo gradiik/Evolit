@@ -145,6 +145,60 @@ public sealed class DemoWorldDataProvider
         .DefaultIfEmpty(0)
         .Average();
 
+    private static WorldGeographyPresentationSaveState CapturePresentation(
+        WorldGenerationPresentation presentation)
+    {
+        var style = presentation.Style;
+        var state = new WorldGeographyPresentationSaveState
+        {
+            GeologicalRegionCount = presentation.GeologicalRegionCount,
+            MacroplateCount = presentation.MacroplateCount,
+            FieldResolution = presentation.FieldResolution,
+            Style = new WorldGeographyStyleSaveState
+            {
+                ContinentalFragmentation = style.ContinentalFragmentation,
+                CoastRoughness = style.CoastRoughness,
+                CoastScale = style.CoastScale,
+                PeninsulaStrength = style.PeninsulaStrength,
+                BayStrength = style.BayStrength,
+                IslandArcDensity = style.IslandArcDensity,
+                RiftStrength = style.RiftStrength,
+                MountainSharpness = style.MountainSharpness,
+                MountainWidth = style.MountainWidth,
+                PlateauStrength = style.PlateauStrength,
+                PlainSmoothness = style.PlainSmoothness,
+                RiverMeander = style.RiverMeander,
+                ShelfWidth = style.ShelfWidth,
+                OceanBasinDepth = style.OceanBasinDepth
+            }
+        };
+
+        for (var i = 0; i < presentation.CoastSegments.Length; i++)
+        {
+            var segment = presentation.CoastSegments[i];
+            state.CoastSegments.Add(ToSaveSegment(segment));
+        }
+
+        for (var i = 0; i < presentation.RidgeSegments.Length; i++)
+        {
+            var segment = presentation.RidgeSegments[i];
+            state.RidgeSegments.Add(ToSaveSegment(segment));
+        }
+
+        return state;
+    }
+
+    private static WorldGeometrySegmentSaveState ToSaveSegment(WorldGeometrySegment segment) =>
+        new()
+        {
+            X1 = segment.X1,
+            Y1 = segment.Y1,
+            X2 = segment.X2,
+            Y2 = segment.Y2,
+            Strength = segment.Strength,
+            Width = segment.Width
+        };
+
     public DemoWorldSaveState CaptureSaveState()
     {
         return new DemoWorldSaveState
@@ -154,6 +208,7 @@ public sealed class DemoWorldDataProvider
             {
                 Radius = Map.Radius,
                 HexSize = Map.HexSize,
+                Presentation = CapturePresentation(Map.Presentation),
                 Cells = Map.Cells.Select(cell => new WorldHexCellSaveState
                 {
                     Q = cell.Coord.Q,
@@ -185,7 +240,10 @@ public sealed class DemoWorldDataProvider
                     RiverWidth = cell.RiverWidth,
                     StreamOrder = cell.StreamOrder,
                     UpstreamBranches = cell.UpstreamBranches,
-                    RiverDirection = cell.RiverDirection
+                    RiverDirection = cell.RiverDirection,
+                    GeologicalRegionId = cell.GeologicalRegionId,
+                    MacroplateId = cell.MacroplateId,
+                    PlateBoundaryStrength = cell.PlateBoundaryStrength
                 }).ToList()
             },
             Entities = _entities.Select(entity => new DemoEntitySaveState

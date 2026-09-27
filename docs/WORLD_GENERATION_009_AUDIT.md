@@ -191,3 +191,59 @@ Therefore the mandatory visual classifications remain:
 - old 0.0.8 save UI migration: NOT RUN.
 
 No visual PASS is claimed by this checkpoint.
+
+
+## 2026-09-27 continuous geography architecture checkpoint
+
+Starting HEAD: `efc4608046e7d05e60c61750b3103f68cad9857a`.
+
+The active 0.0.9 generator has been restructured so macro geography is built on a temporary higher-resolution continuous field and then sampled into the existing hex simulation topology. The previous active per-hex macroplate implementation was removed. Core topology, priority flood, drainage, stream order, EnvironmentStore and simulation ownership remain hex-based.
+
+Implemented at this checkpoint:
+- deterministic seed-derived `WorldGeographyStyle`;
+- geological regions grouped under macroplates;
+- continuous crust/elevation/tectonic fields;
+- continuous coast contour extraction;
+- convergent macroplate ridge centerline extraction;
+- continuous island-margin / oceanic-arc contributions;
+- continuous-field sampling into physical hex cells;
+- coast + ridge + river cached chunk meshes;
+- presentation save/restore without physical regeneration;
+- old-save empty-presentation fallback;
+- geometry determinism checks;
+- geometry and resolution benchmark commands;
+- renderer geometry diagnostics.
+
+External source policy: no third-party code was copied. The reviewed Red Blob projects are Apache-2.0, Azgaar and WorldEngine are MIT, and vnovak404/worldgen has no declared license found in GitHub metadata / repository LICENSE lookup, so it was treated strictly as conceptual research.
+
+Runtime verification in this execution environment remains blocked because `dotnet`, `godot`, `godot4`, `csc` and `mcs` are unavailable.
+
+Therefore:
+- dotnet restore/build: NOT RUN;
+- verify/environment-verify/worldgen-verify: NOT RUN;
+- worldgen-quality 50: NOT RUN;
+- worldgen-benchmark: NOT RUN;
+- worldgen-resolution-benchmark: NOT RUN;
+- worldgen-geometry: NOT RUN;
+- Godot BEFORE/AFTER/unseen visual audit: NOT REVIEWED;
+- Medium/Large FPS and TPS: NOT MEASURED;
+- 0.0.8 / early-0.0.9 UI save migration: NOT RUN.
+
+The continuous architecture is therefore an implementation checkpoint, not a completed visual acceptance pass. Definition-of-done items that require real screenshots, 16/20 unseen PASS, build/runtime tests and measured performance remain open.
+
+
+### Final static audit for continuous-geography checkpoint
+
+Static repository checks after the implementation:
+- all changed C# files have balanced braces/parentheses/brackets;
+- `GeneratedWorldCell` record and its generation constructor both contain 28 positional fields;
+- the active 0.0.9 pipeline has zero `BuildPlates`, `GenerateMacroGeography` or legacy `Plate[]` references;
+- exactly one continuous-geography build path feeds the active generator;
+- new region/macroplate/boundary metadata is wired through generation → Godot map → save → restore;
+- continuous presentation state is persisted/restored without physical world regeneration;
+- deterministic headless equality now includes both new cell metadata and coast/ridge presentation geometry;
+- `Random.Shared`, wall-clock time and GUIDs are not used by the continuous generator;
+- application version remains `0.0.9`;
+- the repository workflow remains `workflow_dispatch` only.
+
+Compiler/runtime status is unchanged: the local execution environment has no .NET SDK/C# compiler/Godot executable, so this checkpoint is not labeled build-pass or visual-pass.

@@ -209,3 +209,67 @@ New worlds keep `WaterKind.River` for hydrology/movement while retaining the phy
 This is presentation-only. Drainage, stream order, flow accumulation, basin ids and physical water depth stay unchanged. Debug generation layers hide the overlay so scalar fields remain readable.
 
 Legacy saves without `RiverDirection` keep their old full-hex River terrain instead of silently losing visible rivers. Saves that contain 0.0.9 route metadata are normalized to land terrain plus the cached overlay on restore.
+
+
+## Continuous geography over hex simulation
+
+The next 0.0.9 architecture pass separates geographic construction from the simulation grid. The hex topology remains authoritative for Core simulation, EnvironmentStore, hydrology, movement, save/load and future organisms. A deterministic higher-resolution continuous field now constructs macro geography first and is sampled into the existing hex cells.
+
+The architecture was informed by external procedural-map research, but no external implementation was copied. Red Blob Mapgen4/Mapgen2 were used as references for separating generation, geometry and rendering and for treating noisy/curved map geometry as presentation rather than simulation state. Azgaar was used as a reference for strict world-state / renderer separation. WorldEngine was reviewed for the plate/erosion/climate pipeline idea. vnovak404/worldgen was reviewed only at the high-level architectural level because the repository does not currently declare a license through GitHub metadata and no LICENSE file was found; no source from it was incorporated.
+
+License review at implementation time:
+- redblobgames/mapgen4: Apache-2.0;
+- redblobgames/mapgen2: Apache-2.0;
+- Azgaar/Fantasy-Map-Generator: MIT;
+- Mindwerks/worldengine: MIT;
+- vnovak404/worldgen: no declared license found, concepts only.
+
+### Continuous generation model
+
+A seed-derived `WorldGeographyStyle` controls continuous parameters rather than choosing a hardcoded world type. It includes continental fragmentation, coast scale/roughness, peninsula/bay strength, island-arc density, rift strength, mountain width/sharpness, plateau/plain balance, river meander, shelf width and ocean-basin depth.
+
+`ContinuousWorldGeography` builds:
+- a deterministic 5–9 macroplate layout;
+- 56–150 smaller geological regions depending on world radius/style;
+- continental/oceanic crust and motion per macroplate;
+- geological-region crust offsets;
+- continuous elevation, continentalness, convergence/divergence, uplift and plate-boundary fields;
+- a temporary field resolution derived from radius, with an explicit development-only override for resolution benchmarks.
+
+The field is sampled bilinearly at each Evolit hex center. The resulting hex values remain the physical state used by the existing priority-flood hydrology and Core environment. The old active per-hex pseudo-plate macro generator has been removed rather than kept as a parallel implementation.
+
+Island-margin and volcanic-arc contributions now occur in the continuous field. Post-sampling land cleanup remains limited to pathological one-cell artifacts/tiny components.
+
+### Continuous presentation geometry
+
+Before the temporary field is released, it produces minimal persistent presentation data:
+- coastline contour segments extracted from the continuous elevation/sea-level crossing;
+- convergent macroplate-boundary ridge segments;
+- region/macroplate counts, field resolution and geography style.
+
+The coastline therefore no longer needs to follow hex borders in the renderer. Mountain ridge hints are likewise derived from convergent macroplate boundaries instead of isolated mountain hex decoration.
+
+Godot converts normalized geometry to world coordinates at load time and groups it into existing terrain chunks. The base chunk can now draw cached meshes for:
+1. terrain;
+2. coast;
+3. ridge hints;
+4. curved rivers.
+
+No contour/ridge geometry is rebuilt during camera movement.
+
+### Save compatibility
+
+The map save stores the minimal continuous presentation state and per-cell geological-region/macroplate diagnostics. Loading a current save restores the saved physical cells plus the exact saved coast/ridge geometry; it does not rerun procedural generation.
+
+Older 0.0.8 / early-0.0.9 saves have no presentation state and therefore use an empty compatibility presentation instead of regenerating geography.
+
+### Development diagnostics
+
+Headless tooling now includes:
+- `worldgen-geometry [seed]` for region/macroplate/contour/ridge counts and persistent-geometry byte estimates;
+- `worldgen-resolution-benchmark [seed]` for comparing several temporary field resolutions;
+- continuous presentation equality inside `worldgen-verify`.
+
+The Godot debug overlay reports geological-region/macroplate counts, coast/ridge/river segment counts and an estimated cached geometry footprint. F4 adds geological-region, macroplate and plate-boundary views.
+
+The default field-resolution rule is provisional until the local resolution benchmark and Godot visual gate are actually run. No performance or visual PASS should be inferred from the architecture alone.

@@ -559,7 +559,8 @@ public sealed partial class AppRoot : Control
         var renderText = render.HasValue
             ? $"\nMap: {render.Value.VisibleHexes}/{render.Value.TotalHexes} hex · {render.Value.VisibleChunks}/{render.Value.TotalChunks} chunks" +
               $"\nMap cmds≈{render.Value.EstimatedDrawCommands} · base draws {render.Value.BaseDrawCalls} · terrain nodes {render.Value.TerrainNodeCount}" +
-              $"\nMap rebuilds {render.Value.TerrainRebuilds} · overlay redraw/s {render.Value.OverlayRedrawsPerSecond:0}"
+              $"\nGeo: regions {render.Value.GeologicalRegionCount} · macroplates {render.Value.MacroplateCount} · coast {render.Value.CoastSegments} · ridges {render.Value.RidgeSegments} · rivers {render.Value.RiverSegments}" +
+              $"\nGeo cache≈{render.Value.CachedGeometryBytes / 1024.0:0.0} KiB · rebuilds {render.Value.TerrainRebuilds} · overlay redraw/s {render.Value.OverlayRedrawsPerSecond:0}"
             : string.Empty;
         var core = _coreRuntime?.GetDiagnostics();
         var coreText = core.HasValue

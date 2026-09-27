@@ -1,10 +1,17 @@
 using System;
 using System.Collections.Generic;
+using Evolit.Core;
 using Evolit.Game;
 using Evolit.Settings;
 using Godot;
 
 namespace Evolit.UI.Game;
+
+public readonly record struct WorldOverlaySegment(
+    Vector2 Start,
+    Vector2 End,
+    float Strength,
+    float Width);
 
 internal enum TerrainLayerKind
 {
@@ -67,7 +74,12 @@ internal sealed partial class TerrainChunkLayer : Control
     private readonly Vector2[] _hexPoints = new Vector2[6];
     private readonly Vector2[] _hexOutline = new Vector2[7];
     private ArrayMesh? _baseMesh;
+    private ArrayMesh? _coastMesh;
+    private ArrayMesh? _ridgeMesh;
     private ArrayMesh? _riverMesh;
+    private WorldOverlaySegment[] _coastSegments = Array.Empty<WorldOverlaySegment>();
+    private WorldOverlaySegment[] _ridgeSegments = Array.Empty<WorldOverlaySegment>();
+    private WorldGeographyStyle _geographyStyle;
 
     public int EstimatedCommands { get; private set; }
 
@@ -76,16 +88,24 @@ internal sealed partial class TerrainChunkLayer : Control
         Rect2 worldBounds,
         float hexSize,
         GraphicsQualityProfile quality,
-        TerrainLayerKind kind)
+        TerrainLayerKind kind,
+        WorldOverlaySegment[]? coastSegments = null,
+        WorldOverlaySegment[]? ridgeSegments = null,
+        WorldGeographyStyle? geographyStyle = null)
     {
         _cells = cells;
         _worldBounds = worldBounds;
         _hexSize = hexSize;
         _quality = quality;
         _kind = kind;
+        _coastSegments = coastSegments ?? Array.Empty<WorldOverlaySegment>();
+        _ridgeSegments = ridgeSegments ?? Array.Empty<WorldOverlaySegment>();
+        _geographyStyle = geographyStyle ?? default;
         if (_kind == TerrainLayerKind.Base)
         {
             _baseMesh = BuildBaseMesh();
+            _coastMesh = BuildCoastMesh();
+            _ridgeMesh = BuildRidgeMesh();
             _riverMesh = BuildRiverMesh();
         }
         EstimatedCommands = EstimateCommands();
@@ -112,8 +132,15 @@ internal sealed partial class TerrainChunkLayer : Control
         {
             if (_baseMesh is not null)
                 DrawMesh(_baseMesh, null, Transform2D.Identity, Colors.White);
-            if (_debugMode == GenerationDebugMode.None && _riverMesh is not null)
-                DrawMesh(_riverMesh, null, Transform2D.Identity, Colors.White);
+            if (_debugMode == GenerationDebugMode.None)
+            {
+                if (_coastMesh is not null)
+                    DrawMesh(_coastMesh, null, Transform2D.Identity, Colors.White);
+                if (_ridgeMesh is not null)
+                    DrawMesh(_ridgeMesh, null, Transform2D.Identity, Colors.White);
+                if (_riverMesh is not null)
+                    DrawMesh(_riverMesh, null, Transform2D.Identity, Colors.White);
+            }
             return;
         }
 
@@ -171,6 +198,126 @@ internal sealed partial class TerrainChunkLayer : Control
         return mesh;
     }
 
+    private ArrayMesh? BuildCoastMesh()
+    {
+        if (_coastSegments.Length == 0)
+            return null;
+
+        return BuildOverlayRibbonMesh(
+            _coastSegments,
+            wideScale: 0.30f,
+            narrowScale: 0.040f,
+            wideColor: new Color(0.055f, 0.255f, 0.300f, 0.74f),
+            narrowColor: new Color(0.38f, 0.56f, 0.43f, 0.46f));
+    }
+
+    private ArrayMesh? BuildRidgeMesh()
+    {
+        if (_ridgeSegments.Length == 0)
+            return null;
+
+        return BuildOverlayRibbonMesh(
+            _ridgeSegments,
+            wideScale: 0.050f,
+            narrowScale: 0.018f,
+            wideColor: new Color(0.24f, 0.27f, 0.25f, 0.26f),
+            narrowColor: new Color(0.60f, 0.60f, 0.52f, 0.18f));
+    }
+
+    private ArrayMesh? BuildOverlayRibbonMesh(
+        WorldOverlaySegment[] segments,
+        float wideScale,
+        float narrowScale,
+        Color wideColor,
+        Color narrowColor)
+    {
+        var vertices = new List<Vector2>(segments.Length * 8);
+        var colors = new List<Color>(segments.Length * 8);
+        var indices = new List<int>(segments.Length * 12);
+
+        for (var i = 0; i < segments.Length; i++)
+        {
+            var segment = segments[i];
+            var start = segment.Start - _worldBounds.Position;
+            var end = segment.End - _worldBounds.Position;
+            var delta = end - start;
+            if (delta.LengthSquared() <= 0.0001f)
+                continue;
+
+            var normal = new Vector2(-delta.Y, delta.X).Normalized();
+            var strength = Math.Clamp(segment.Strength, 0.15f, 1f);
+            var widthFactor = Math.Clamp(segment.Width, 0.25f, 1.5f);
+            AddRibbonQuad(
+                start,
+                end,
+                normal,
+                _hexSize * wideScale * widthFactor,
+                new Color(
+                    wideColor.R,
+                    wideColor.G,
+                    wideColor.B,
+                    wideColor.A * strength),
+                vertices,
+                colors,
+                indices);
+            AddRibbonQuad(
+                start,
+                end,
+                normal,
+                _hexSize * narrowScale * widthFactor,
+                new Color(
+                    narrowColor.R,
+                    narrowColor.G,
+                    narrowColor.B,
+                    narrowColor.A * strength),
+                vertices,
+                colors,
+                indices);
+        }
+
+        if (indices.Count == 0)
+            return null;
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+        arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
+        arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
+    }
+
+    private static void AddRibbonQuad(
+        Vector2 start,
+        Vector2 end,
+        Vector2 normal,
+        float halfWidth,
+        Color color,
+        List<Vector2> vertices,
+        List<Color> colors,
+        List<int> indices)
+    {
+        var baseIndex = vertices.Count;
+        vertices.Add(start + normal * halfWidth);
+        vertices.Add(start - normal * halfWidth);
+        vertices.Add(end + normal * halfWidth);
+        vertices.Add(end - normal * halfWidth);
+
+        colors.Add(color);
+        colors.Add(color);
+        colors.Add(color);
+        colors.Add(color);
+
+        indices.Add(baseIndex);
+        indices.Add(baseIndex + 2);
+        indices.Add(baseIndex + 1);
+        indices.Add(baseIndex + 1);
+        indices.Add(baseIndex + 2);
+        indices.Add(baseIndex + 3);
+    }
+
     private ArrayMesh? BuildRiverMesh()
     {
         var riverCount = 0;
@@ -216,7 +363,13 @@ internal sealed partial class TerrainChunkLayer : Control
             var perpendicular = new Vector2(-chord.Y, chord.X).Normalized();
             var curveSign = RiverCurveSign(cell.Coord, cell.RiverDirection);
             var riverScale = Math.Clamp(cell.RiverWidth / 5.2f, 0.10f, 1f);
-            var curveAmount = _hexSize * (0.045f + (1f - riverScale) * 0.035f) * curveSign;
+            var meander = _geographyStyle.RiverMeander <= 0f
+                ? 0.42f
+                : Math.Clamp(_geographyStyle.RiverMeander, 0f, 1f);
+            var curveAmount =
+                _hexSize *
+                (0.028f + meander * 0.055f + (1f - riverScale) * 0.025f) *
+                curveSign;
             var control = (start + end) * 0.5f + perpendicular * curveAmount;
             var halfWidth = _hexSize * (0.018f + riverScale * 0.050f);
             var baseIndex = vertices.Count;
@@ -386,7 +539,16 @@ internal sealed partial class TerrainChunkLayer : Control
     private int EstimateCommands()
     {
         if (_kind == TerrainLayerKind.Base)
-            return _cells.Length == 0 ? 0 : 1 + (_riverMesh is null ? 0 : 1);
+        {
+            if (_cells.Length == 0)
+                return 0;
+
+            var commands = 1;
+            if (_coastMesh is not null) commands++;
+            if (_ridgeMesh is not null) commands++;
+            if (_riverMesh is not null) commands++;
+            return commands;
+        }
 
         var commands = 0;
         foreach (var cell in _cells)
@@ -434,6 +596,9 @@ internal sealed partial class TerrainChunkLayer : Control
         {
             GenerationDebugMode.Continentalness => Ramp((cell.Continentalness + 1.5f) / 3f),
             GenerationDebugMode.Province => ProvinceColor(cell.ProvinceId),
+            GenerationDebugMode.GeologicalRegion => ProvinceColor(cell.GeologicalRegionId),
+            GenerationDebugMode.Macroplate => ProvinceColor(cell.MacroplateId),
+            GenerationDebugMode.PlateBoundary => Ramp(cell.PlateBoundaryStrength),
             GenerationDebugMode.Elevation => Ramp((cell.ElevationMeters + 4000f) / 9000f),
             GenerationDebugMode.Slope => Ramp(cell.Slope / 1200f),
             GenerationDebugMode.CoastDistance => Ramp(Math.Clamp(cell.CoastDistance / 18f, 0f, 1f)),

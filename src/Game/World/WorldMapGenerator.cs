@@ -26,7 +26,15 @@ public static class WorldMapGenerator
         foreach (var source in generated.Cells)
             cells.Add(FromGenerated(source, seed));
 
-        return new WorldMap(seed, sizeName, radius, HexSize, cells, generated.Topology, generated.Environment);
+        return new WorldMap(
+            seed,
+            sizeName,
+            radius,
+            HexSize,
+            cells,
+            generated.Topology,
+            generated.Environment,
+            generated.Presentation);
     }
 
     public static WorldMap Restore(string seed, string sizeName, WorldMapSaveState state)
@@ -96,11 +104,20 @@ public static class WorldMapGenerator
                 RiverWidth = saved.RiverWidth,
                 StreamOrder = saved.StreamOrder,
                 UpstreamBranches = saved.UpstreamBranches,
-                RiverDirection = saved.RiverDirection
+                RiverDirection = saved.RiverDirection,
+                GeologicalRegionId = saved.GeologicalRegionId,
+                MacroplateId = saved.MacroplateId,
+                PlateBoundaryStrength = Math.Clamp(saved.PlateBoundaryStrength, 0f, 1f)
             });
         }
 
-        return new WorldMap(seed, sizeName, radius, hexSize, cells);
+        return new WorldMap(
+            seed,
+            sizeName,
+            radius,
+            hexSize,
+            cells,
+            presentation: RestorePresentation(state.Presentation));
     }
 
     public static WorldMap RestoreFromCore(string seed, string sizeName, CoreSimulationSnapshot snapshot)
@@ -210,7 +227,10 @@ public static class WorldMapGenerator
             RiverWidth = source.RiverWidth,
             StreamOrder = source.StreamOrder,
             UpstreamBranches = source.UpstreamBranches,
-            RiverDirection = source.RiverDirection
+            RiverDirection = source.RiverDirection,
+            GeologicalRegionId = source.GeologicalRegionId,
+            MacroplateId = source.MacroplateId,
+            PlateBoundaryStrength = source.PlateBoundaryStrength
         };
         cell.MovementCost = WorldMovementRules.BaseMovementCost(cell);
         cell.MovementSpeedMultiplier = WorldMovementRules.SpeedMultiplier(cell, DemoEntityKind.Creature);
@@ -252,6 +272,60 @@ public static class WorldMapGenerator
         if (substrate == SubstrateKind.Sand && elevationMeters < 180f) return HexTerrainType.Sand;
         if (humidity < 0.28f && temperature > 18f) return HexTerrainType.Desert;
         return HexTerrainType.Grassland;
+    }
+
+    private static WorldGenerationPresentation RestorePresentation(
+        WorldGeographyPresentationSaveState? saved)
+    {
+        if (saved is null)
+            return WorldGenerationPresentation.Empty;
+
+        var style = saved.Style ?? new WorldGeographyStyleSaveState();
+        return new WorldGenerationPresentation
+        {
+            GeologicalRegionCount = Math.Max(0, saved.GeologicalRegionCount),
+            MacroplateCount = Math.Max(0, saved.MacroplateCount),
+            FieldResolution = Math.Max(0, saved.FieldResolution),
+            Style = new WorldGeographyStyle(
+                style.ContinentalFragmentation,
+                style.CoastRoughness,
+                style.CoastScale,
+                style.PeninsulaStrength,
+                style.BayStrength,
+                style.IslandArcDensity,
+                style.RiftStrength,
+                style.MountainSharpness,
+                style.MountainWidth,
+                style.PlateauStrength,
+                style.PlainSmoothness,
+                style.RiverMeander,
+                style.ShelfWidth,
+                style.OceanBasinDepth),
+            CoastSegments = RestoreSegments(saved.CoastSegments),
+            RidgeSegments = RestoreSegments(saved.RidgeSegments)
+        };
+    }
+
+    private static WorldGeometrySegment[] RestoreSegments(
+        List<WorldGeometrySegmentSaveState>? saved)
+    {
+        if (saved is null || saved.Count == 0)
+            return Array.Empty<WorldGeometrySegment>();
+
+        var result = new WorldGeometrySegment[saved.Count];
+        for (var i = 0; i < saved.Count; i++)
+        {
+            var segment = saved[i];
+            result[i] = new WorldGeometrySegment(
+                segment.X1,
+                segment.Y1,
+                segment.X2,
+                segment.Y2,
+                Math.Clamp(segment.Strength, 0f, 1f),
+                Math.Max(0f, segment.Width));
+        }
+
+        return result;
     }
 
     private static float NormalizeWater(float depthMeters, HexWaterKind kind) => kind switch
