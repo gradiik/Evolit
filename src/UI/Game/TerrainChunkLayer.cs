@@ -104,7 +104,10 @@ internal sealed partial class TerrainChunkLayer : Control
         if (_kind == TerrainLayerKind.Base)
         {
             _baseMesh = BuildBaseMesh();
-            _coastMesh = BuildCoastMesh();
+            // Coastline ribbons duplicated the edge of individual land cells;
+            // terrain adjacency already provides the shoreline and the map
+            // boundary is drawn separately by DemoWorldView.
+            _coastMesh = null;
             // Geological information already affects the cell elevation and
             // colour. Long ribbon overlays made ridges look ruler-straight.
             _ridgeMesh = null;
@@ -548,7 +551,7 @@ internal sealed partial class TerrainChunkLayer : Control
         for (var i = 0; i < 6; i++)
             _hexOutline[i] = _hexPoints[i];
         _hexOutline[6] = _hexPoints[0];
-        DrawPolyline(_hexOutline, new Color(0.02f, 0.09f, 0.10f, 0.30f), 0.9f, true);
+        DrawPolyline(_hexOutline, new Color(0.02f, 0.09f, 0.10f, 0.22f), 0.62f, true);
 
         if (_quality.WaterDetail < 2
             || cell.Terrain is not (HexTerrainType.DeepWater or HexTerrainType.ShallowWater or HexTerrainType.Lake))
@@ -745,14 +748,9 @@ internal sealed partial class TerrainChunkLayer : Control
 
     private static Color DeepWaterColor(WorldHexCell cell)
     {
-        var depth = Math.Clamp(cell.WaterDepthMeters / 2200f, 0f, 1f);
-        var shallow = new Color(0.035f, 0.145f, 0.205f);
-        var abyss = new Color(0.012f, 0.058f, 0.072f);
-        return new Color(
-            shallow.R + (abyss.R - shallow.R) * depth,
-            shallow.G + (abyss.G - shallow.G) * depth,
-            shallow.B + (abyss.B - shallow.B) * depth,
-            1f);
+        var depth = Math.Clamp(cell.WaterDepthMeters / 9000f, 0f, 1f);
+        depth *= depth * (3f - 2f * depth);
+        return new Color(0.045f, 0.22f, 0.30f).Lerp(new Color(0.018f, 0.10f, 0.21f), depth);
     }
 
     private static Color TerrainColor(WorldHexCell cell, GenerationDebugMode debugMode)
@@ -769,7 +767,7 @@ internal sealed partial class TerrainChunkLayer : Control
             HexTerrainType.ShallowWater => new Color(0.055f, 0.255f, 0.300f),
             HexTerrainType.Lake => new Color(0.060f, 0.305f, 0.325f),
             HexTerrainType.River => new Color(0.070f, 0.420f, 0.455f),
-            HexTerrainType.Sand => new Color(0.49f, 0.45f, 0.29f),
+            HexTerrainType.Sand => new Color(0.46f, 0.45f, 0.34f),
             HexTerrainType.Desert => SurfaceClimateColor(cell),
             HexTerrainType.Grassland => SurfaceClimateColor(cell),
             HexTerrainType.Highland => HighlandColor(cell),
@@ -778,7 +776,18 @@ internal sealed partial class TerrainChunkLayer : Control
             _ => new Color(0.23f, 0.38f, 0.22f)
         };
 
-        var variation = (cell.VisualVariation - 0.5f) * 0.10f;
+        if (cell.WaterKind == HexWaterKind.None)
+        {
+            var elevation = Math.Max(0f, cell.ElevationMeters);
+            var highlandBlend = SmoothElevationBlend(250f, 1800f, elevation) * 0.14f;
+            var alpineBlend = SmoothElevationBlend(1500f, 3600f, elevation) * 0.24f;
+            var summitBlend = SmoothElevationBlend(3800f, 6500f, elevation) * 0.36f;
+            baseColor = baseColor.Lerp(new Color(0.39f, 0.43f, 0.31f), highlandBlend);
+            baseColor = baseColor.Lerp(new Color(0.50f, 0.45f, 0.37f), alpineBlend);
+            baseColor = baseColor.Lerp(new Color(0.70f, 0.69f, 0.62f), summitBlend);
+        }
+
+        var variation = (cell.VisualVariation - 0.5f) * 0.035f;
         var elevationLight = cell.WaterKind is HexWaterKind.Ocean or HexWaterKind.Lake
             ? -Mathf.Clamp(cell.WaterDepth * 0.32f, 0f, 0.24f)
             : Mathf.Clamp(cell.Elevation * 0.20f, -0.06f, 0.18f);
@@ -789,5 +798,11 @@ internal sealed partial class TerrainChunkLayer : Control
             Mathf.Clamp(baseColor.G * factor, 0f, 1f),
             Mathf.Clamp(baseColor.B * factor, 0f, 1f),
             1f);
+    }
+
+    private static float SmoothElevationBlend(float start, float end, float elevation)
+    {
+        var t = Math.Clamp((elevation - start) / (end - start), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 }

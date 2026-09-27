@@ -20,7 +20,7 @@ public static class PlanetVisualScale
 
         // Leave enough room for relief, the selection outline and a readable
         // silhouette instead of fitting the sphere exactly against the window.
-        return Math.Max(surfaceRadius + 0.5f, surfaceRadius / MathF.Sin(limitingHalfAngle) * 1.10f);
+        return Math.Max(surfaceRadius + 0.5f, surfaceRadius / MathF.Sin(limitingHalfAngle) * 1.36f);
     }
 
     public static float RadiusFromElevationMeters(float elevationMeters)

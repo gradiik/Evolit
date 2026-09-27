@@ -65,23 +65,56 @@ public sealed partial class AppRoot : Control
         RefreshSaveCount();
         ShowMainMenu();
 
-        // Diagnostic launch for checking the actual exported renderer without
-        // writing to the user's save slots. Used only when explicitly requested
-        // on the command line: -- --capture-flat=<png path> --seed=<seed>.
+        // Diagnostic launch for checking the actual exported renderers without
+        // writing to the user's save slots. Use --capture-flat or
+        // --capture-planet with a PNG path and optional --seed.
         string? capturePath = null;
         var captureSeed = "evolit-render-check";
+        var captureShape = Evolit.Core.WorldShape.Flat;
+        var previewPlanet = false;
         foreach (var argument in OS.GetCmdlineUserArgs())
         {
             if (argument.StartsWith("--capture-flat=", StringComparison.Ordinal))
                 capturePath = argument[15..];
+            else if (argument.StartsWith("--capture-planet=", StringComparison.Ordinal))
+            {
+                capturePath = argument[17..];
+                captureShape = Evolit.Core.WorldShape.Planet;
+            }
             else if (argument.StartsWith("--seed=", StringComparison.Ordinal))
                 captureSeed = argument[7..];
+            else if (string.Equals(argument, "--preview-planet", StringComparison.Ordinal))
+                previewPlanet = true;
         }
         if (!string.IsNullOrWhiteSpace(capturePath))
-            CaptureFlatWorld(capturePath, captureSeed);
+            CaptureWorld(capturePath, captureSeed, captureShape);
+        else if (previewPlanet)
+            PreviewPlanetWorld(captureSeed);
     }
 
-    private async void CaptureFlatWorld(string path, string seed)
+    private async void PreviewPlanetWorld(string seed)
+    {
+        try
+        {
+            _session = GameSession.CreateNew(
+                "0.1.0 planet preview", seed, "Маленький",
+                Evolit.Core.WorldLandAmount.Normal,
+                Evolit.Core.WorldClimate.Temperate,
+                Evolit.Core.GeologicalActivity.Normal,
+                Evolit.Core.WorldShape.Planet);
+            PrepareGameRuntime();
+            ShowGame();
+            for (var frame = 0; frame < 12; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            GD.Print($"EVOLIT_PREVIEW_READY shape=Planet seed={seed}; no user save was created.");
+        }
+        catch (Exception ex)
+        {
+            GD.PushError($"EVOLIT_PREVIEW_FAILED: {ex}");
+        }
+    }
+
+    private async void CaptureWorld(string path, string seed, Evolit.Core.WorldShape shape)
     {
         var isolatedSaves = Path.Combine(Path.GetTempPath(), $"Evolit-verify-{Guid.NewGuid():N}");
         try
@@ -91,14 +124,14 @@ public sealed partial class AppRoot : Control
                 Evolit.Core.WorldLandAmount.Normal,
                 Evolit.Core.WorldClimate.Temperate,
                 Evolit.Core.GeologicalActivity.Normal,
-                Evolit.Core.WorldShape.Flat);
+                shape);
             PrepareGameRuntime();
             VerifyIsolatedSaveRoundTrip(isolatedSaves);
             ShowGame();
             for (var frame = 0; frame < 12; frame++)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             var result = GetViewport().GetTexture().GetImage().SavePng(path);
-            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed}");
+            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed} SHAPE={shape}");
         }
         catch (Exception ex)
         {
@@ -145,14 +178,22 @@ public sealed partial class AppRoot : Control
             restoredSession,
             document.Runtime?.World,
             document.Runtime?.Core);
-        var originalMap = _demoWorld.Map;
-        var restoredMap = restoredWorld.Map;
-        var originalRivers = originalMap.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
-        var restoredRivers = restoredMap.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
-        if (originalMap.Cells.Count != restoredMap.Cells.Count || originalRivers != restoredRivers)
+        var originalCells = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? _demoWorld.PlanetMap?.Cells.Count ?? 0
+            : _demoWorld.Map.Cells.Count;
+        var restoredCells = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? restoredWorld.PlanetMap?.Cells.Count ?? 0
+            : restoredWorld.Map.Cells.Count;
+        var originalRivers = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? _demoWorld.PlanetMap?.Cells.Count(cell => cell.WaterKind == HexWaterKind.River) ?? 0
+            : _demoWorld.Map.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
+        var restoredRivers = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? restoredWorld.PlanetMap?.Cells.Count(cell => cell.WaterKind == HexWaterKind.River) ?? 0
+            : restoredWorld.Map.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
+        if (originalCells == 0 || originalCells != restoredCells || originalRivers != restoredRivers)
             throw new InvalidOperationException("Isolated save round-trip changed map or river cells.");
 
-        GD.Print($"EVOLIT_SAVE_ROUNDTRIP_PASS cells={restoredMap.Cells.Count} river_cells={restoredRivers}");
+        GD.Print($"EVOLIT_SAVE_ROUNDTRIP_PASS shape={_session.WorldShape} cells={restoredCells} river_cells={restoredRivers}");
     }
 
     public override void _Process(double delta)

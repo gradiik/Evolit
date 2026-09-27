@@ -91,6 +91,8 @@ public sealed partial class PlanetWorldView : Control
         RebuildGridMesh();
         RebuildEntityMarkers();
         UpdateSurfaceBounds();
+        _distance = _overviewDistance;
+        _targetDistance = _overviewDistance;
         UpdateCamera(true);
     }
 
@@ -99,7 +101,14 @@ public sealed partial class PlanetWorldView : Control
         if (what != NotificationResized || _camera is null || _world?.PlanetMap is null)
             return;
 
+        var wasAtOverview = Math.Abs(_targetDistance - _overviewDistance) <= 0.06f;
         UpdateOverviewDistance();
+        if (wasAtOverview)
+        {
+            _distance = _overviewDistance;
+            _targetDistance = _overviewDistance;
+            UpdateCamera(true);
+        }
     }
 
     public override void _Process(double delta)
@@ -465,9 +474,9 @@ public sealed partial class PlanetWorldView : Control
 
                 ValidateTriangle(ref a, ref b, ref d, centerDirection, cell.Index, "terrain");
                 var faceNormal = (b - a).Cross(d - a).Normalized();
-                var centerNormal = (centerDirection * 0.68f + faceNormal * 0.32f).Normalized();
-                var bNormal = (b.Normalized() * 0.74f + faceNormal * 0.26f).Normalized();
-                var dNormal = (d.Normalized() * 0.74f + faceNormal * 0.26f).Normalized();
+                var centerNormal = (centerDirection * 0.90f + faceNormal * 0.10f).Normalized();
+                var bNormal = (b.Normalized() * 0.92f + faceNormal * 0.08f).Normalized();
+                var dNormal = (d.Normalized() * 0.92f + faceNormal * 0.08f).Normalized();
 
                 vertices[cursor] = a;
                 normals[cursor] = centerNormal;
@@ -552,8 +561,7 @@ public sealed partial class PlanetWorldView : Control
             var center = direction * radius;
             var waterColor = cell.WaterKind switch
             {
-                HexWaterKind.Ocean when cell.WaterDepthMeters > 2000f => new Color(0.018f, 0.12f, 0.20f),
-                HexWaterKind.Ocean => new Color(0.035f, 0.25f, 0.32f),
+                HexWaterKind.Ocean => OceanDepthColor(cell.WaterDepthMeters),
                 HexWaterKind.Lake => new Color(0.045f, 0.34f, 0.38f),
                 // A river is a complete traversable water cell. Rendering the
                 // whole polygon keeps its banks aligned with the world grid.
@@ -593,7 +601,10 @@ public sealed partial class PlanetWorldView : Control
         {
             VertexColorUseAsAlbedo = true,
             Roughness = 0.36f,
-            Metallic = 0.08f
+            Metallic = 0.08f,
+            EmissionEnabled = true,
+            Emission = new Color(0.012f, 0.055f, 0.12f),
+            EmissionEnergyMultiplier = 0.5f
         });
         _water.Mesh = mesh;
         _water.Visible = _debugMode == GenerationDebugMode.None;
@@ -778,8 +789,9 @@ public sealed partial class PlanetWorldView : Control
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
         mesh.SurfaceSetMaterial(0, new StandardMaterial3D
         {
-            AlbedoColor = new Color(0.105f, 0.19f, 0.20f),
+            AlbedoColor = new Color(0.075f, 0.15f, 0.17f, 0.42f),
             Roughness = 1f,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
         });
         _grid.Mesh = mesh;
@@ -1304,13 +1316,16 @@ public sealed partial class PlanetWorldView : Control
         if (mode != GenerationDebugMode.None)
             return DebugColor(cell, mode);
 
+        if (cell.WaterKind == HexWaterKind.Ocean)
+            return OceanDepthColor(cell.WaterDepthMeters);
+
         var baseColor = cell.Terrain switch
         {
-            HexTerrainType.DeepWater => new Color(0.025f, 0.16f, 0.24f),
+            HexTerrainType.DeepWater => OceanDepthColor(cell.WaterDepthMeters),
             HexTerrainType.ShallowWater => new Color(0.055f, 0.31f, 0.39f),
             HexTerrainType.Lake => new Color(0.06f, 0.37f, 0.42f),
             HexTerrainType.River => new Color(0.10f, 0.48f, 0.51f),
-            HexTerrainType.Sand => new Color(0.58f, 0.51f, 0.31f),
+            HexTerrainType.Sand => new Color(0.50f, 0.47f, 0.35f),
             HexTerrainType.Desert => new Color(0.62f, 0.47f, 0.23f),
             HexTerrainType.Grassland => new Color(0.23f, 0.48f, 0.27f),
             HexTerrainType.Highland => new Color(0.36f, 0.44f, 0.28f),
@@ -1318,11 +1333,33 @@ public sealed partial class PlanetWorldView : Control
             HexTerrainType.Mountain => new Color(0.49f, 0.51f, 0.48f),
             _ => new Color(0.24f, 0.45f, 0.30f)
         };
-        var variation = (cell.VisualVariation - 0.5f) * 0.08f;
+        if (cell.WaterKind != HexWaterKind.None)
+            return baseColor;
+
+        var elevation = Math.Max(0f, cell.ElevationMeters);
+        var highlandBlend = SmoothBlend(250f, 1800f, elevation) * 0.16f;
+        var alpineBlend = SmoothBlend(1500f, 3600f, elevation) * 0.28f;
+        var summitBlend = SmoothBlend(3800f, 6500f, elevation) * 0.42f;
+        baseColor = baseColor.Lerp(new Color(0.39f, 0.43f, 0.31f), highlandBlend);
+        baseColor = baseColor.Lerp(new Color(0.50f, 0.45f, 0.37f), alpineBlend);
+        baseColor = baseColor.Lerp(new Color(0.70f, 0.69f, 0.62f), summitBlend);
+        var variation = (cell.VisualVariation - 0.5f) * 0.025f;
         return new Color(
             Mathf.Clamp(baseColor.R + variation, 0f, 1f),
             Mathf.Clamp(baseColor.G + variation, 0f, 1f),
             Mathf.Clamp(baseColor.B + variation, 0f, 1f));
+    }
+
+    private static Color OceanDepthColor(float depthMeters)
+    {
+        var blend = SmoothBlend(80f, 9000f, Math.Max(0f, depthMeters));
+        return new Color(0.045f, 0.27f, 0.37f).Lerp(new Color(0.018f, 0.105f, 0.23f), blend);
+    }
+
+    private static float SmoothBlend(float start, float end, float value)
+    {
+        var t = Mathf.Clamp((value - start) / (end - start), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     private static Color DebugColor(PlanetWorldCell cell, GenerationDebugMode mode)
