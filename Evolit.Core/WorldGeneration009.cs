@@ -435,6 +435,117 @@ internal static class WorldGeneration009Pipeline
         }
     }
 
+    private static void ApplyContinuousCoastCurvature(
+        WorldGenerationSettings settings,
+        CellId[] ids,
+        ulong seed,
+        float[] elevation,
+        int[] province)
+    {
+        var curvatureSeed = SeedMixer.Combine(seed, 0xC051UL);
+
+        for (var i = 0; i < elevation.Length; i++)
+        {
+            var magnitude = Math.Abs(elevation[i]);
+            if (magnitude > 650f)
+                continue;
+
+            var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
+            var regionSeed = SeedMixer.Combine(curvatureSeed, (ulong)(province[i] + 1));
+            var angle = Hash01(province[i] + 37, 911, regionSeed) * MathF.PI * 2f;
+            var cos = MathF.Cos(angle);
+            var sin = MathF.Sin(angle);
+            var u = x * cos + y * sin;
+            var v = -x * sin + y * cos;
+
+            // Anisotropic continuous-space fields produce broad bays/peninsulas
+            // at angles unrelated to the six hex axes. They are strongest only
+            // near sea level, so continental interiors remain unchanged.
+            var broad = Fbm(
+                u * 3.1f + 17f,
+                v * 2.15f - 19f,
+                SeedMixer.Combine(regionSeed, 1),
+                3) - 0.5f;
+            var detail = Fbm(
+                u * 7.2f - 23f,
+                v * 5.4f + 29f,
+                SeedMixer.Combine(regionSeed, 2),
+                2) - 0.5f;
+            var phase = Hash01(province[i] + 53, 929, regionSeed) * MathF.PI * 2f;
+            var curvedWave = MathF.Sin(
+                u * (5.2f + Hash01(province[i] + 71, 947, regionSeed) * 3.2f) +
+                phase) * 0.5f;
+
+            var coastStyle = 0.72f + Hash01(province[i] + 89, 953, regionSeed) * 0.58f;
+            var proximity = 1f - Math.Clamp(magnitude / 650f, 0f, 1f);
+            var perturbation =
+                (broad * 0.70f + detail * 0.22f + curvedWave * 0.08f) *
+                (150f + coastStyle * 115f) *
+                proximity;
+
+            elevation[i] += perturbation;
+        }
+    }
+
+    private static void RefineNarrowCoastalFeatures(
+        WorldTopology topology,
+        CellId[] ids,
+        ulong seed,
+        float[] elevation)
+    {
+        var scratch = (float[])elevation.Clone();
+
+        for (var i = 0; i < elevation.Length; i++)
+        {
+            if (Math.Abs(elevation[i]) > 340f)
+                continue;
+
+            var neighbors = topology.GetNeighborIndices(i);
+            if (neighbors.Length < 6)
+                continue;
+
+            Span<int> landDirections = stackalloc int[6];
+            var landCount = 0;
+            var waterCount = 0;
+
+            for (var direction = 0; direction < Directions.Length; direction++)
+            {
+                var neighborId = CellId.FromAxial(
+                    ids[i].Q + Directions[direction].Q,
+                    ids[i].R + Directions[direction].R);
+                if (!topology.TryGetIndex(neighborId, out var ni))
+                    continue;
+
+                if (elevation[ni] >= 0f)
+                    landDirections[landCount++] = direction;
+                else
+                    waterCount++;
+            }
+
+            if (elevation[i] >= 0f && landCount == 2 && waterCount == 4)
+            {
+                var diff = Math.Abs(landDirections[0] - landDirections[1]);
+                diff = Math.Min(diff, 6 - diff);
+
+                // A low one-cell connection between two larger shores is much
+                // more often rasterization noise than a meaningful isthmus.
+                if (diff >= 2 &&
+                    Hash01(ids[i].Q + 1201, ids[i].R - 1213, seed) < 0.72f)
+                {
+                    scratch[i] = -Math.Max(28f, Math.Abs(elevation[i]) * 0.55f);
+                }
+            }
+            else if (elevation[i] < 0f && landCount >= 5)
+            {
+                // Fill isolated one-cell coastal holes without touching larger
+                // bays or inland seas.
+                scratch[i] = Math.Max(20f, Math.Abs(elevation[i]) * 0.28f);
+            }
+        }
+
+        Array.Copy(scratch, elevation, elevation.Length);
+    }
+
     private static void AddContinentalShelfIslands(
         WorldGenerationSettings settings,
         CellId[] ids,
