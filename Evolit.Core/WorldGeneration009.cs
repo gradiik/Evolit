@@ -117,6 +117,11 @@ internal static class WorldGeneration009Pipeline
             islandSeed,
             elevation,
             province);
+        RefineNarrowCoastalFeatures(
+            topology,
+            ids,
+            SeedMixer.Combine(macroSeed, 0xC05FUL),
+            elevation);
         CleanupLandMask(topology, elevation);
         ApplyTectonicRelief(
             settings,
@@ -173,7 +178,8 @@ internal static class WorldGeneration009Pipeline
             topology,
             ids,
             elevation,
-            SeedMixer.Combine(erosionSeed, 1));
+            SeedMixer.Combine(erosionSeed, 1),
+            hydro);
         ApplyLakeWaterDepth(elevation, water, hydro);
         ApplyRiverWaterDepth(water, hydro);
         FinalizeHydrologicSubstrate(water, hydro, substrate);
@@ -202,30 +208,7 @@ internal static class WorldGeneration009Pipeline
             nutrients);
         var resourcesMs = Stopwatch.GetElapsedTime(resourcesStart).TotalMilliseconds;
 
-        var environmentStart = Stopwatch.GetTimestamp();
-        var environment = new EnvironmentStore(topology);
-        for (var i = 0; i < count; i++)
-        {
-            var pressure = Math.Clamp(
-                101.325f * MathF.Exp(-Math.Max(-500f, elevation[i]) / 8434f),
-                20f,
-                115f);
-
-            environment.SetInitial(ids[i], new EnvironmentCellState(
-                ElevationMeters: elevation[i],
-                WaterDepthMeters: water[i],
-                TemperatureCelsius: temperature[i],
-                Humidity: humidity[i],
-                PressureKPa: pressure,
-                LightAvailability: water[i] > 120f ? 0.55f : 1f,
-                MineralPotential: minerals[i],
-                NutrientPotential: nutrients[i],
-                OrganicMatter: 0f,
-                SubstrateDevelopment: 0f,
-                GeothermalPotential: geothermal[i],
-                Substrate: substrate[i]));
-        }
-        var environmentMs = Stopwatch.GetElapsedTime(environmentStart).TotalMilliseconds;
+        var environmentMs = 0.0;
 
         var cells = new GeneratedWorldCell[count];
         for (var i = 0; i < count; i++)
@@ -271,7 +254,6 @@ internal static class WorldGeneration009Pipeline
             Settings = settings,
             Topology = topology,
             Cells = cells,
-            Environment = environment,
             Summary = summary,
             Quality = quality,
             Metrics = new WorldGenerationMetrics(
@@ -285,6 +267,47 @@ internal static class WorldGeneration009Pipeline
                 environmentMs,
                 Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds)
         };
+    }
+
+    internal static void MaterializeEnvironment(GeneratedWorld world)
+    {
+        if (world.Environment is not null)
+            return;
+
+        var started = Stopwatch.GetTimestamp();
+        var environment = new EnvironmentStore(world.Topology);
+
+        for (var i = 0; i < world.Cells.Length; i++)
+        {
+            var cell = world.Cells[i];
+            environment.SetInitial(cell.Id, new EnvironmentCellState(
+                ElevationMeters: cell.ElevationMeters,
+                WaterDepthMeters: cell.WaterDepthMeters,
+                TemperatureCelsius: cell.TemperatureCelsius,
+                Humidity: cell.Humidity,
+                PressureKPa: cell.PressureKPa,
+                LightAvailability: cell.WaterDepthMeters > 120f ? 0.55f : 1f,
+                MineralPotential: cell.MineralPotential,
+                NutrientPotential: cell.NutrientPotential,
+                OrganicMatter: 0f,
+                SubstrateDevelopment: 0f,
+                GeothermalPotential: cell.GeothermalPotential,
+                Substrate: cell.Substrate));
+        }
+
+        world.Environment = environment;
+        var environmentMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        var m = world.Metrics;
+        world.Metrics = new WorldGenerationMetrics(
+            m.TopologyMs,
+            m.MacroElevationMs,
+            m.CoastBathymetryMs,
+            m.GeologyMs,
+            m.HydrologyMs,
+            m.ClimateMs,
+            m.ResourcesMs,
+            environmentMs,
+            m.TotalMs + environmentMs);
     }
 
     private static Plate[] BuildPlates(ulong seed)
@@ -503,9 +526,10 @@ internal static class WorldGeneration009Pipeline
             if (neighbors.Length < 6)
                 continue;
 
-            Span<int> landDirections = stackalloc int[6];
             var landCount = 0;
             var waterCount = 0;
+            var firstLandDirection = -1;
+            var secondLandDirection = -1;
 
             for (var direction = 0; direction < Directions.Length; direction++)
             {
@@ -516,14 +540,22 @@ internal static class WorldGeneration009Pipeline
                     continue;
 
                 if (elevation[ni] >= 0f)
-                    landDirections[landCount++] = direction;
+                {
+                    if (landCount == 0)
+                        firstLandDirection = direction;
+                    else if (landCount == 1)
+                        secondLandDirection = direction;
+                    landCount++;
+                }
                 else
+                {
                     waterCount++;
+                }
             }
 
             if (elevation[i] >= 0f && landCount == 2 && waterCount == 4)
             {
-                var diff = Math.Abs(landDirections[0] - landDirections[1]);
+                var diff = Math.Abs(firstLandDirection - secondLandDirection);
                 diff = Math.Min(diff, 6 - diff);
 
                 // A low one-cell connection between two larger shores is much
@@ -1072,24 +1104,35 @@ internal static class WorldGeneration009Pipeline
         WorldTopology topology,
         CellId[] ids,
         float[] elevation,
-        ulong seed)
+        ulong seed,
+        HydrologyResult? reuse = null)
     {
         var count = elevation.Length;
-        var filled = (float[])elevation.Clone();
-        var drainage = new int[count];
-        var accumulation = new float[count];
-        var slope = new float[count];
-        var lakes = new bool[count];
-        var rivers = new bool[count];
-        var basin = new int[count];
-        var riverLength = new int[count];
-        var riverWidth = new float[count];
-        var streamOrder = new int[count];
-        var upstreamBranches = new int[count];
-        var riverDirection = new int[count];
+        var filled = reuse?.FilledElevation ?? new float[count];
+        var drainage = reuse?.Drainage ?? new int[count];
+        var accumulation = reuse?.Accumulation ?? new float[count];
+        var slope = reuse?.Slope ?? new float[count];
+        var lakes = reuse?.Lakes ?? new bool[count];
+        var rivers = reuse?.Rivers ?? new bool[count];
+        var basin = reuse?.BasinId ?? new int[count];
+        var riverLength = reuse?.RiverLength ?? new int[count];
+        var riverWidth = reuse?.RiverWidth ?? new float[count];
+        var streamOrder = reuse?.StreamOrder ?? new int[count];
+        var upstreamBranches = reuse?.UpstreamBranches ?? new int[count];
+        var riverDirection = reuse?.RiverDirection ?? new int[count];
         var visited = new bool[count];
+
+        Array.Copy(elevation, filled, count);
         Array.Fill(drainage, -1);
+        Array.Clear(accumulation);
+        Array.Clear(slope);
+        Array.Clear(lakes);
+        Array.Clear(rivers);
         Array.Fill(basin, -1);
+        Array.Clear(riverLength);
+        Array.Clear(riverWidth);
+        Array.Clear(streamOrder);
+        Array.Clear(upstreamBranches);
         Array.Fill(riverDirection, -1);
 
         var queue = new PriorityQueue<int, float>();
@@ -1253,6 +1296,9 @@ internal static class WorldGeneration009Pipeline
             var targetSurface = lakes[parent] ? filled[parent] : elevation[parent];
             slope[i] = Math.Max(0f, sourceSurface - targetSurface);
         }
+
+        if (reuse is not null)
+            return reuse;
 
         return new HydrologyResult
         {
@@ -2078,48 +2124,6 @@ internal static class WorldGeneration009Pipeline
         }
 
         return components;
-    }
-
-    private static int CountInlandWaterComponents(
-        WorldTopology topology,
-        GeneratedWorldCell[] cells)
-    {
-        var visited = new bool[cells.Length];
-        var queue = new Queue<int>();
-        var count = 0;
-
-        for (var i = 0; i < cells.Length; i++)
-        {
-            if (visited[i] || cells[i].ElevationMeters >= 0f)
-                continue;
-
-            var touchesBoundary = false;
-            queue.Clear();
-            queue.Enqueue(i);
-            visited[i] = true;
-
-            while (queue.Count > 0)
-            {
-                var at = queue.Dequeue();
-                if (topology.GetNeighborIndices(at).Length < 6)
-                    touchesBoundary = true;
-
-                var neighbors = topology.GetNeighborIndices(at);
-                for (var n = 0; n < neighbors.Length; n++)
-                {
-                    var ni = neighbors[n];
-                    if (visited[ni] || cells[ni].ElevationMeters >= 0f)
-                        continue;
-                    visited[ni] = true;
-                    queue.Enqueue(ni);
-                }
-            }
-
-            if (!touchesBoundary)
-                count++;
-        }
-
-        return count;
     }
 
     private static int[] DistanceToWater(WorldTopology topology, float[] water)

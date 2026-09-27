@@ -7,6 +7,9 @@ public static class WorldMovementRules
 {
     public static float BaseMovementCost(WorldHexCell cell)
     {
+        if (cell.WaterKind == HexWaterKind.River)
+            return 1.6f;
+
         var baseCost = cell.Terrain switch
         {
             HexTerrainType.DeepWater => 2.8f,
@@ -16,6 +19,7 @@ public static class WorldMovementRules
             HexTerrainType.Sand => 1.18f,
             HexTerrainType.Desert => 1.32f,
             HexTerrainType.Grassland => 1.0f,
+            HexTerrainType.Highland => 1.18f,
             HexTerrainType.Rocky => 1.45f,
             HexTerrainType.Mountain => 2.25f,
             _ => 1.0f

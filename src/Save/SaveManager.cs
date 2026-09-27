@@ -37,9 +37,10 @@ public sealed class SaveManager
         GameTimeController? time = null,
         SimulationSpeedState? speed = null,
         DemoWorldDataProvider? world = null,
-        CoreSimulationSnapshot? core = null)
+        CoreSimulationSnapshot? core = null,
+        GameViewSaveState? viewState = null)
     {
-        var document = BuildDocument(session, ManualType, null, time, speed, world, core);
+        var document = BuildDocument(session, ManualType, null, time, speed, world, core, viewState);
         var path = Path.Combine(_saveDirectory, $"manual_{session.SaveId}.json");
         return WriteDocument(path, document);
     }
@@ -49,7 +50,8 @@ public sealed class SaveManager
         GameTimeController? time = null,
         SimulationSpeedState? speed = null,
         DemoWorldDataProvider? world = null,
-        CoreSimulationSnapshot? core = null)
+        CoreSimulationSnapshot? core = null,
+        GameViewSaveState? viewState = null)
     {
         var slots = ListSaves()
             .Where(slot => slot.Document?.SaveType == AutosaveType && slot.Document.AutosaveIndex.HasValue)
@@ -60,7 +62,7 @@ public sealed class SaveManager
             ? 1
             : (slots[0].Document!.AutosaveIndex!.Value % AutosaveSlots) + 1;
 
-        var document = BuildDocument(session, AutosaveType, nextIndex, time, speed, world, core);
+        var document = BuildDocument(session, AutosaveType, nextIndex, time, speed, world, core, viewState);
         var path = Path.Combine(_saveDirectory, $"autosave_{nextIndex}.json");
         return WriteDocument(path, document);
     }
@@ -149,7 +151,8 @@ public sealed class SaveManager
         GameTimeController? time,
         SimulationSpeedState? speed,
         DemoWorldDataProvider? world,
-        CoreSimulationSnapshot? core)
+        CoreSimulationSnapshot? core,
+        GameViewSaveState? viewState)
     {
         return new SaveDocument
         {
@@ -183,6 +186,7 @@ public sealed class SaveManager
                         Paused = speed.Paused,
                         Multiplier = speed.Multiplier
                     },
+                    View = viewState,
                     World = world.CaptureSaveState(),
                     Core = core
                 }
@@ -282,6 +286,14 @@ public sealed class SaveManager
             return false;
         }
 
+        if (document.WorldShape < 0 ||
+            document.WorldShape > byte.MaxValue ||
+            !Enum.IsDefined((WorldShape)document.WorldShape))
+        {
+            error = "Некорректный тип мира.";
+            return false;
+        }
+
         if (document.SaveType == AutosaveType &&
             (!document.AutosaveIndex.HasValue ||
              document.AutosaveIndex.Value < 1 ||
@@ -304,6 +316,38 @@ public sealed class SaveManager
             {
                 error = "Некорректная скорость в runtime-состоянии.";
                 return false;
+            }
+            if (document.Runtime.View is not null)
+            {
+                var viewShape = document.Runtime.View.Shape;
+                if (viewShape < 0 || viewShape > byte.MaxValue || !Enum.IsDefined((WorldShape)viewShape))
+                {
+                    error = "Некорректный тип камеры в runtime-состоянии.";
+                    return false;
+                }
+                var worldShape = document.WorldShape is >= 0 and <= byte.MaxValue &&
+                                 Enum.IsDefined((WorldShape)document.WorldShape)
+                    ? (WorldShape)document.WorldShape
+                    : WorldShape.Flat;
+                if ((WorldShape)viewShape != worldShape)
+                {
+                    error = "Тип сохранённой камеры не совпадает с типом мира.";
+                    return false;
+                }
+                if ((WorldShape)viewShape == WorldShape.Planet)
+                {
+                    if (document.Runtime.View.PlanetDistance < 0f)
+                    {
+                        error = "Некорректная дистанция камеры планеты.";
+                        return false;
+                    }
+                    if (document.Runtime.View.SelectedCellId.HasValue &&
+                        !new CellId(document.Runtime.View.SelectedCellId.Value).IsPlanet)
+                    {
+                        error = "Planet view содержит некорректный CellId.";
+                        return false;
+                    }
+                }
             }
             if (document.Runtime.World.Entities.Count == 0 || document.Runtime.World.Species.Count == 0)
             {

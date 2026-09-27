@@ -77,3 +77,44 @@ The headless verification suite includes planet checks for:
 - same-seed determinism;
 - different-seed environment variation;
 - Core snapshot round trip with planet topology.
+
+
+## Completion pass
+
+The post-foundation 0.1.0 pass keeps the original geodesic topology but tightens the full gameplay path.
+
+- Compatible 0.0.9 world-generation improvements are carried into the flat mode: physical terrain remains underneath rivers, `Highland` terrain is preserved, stream order/upstream/direction metadata is saved, and flat rivers use the cached batched ribbon presentation.
+- Planet macro geography samples seamless 3D noise through deterministic spherical domain warp and graph smoothing instead of adding any UV or map-edge logic.
+- Planet climate keeps the selected generated climate as the runtime baseline, while atmosphere transport continues to use the local tangent basis.
+- Closed-sphere priority-flood drainage uses deterministic priority ordering and validates direct-neighbor flow, downstream accumulation, uphill flow and cycles.
+- Planet terrain relief now shares corner elevations between adjacent dual cells. Terrain bathymetry is a physical surface; ocean/lake water is a separate batched water mesh; rivers are a separate batched spherical ribbon mesh.
+- River cells keep their underlying land terrain and movement rules. A river is hydrology metadata/presentation, not a blue replacement terrain polygon.
+- Planet save state persists drainage/river metadata plus orbit camera, distance, selected entity and selected cell. Missing view data remains compatible with older schema-1 saves.
+- Picking first searches nearby spatial buckets before the guarded full-scan fallback.
+
+### Local verification entry points
+
+The headless executable exposes:
+
+- `verify` — full Core verification including Planet verification.
+- `planet-verify` — topology, deterministic generation, physical/hydrology validation, Large topology construction and Core snapshot round trip.
+- `planet-seeds [count]` — deterministic Medium-planet seed sweep, default 20.
+- `planet-benchmark` — Small/Medium/Large generation timings, allocations and memory deltas.
+- Existing `worldgen-verify`, `worldgen-quality`, `environment-verify` and benchmark commands remain available for Flat regression checks.
+
+GitHub Actions are not part of the ordinary development verification path. Final release CI remains gated by explicit release approval.
+
+
+### Final planet-generation refinements
+
+The completed 0.1.0 pipeline also applies these spherical-specific rules:
+
+- Macro geography is driven by 4–5 deterministic, strongly separated continental anchors combined with pseudo-plate geology and seamless 3D domain-warped noise. This reduces accidental single-supercontinent worlds while still allowing landmasses to merge naturally at higher land settings.
+- The global ocean is classified from major connected below-sea-level components. Small disconnected negative basins are retained as inland seas/lakes instead of being treated as implicit world-edge ocean.
+- Priority-flood drainage starts from the classified ocean graph. Inland depressions receive deterministic spill routes; tiny shallow lake noise is pruned by raising the terrain to its spill surface, while genuine below-sea-level inland basins remain water.
+- River validation checks direct-neighbor drainage, cycle freedom, hydraulic direction, downstream flow accumulation, nondecreasing river width and nondecreasing stream order.
+- Dual-cell polygon corners use spherical triangle circumcenters rather than normalized triangle centroids, improving Voronoi boundaries around ordinary hexagons and the 12 pentagons.
+- Physical bathymetric terrain, visible ocean/lake water, rivers, grid, selection and entity markers are separate batched meshes. Adjacent terrain cells share corner elevations, removing the previous pyramid/crack failure mode.
+- Planet entities are rendered through one batched marker mesh instead of one `MeshInstance3D` per entity.
+- LOD hides cell grid, entity markers and finally rivers as the camera moves away, leaving a clean global planet view.
+- Core environment snapshots persist the generated climate baseline and target pressure, preserving deterministic continued simulation across Planet save/load.

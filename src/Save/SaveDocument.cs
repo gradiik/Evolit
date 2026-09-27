@@ -32,6 +32,7 @@ public sealed class GameRuntimeSaveState
 {
     public GameTimeSaveState Time { get; set; } = new();
     public SimulationSpeedSaveState Speed { get; set; } = new();
+    public GameViewSaveState? View { get; set; }
     public DemoWorldSaveState World { get; set; } = new();
     public CoreSimulationSnapshot? Core { get; set; }
 }
@@ -47,6 +48,21 @@ public sealed class SimulationSpeedSaveState
 {
     public bool Paused { get; set; }
     public int Multiplier { get; set; } = 1;
+}
+
+
+public sealed class GameViewSaveState
+{
+    public int Shape { get; set; } = (int)WorldShape.Flat;
+    public float FlatCameraX { get; set; }
+    public float FlatCameraY { get; set; }
+    public float FlatZoom { get; set; } = 1f;
+    public float PlanetOrbitX { get; set; }
+    public float PlanetOrbitY { get; set; }
+    public float PlanetOrbitZ { get; set; }
+    public float PlanetDistance { get; set; }
+    public string? SelectedEntityId { get; set; }
+    public long? SelectedCellId { get; set; }
 }
 
 public sealed class DemoWorldSaveState
@@ -170,6 +186,9 @@ public sealed class WorldHexCellSaveState
     public int BasinId { get; set; } = -1;
     public int RiverLength { get; set; }
     public float RiverWidth { get; set; }
+    public int StreamOrder { get; set; }
+    public int UpstreamBranches { get; set; }
+    public int RiverDirection { get; set; } = -1;
 }
 
 
@@ -205,4 +224,8 @@ public sealed class PlanetWorldCellSaveState
     public int BasinId { get; set; } = -1;
     public int RiverLength { get; set; }
     public float RiverWidth { get; set; }
+    public int DrainageTarget { get; set; } = -1;
+    public int StreamOrder { get; set; }
+    public int UpstreamBranches { get; set; }
+    public int RiverDirection { get; set; } = -1;
 }

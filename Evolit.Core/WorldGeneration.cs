@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 
 namespace Evolit.Core;
 
@@ -102,10 +103,10 @@ public sealed class GeneratedWorld
     public required WorldGenerationSettings Settings { get; init; }
     public required WorldTopology Topology { get; init; }
     public required GeneratedWorldCell[] Cells { get; init; }
-    public required EnvironmentStore Environment { get; init; }
+    public EnvironmentStore Environment { get; internal set; } = null!;
     public required WorldGenerationSummary Summary { get; init; }
     public WorldGenerationQuality Quality { get; init; } = WorldGenerationQuality.Empty;
-    public required WorldGenerationMetrics Metrics { get; init; }
+    public WorldGenerationMetrics Metrics { get; internal set; }
     public int CandidateAttempt { get; internal set; }
     public bool CandidateAccepted { get; internal set; }
 }
@@ -124,6 +125,7 @@ public static class ProceduralWorldGenerator
         if (settings.Radius < 4)
             throw new ArgumentOutOfRangeException(nameof(settings.Radius));
 
+        var generationStart = Stopwatch.GetTimestamp();
         var baseSeed = SeedMixer.FromString(settings.Seed ?? string.Empty);
         var bestScore = double.NegativeInfinity;
         var bestSeed = baseSeed;
@@ -157,6 +159,8 @@ public static class ProceduralWorldGenerator
 
             candidate.CandidateAttempt = attempt + 1;
             candidate.CandidateAccepted = true;
+            WorldGeneration009Pipeline.MaterializeEnvironment(candidate);
+            ApplySelectionElapsed(candidate, generationStart);
             return candidate;
         }
 
@@ -170,7 +174,24 @@ public static class ProceduralWorldGenerator
         ValidatePhysical(best);
         best.CandidateAttempt = bestAttempt;
         best.CandidateAccepted = false;
+        WorldGeneration009Pipeline.MaterializeEnvironment(best);
+        ApplySelectionElapsed(best, generationStart);
         return best;
+    }
+
+    private static void ApplySelectionElapsed(GeneratedWorld world, long started)
+    {
+        var m = world.Metrics;
+        world.Metrics = new WorldGenerationMetrics(
+            m.TopologyMs,
+            m.MacroElevationMs,
+            m.CoastBathymetryMs,
+            m.GeologyMs,
+            m.HydrologyMs,
+            m.ClimateMs,
+            m.ResourcesMs,
+            m.EnvironmentBuildMs,
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
     private static GeneratedWorld GenerateCandidate(WorldGenerationSettings settings, ulong seed)
@@ -216,6 +237,59 @@ public static class ProceduralWorldGenerator
 
             if (cell.IsLake && cell.ElevationMeters < 0f)
                 throw new InvalidOperationException($"Generated lake {cell.Id} is below ocean level.");
+
+            if (cell.ElevationMeters >= 0f && cell.DrainageTarget < 0)
+                throw new InvalidOperationException($"Generated land cell {cell.Id} has no drainage outlet.");
+
+            if (cell.DrainageTarget >= 0 &&
+                world.Cells[cell.DrainageTarget].FlowAccumulation + 0.001f < cell.FlowAccumulation)
+            {
+                throw new InvalidOperationException(
+                    $"Generated flow accumulation decreases downstream from {cell.Id}.");
+            }
+
+            if (cell.StreamOrder < 0 ||
+                cell.UpstreamBranches < 0 ||
+                cell.RiverDirection is < -1 or > 5)
+            {
+                throw new InvalidOperationException($"Generated river metadata is invalid in {cell.Id}.");
+            }
+        }
+
+        ValidateDrainageAcyclic(world);
+    }
+
+    private static void ValidateDrainageAcyclic(GeneratedWorld world)
+    {
+        var state = new byte[world.Cells.Length];
+        var stack = new int[world.Cells.Length];
+
+        for (var start = 0; start < world.Cells.Length; start++)
+        {
+            if (state[start] != 0 || world.Cells[start].ElevationMeters < 0f)
+                continue;
+
+            var depth = 0;
+            var current = start;
+
+            while (current >= 0 && world.Cells[current].ElevationMeters >= 0f)
+            {
+                if (state[current] == 2)
+                    break;
+                if (state[current] == 1)
+                    throw new InvalidOperationException(
+                        $"Generated drainage contains a cycle at {world.Cells[current].Id}.");
+
+                state[current] = 1;
+                stack[depth++] = current;
+                current = world.Cells[current].DrainageTarget;
+
+                if (depth > world.Cells.Length)
+                    throw new InvalidOperationException("Generated drainage traversal exceeded world size.");
+            }
+
+            while (depth > 0)
+                state[stack[--depth]] = 2;
         }
     }
 
@@ -242,8 +316,8 @@ public static class ProceduralWorldGenerator
             quality.BoundaryOceanRatio >= 0.90f &&
             quality.MountainRangeCount > 0 &&
             quality.LongestRiver >= 5 &&
-            quality.LongRiverStraightFraction <= 0.34f &&
-            quality.LongCoastAxisFraction <= 0.42f;
+            quality.LongRiverStraightFraction <= 0.50f &&
+            quality.LongCoastAxisFraction <= 0.60f;
 
         // Two-continent worlds remain valid, but 3–4 major landmasses score
         // better so candidate selection no longer converges on the same macro

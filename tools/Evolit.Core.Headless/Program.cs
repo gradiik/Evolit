@@ -48,12 +48,32 @@ static int ProgramMain(string[] args)
 
         if (string.Equals(args[0], "worldgen-quality", StringComparison.OrdinalIgnoreCase))
         {
-            RunWorldgenQuality();
+            var seedCount = args.Length >= 2 ? int.Parse(args[1]) : 20;
+            RunWorldgenQuality(seedCount);
             return 0;
         }
         if (string.Equals(args[0], "worldgen-gallery", StringComparison.OrdinalIgnoreCase))
         {
-            RunWorldgenGallery(args.Length >= 2 ? args[1] : "worldgen-gallery");
+            var directory = args.Length >= 2 ? args[1] : "worldgen-gallery";
+            var seedCount = args.Length >= 3 ? int.Parse(args[2]) : 15;
+            RunWorldgenGallery(directory, seedCount);
+            return 0;
+        }
+
+        if (string.Equals(args[0], "planet-verify", StringComparison.OrdinalIgnoreCase))
+        {
+            PlanetVerification.Run();
+            return 0;
+        }
+        if (string.Equals(args[0], "planet-seeds", StringComparison.OrdinalIgnoreCase))
+        {
+            var count = args.Length >= 2 ? int.Parse(args[1]) : 20;
+            PlanetVerification.RunSeedSweep(count);
+            return 0;
+        }
+        if (string.Equals(args[0], "planet-benchmark", StringComparison.OrdinalIgnoreCase))
+        {
+            PlanetVerification.RunBenchmark();
             return 0;
         }
 
@@ -109,7 +129,7 @@ static int ProgramMain(string[] args)
             return 0;
         }
 
-        Console.Error.WriteLine("Usage: verify | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | worldgen-quality | worldgen-gallery [directory] | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
+        Console.Error.WriteLine("Usage: verify | planet-verify | planet-seeds [count] | planet-benchmark | worldgen-verify | worldgen-seeds | worldgen-summary [seed] | worldgen-benchmark | worldgen-quality [count] | worldgen-gallery [directory] [count] | environment-verify | bootstrap-test | environment-benchmark [ticks] | optimization-benchmark [ticks] | snapshot-benchmark [organisms] | benchmark [organisms] [ticks] [seed] | benchmark-all [ticks] [seed]");
         return 2;
     }
     catch (Exception ex)
@@ -366,11 +386,15 @@ static bool GeneratedWorldEquivalent(GeneratedWorld a, GeneratedWorld b, bool co
             x.CoastDistance != y.CoastDistance ||
             x.BasinId != y.BasinId ||
             x.RiverLength != y.RiverLength ||
-            x.RiverWidth != y.RiverWidth)
+            x.RiverWidth != y.RiverWidth ||
+            x.StreamOrder != y.StreamOrder ||
+            x.UpstreamBranches != y.UpstreamBranches ||
+            x.RiverDirection != y.RiverDirection)
             return false;
     }
 
-    return true;
+    return a.CandidateAttempt == b.CandidateAttempt &&
+           a.CandidateAccepted == b.CandidateAccepted;
 }
 
 static void RunWorldgenSeeds()
@@ -405,8 +429,12 @@ static void RunWorldgenBenchmark()
     foreach (var radius in new[] { WorldGenerationScale.SmallRadius, WorldGenerationScale.MediumRadius, WorldGenerationScale.LargeRadius })
     {
         GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         var before = GC.GetTotalMemory(true);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var world = ProceduralWorldGenerator.Generate(new WorldGenerationSettings($"bench-{radius}", radius));
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         var bootstrap = BootstrapGeneratedWorld(world, $"bench-{radius}");
         var memory = Math.Max(0, GC.GetTotalMemory(false) - before);
         var m = world.Metrics;
@@ -417,14 +445,37 @@ static void RunWorldgenBenchmark()
             $"hydrology_ms={m.HydrologyMs:0.###} climate_ms={m.ClimateMs:0.###} " +
             $"resources_ms={m.ResourcesMs:0.###} environment_build_ms={m.EnvironmentBuildMs:0.###} " +
             $"generation_total_ms={m.TotalMs:0.###} core_construct_ms={bootstrap.CoreConstructionMs:0.###} " +
-            $"bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} converged={bootstrap.Converged} memory_delta={memory}");
+            $"bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} converged={bootstrap.Converged} " +
+            $"candidate_attempt={world.CandidateAttempt} accepted={world.CandidateAccepted} allocated_bytes={allocated} memory_delta={memory}");
     }
 }
 
-static void RunWorldgenQuality()
+static void RunWorldgenQuality(int seedCount)
 {
+    if (seedCount < 1 || seedCount > 500)
+        throw new ArgumentOutOfRangeException(nameof(seedCount), "Seed count must be 1..500.");
+
     var failures = new List<string>();
-    for (var i = 0; i < 20; i++)
+    var continentHistogram = new int[6];
+    var largestSum = 0.0;
+    var largestMax = 0.0;
+    var attemptsSum = 0L;
+    var maxAttempt = 0;
+    var attemptZeroAccepts = 0;
+    var riverSystemsSum = 0L;
+    var riverCellsSum = 0L;
+    var longestRiverSum = 0L;
+    var longestRiverMax = 0;
+    var tributariesSum = 0L;
+    var riverStraightMeanSum = 0.0;
+    var riverStraightMax = 0;
+    var coastAxisMeanSum = 0.0;
+    var coastAxisMax = 0;
+    var rockyLandSum = 0.0;
+    var mountainLandSum = 0.0;
+    var plainLandSum = 0.0;
+
+    for (var i = 0; i < seedCount; i++)
     {
         var seed = $"quality-{i:00}";
         var world = ProceduralWorldGenerator.Generate(
@@ -435,6 +486,33 @@ static void RunWorldgenQuality()
             ValidateGeneratedWorld(world);
             ValidateWorldgenQuality(world);
             PrintWorldgenQuality(seed, world);
+
+            var q = world.Quality;
+            var s = world.Summary;
+            var landCells = Math.Max(1, (int)Math.Round(s.Cells * s.LandRatio));
+            var largestPct = s.LargestContinentCells * 100.0 / landCells;
+            largestSum += largestPct;
+            largestMax = Math.Max(largestMax, largestPct);
+
+            var bucket = Math.Clamp(q.ContinentCount, 0, 5);
+            continentHistogram[bucket]++;
+            attemptsSum += world.CandidateAttempt;
+            maxAttempt = Math.Max(maxAttempt, world.CandidateAttempt);
+            if (world.CandidateAttempt == 1 && world.CandidateAccepted)
+                attemptZeroAccepts++;
+
+            riverSystemsSum += q.RiverCount;
+            riverCellsSum += q.RiverTotalLength;
+            longestRiverSum += q.LongestRiver;
+            longestRiverMax = Math.Max(longestRiverMax, q.LongestRiver);
+            tributariesSum += q.TributaryCount;
+            riverStraightMeanSum += q.MeanRiverStraightRun;
+            riverStraightMax = Math.Max(riverStraightMax, q.LongestRiverStraightRun);
+            coastAxisMeanSum += q.MeanCoastAxisRun;
+            coastAxisMax = Math.Max(coastAxisMax, q.LongestCoastAxisRun);
+            rockyLandSum += q.RockyLandRatio;
+            mountainLandSum += q.MountainLandRatio;
+            plainLandSum += q.PlainLandRatio;
         }
         catch (Exception ex)
         {
@@ -443,18 +521,41 @@ static void RunWorldgenQuality()
         }
     }
 
+    Console.WriteLine(
+        $"WORLDGEN_HISTOGRAM seeds={seedCount} " +
+        $"continents_1={continentHistogram[1]} continents_2={continentHistogram[2]} " +
+        $"continents_3={continentHistogram[3]} continents_4={continentHistogram[4]} continents_5plus={continentHistogram[5]} " +
+        $"mean_largest_land={(seedCount == failures.Count ? 0 : largestSum / Math.Max(1, seedCount - failures.Count)):0.0}% " +
+        $"max_largest_land={largestMax:0.0}% mean_attempts={attemptsSum / (double)Math.Max(1, seedCount - failures.Count):0.00} " +
+        $"max_attempt={maxAttempt} accepted_attempt0={attemptZeroAccepts}");
+
+    var passed = Math.Max(1, seedCount - failures.Count);
+    Console.WriteLine(
+        $"WORLDGEN_GEOMETRY_SUMMARY seeds={seedCount - failures.Count} " +
+        $"mean_river_systems={riverSystemsSum / (double)passed:0.00} " +
+        $"mean_river_cells_per_system={(riverSystemsSum == 0 ? 0 : riverCellsSum / (double)riverSystemsSum):0.00} " +
+        $"mean_longest_river={longestRiverSum / (double)passed:0.00} max_longest_river={longestRiverMax} " +
+        $"mean_tributaries={tributariesSum / (double)passed:0.00} " +
+        $"mean_river_straight_run={riverStraightMeanSum / passed:0.###} max_river_straight_run={riverStraightMax} " +
+        $"mean_coast_axis_run={coastAxisMeanSum / passed:0.###} max_coast_axis_run={coastAxisMax} " +
+        $"mean_plain_land={plainLandSum / passed:P1} mean_rocky_land={rockyLandSum / passed:P1} " +
+        $"mean_mountain_land={mountainLandSum / passed:P1}");
+
     if (failures.Count > 0)
         throw new InvalidOperationException(
-            $"World generation quality failed for {failures.Count}/20 seeds: {string.Join(" | ", failures)}");
+            $"World generation quality failed for {failures.Count}/{seedCount} seeds: {string.Join(" | ", failures)}");
 
-    Console.WriteLine("WORLDGEN QUALITY PASS seeds=20");
+    Console.WriteLine($"WORLDGEN QUALITY PASS seeds={seedCount}");
 }
 
-static void RunWorldgenGallery(string directory)
+static void RunWorldgenGallery(string directory, int seedCount)
 {
+    if (seedCount < 1 || seedCount > 100)
+        throw new ArgumentOutOfRangeException(nameof(seedCount), "Gallery count must be 1..100.");
+
     Directory.CreateDirectory(directory);
 
-    for (var i = 0; i < 10; i++)
+    for (var i = 0; i < seedCount; i++)
     {
         var seed = $"gallery-{i:00}";
         var world = ProceduralWorldGenerator.Generate(
@@ -466,7 +567,7 @@ static void RunWorldgenGallery(string directory)
         Console.WriteLine($"WORLDGEN_GALLERY seed={seed} path={path}");
     }
 
-    Console.WriteLine($"WORLDGEN GALLERY PASS directory={Path.GetFullPath(directory)} files=10");
+    Console.WriteLine($"WORLDGEN GALLERY PASS directory={Path.GetFullPath(directory)} files={seedCount}");
 }
 
 static void WriteWorldSvg(GeneratedWorld world, string path)
@@ -512,8 +613,15 @@ static string GalleryColor(GeneratedWorldCell cell)
     }
     if (cell.IsLake) return "#178f97";
     if (cell.IsRiver) return "#38aeb0";
-    if (cell.ElevationMeters > 2200f && cell.Slope > 130f) return "#b6b7ae";
-    if (cell.ElevationMeters > 1200f || cell.TectonicUplift > 0.5f) return "#6d7564";
+    if ((cell.ElevationMeters > 1600f && cell.Slope > 150f) || cell.ElevationMeters > 3000f)
+        return "#8f958d";
+    if (cell.Slope > 175f ||
+        cell.ElevationMeters > 1950f ||
+        (cell.Substrate == SubstrateKind.BareRock && cell.ElevationMeters > 1100f && cell.Slope > 85f) ||
+        (cell.Substrate == SubstrateKind.Basalt && cell.ElevationMeters > 850f))
+        return "#68705f";
+    if (cell.ElevationMeters > 900f)
+        return "#73805a";
     if (cell.Humidity < 0.24f) return "#a68a50";
     if (cell.Humidity > 0.65f) return "#477b4e";
     return "#6f8a52";
@@ -542,6 +650,12 @@ static void ValidateWorldgenQuality(GeneratedWorld world)
         throw new InvalidOperationException("No drainage basins.");
     if (!float.IsFinite(q.MeanSlope) || q.MeanSlope < 0f)
         throw new InvalidOperationException("Invalid mean slope.");
+    if (q.LongRiverStraightFraction > 0.62f)
+        throw new InvalidOperationException("River network is dominated by long straight hex-axis runs.");
+    if (q.LongCoastAxisFraction > 0.72f)
+        throw new InvalidOperationException("Coastline is dominated by long same-axis runs.");
+    if (q.RockyLandRatio > 0.48f)
+        throw new InvalidOperationException("Rocky terrain dominates too much land.");
 }
 
 static void PrintWorldgenQuality(string seed, GeneratedWorld world)
@@ -553,13 +667,17 @@ static void PrintWorldgenQuality(string seed, GeneratedWorld world)
     var secondPct = q.SecondLargestContinentCells * 100.0 / landCells;
 
     Console.WriteLine(
-        $"WORLDGEN_QUALITY seed={seed} continents={q.ContinentCount} land={s.LandRatio:P1} " +
+        $"WORLDGEN_QUALITY seed={seed} continents={q.ContinentCount} land={s.LandRatio:P1} water={(1f-s.LandRatio):P1} " +
         $"largest_land={largestPct:0.0}% second_land={secondPct:0.0}% islands={s.IslandCount} tiny_islands={q.TinyIslandCount} " +
         $"inland_water={q.InlandWaterComponents} coast_edges={q.CoastlineEdges} coast_complexity={q.CoastlineComplexity:0.###} " +
         $"mountain_ranges={q.MountainRangeCount} rivers={q.RiverCount} river_cells={q.RiverTotalLength} " +
         $"longest_river={q.LongestRiver} tributaries={q.TributaryCount} lakes={q.LakeCount} lake_cells={s.LakeCells} " +
-        $"largest_lake={q.LargestLakeCells} basins={q.DrainageBasinCount} boundary_ocean={q.BoundaryOceanRatio:P1} " +
-        $"mean_slope={q.MeanSlope:0.###}");
+        $"largest_lake={q.LargestLakeCells} basins={q.DrainageBasinCount} inland_seas={q.InlandSeaCount} largest_inland_sea={q.LargestInlandSeaCells} " +
+        $"boundary_ocean={q.BoundaryOceanRatio:P1} mean_slope={q.MeanSlope:0.###} " +
+        $"river_straight_max={q.LongestRiverStraightRun} river_straight_mean={q.MeanRiverStraightRun:0.###} river_long_fraction={q.LongRiverStraightFraction:P1} " +
+        $"coast_axis_max={q.LongestCoastAxisRun} coast_axis_mean={q.MeanCoastAxisRun:0.###} coast_long_fraction={q.LongCoastAxisFraction:P1} " +
+        $"plain_land={q.PlainLandRatio:P1} rocky_land={q.RockyLandRatio:P1} mountain_land={q.MountainLandRatio:P1} " +
+        $"candidate_attempt={world.CandidateAttempt} candidate_accepted={world.CandidateAccepted}");
 }
 
 static void ValidateGeneratedWorld(GeneratedWorld world)
@@ -653,6 +771,8 @@ static void PrintWorldgenSummary(
         $"mountain_ranges={q.MountainRangeCount} river_systems={q.RiverCount} river_cells={q.RiverTotalLength} longest_river={q.LongestRiver} tributaries={q.TributaryCount} lakes={s.LakeCells} basins={q.DrainageBasinCount} " +
         $"elevation={s.MinElevationMeters:0}..{s.MaxElevationMeters:0}m max_water={s.MaxWaterDepthMeters:0}m " +
         $"temp={s.MinTemperatureCelsius:0.0}..{s.MaxTemperatureCelsius:0.0}C humidity={s.MinHumidity:P0}..{s.MaxHumidity:P0} " +
+        $"river_straight_max={q.LongestRiverStraightRun} coast_axis_max={q.LongestCoastAxisRun} rocky_land={q.RockyLandRatio:P1} " +
+        $"candidate_attempt={world.CandidateAttempt} accepted={world.CandidateAccepted} " +
         $"generation_ms={world.Metrics.TotalMs:0.###} core_ms={bootstrap.CoreConstructionMs:0.###} bootstrap_ms={bootstrap.BootstrapMs:0.###} bootstrap_ticks={bootstrap.Ticks} " +
         $"converged={bootstrap.Converged} final_change={bootstrap.FinalChange:0.######}");
 }

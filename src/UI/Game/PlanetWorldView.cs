@@ -15,6 +15,8 @@ public sealed partial class PlanetWorldView : Control
     private const float MinDistance = 4.25f;
     private const float MaxDistance = 12.5f;
     private const float GridVisibleDistance = 6.6f;
+    private const float EntityVisibleDistance = 7.0f;
+    private const float RiverVisibleDistance = 8.4f;
 
     private DemoWorldDataProvider? _world;
     private CoreSimulationHost? _core;
@@ -25,8 +27,11 @@ public sealed partial class PlanetWorldView : Control
     private Node3D? _sceneRoot;
     private Camera3D? _camera;
     private MeshInstance3D? _terrain;
+    private MeshInstance3D? _water;
+    private MeshInstance3D? _river;
     private MeshInstance3D? _grid;
     private MeshInstance3D? _selection;
+    private MeshInstance3D? _entityMarkers;
     private Label? _debugLabel;
     private PanelContainer? _inspectorPanel;
     private Label? _inspectorLabel;
@@ -70,6 +75,8 @@ public sealed partial class PlanetWorldView : Control
         BuildInspector();
         BuildDebugLabel();
         RebuildTerrainMesh();
+        RebuildWaterMesh();
+        RebuildRiverMesh();
         RebuildGridMesh();
         RebuildEntityMarkers();
         UpdateCamera(true);
@@ -86,6 +93,14 @@ public sealed partial class PlanetWorldView : Control
                 _debugLabel.Text = $"F4 · Planet worldgen: {_debugMode}";
             }
             RebuildTerrainMesh();
+            var normalView = _debugMode == GenerationDebugMode.None;
+            if (_water is not null)
+                _water.Visible = normalView;
+            if (_river is not null)
+                _river.Visible = normalView && _distance <= RiverVisibleDistance;
+            if (_entityMarkers is not null)
+                _entityMarkers.Visible = normalView && _distance <= EntityVisibleDistance;
+            UpdateEstimatedDrawCommands();
         }
 
         var input = Godot.Input.GetVector("camera_left", "camera_right", "camera_up", "camera_down");
@@ -189,7 +204,7 @@ public sealed partial class PlanetWorldView : Control
         {
             var d = ToGodot(_selectedCell.Direction);
             _orbit.Y = MathF.Atan2(d.X, d.Z);
-            _orbit.X = -MathF.Asin(Mathf.Clamp(d.Y, -1f, 1f)) * 0.72f;
+            _orbit.X = MathF.Asin(Mathf.Clamp(d.Y, -1f, 1f));
         }
         UpdateCamera();
     }
@@ -276,11 +291,20 @@ public sealed partial class PlanetWorldView : Control
         _terrain = new MeshInstance3D { Name = "PlanetTerrain" };
         _sceneRoot.AddChild(_terrain);
 
+        _water = new MeshInstance3D { Name = "PlanetWater" };
+        _sceneRoot.AddChild(_water);
+
+        _river = new MeshInstance3D { Name = "PlanetRivers" };
+        _sceneRoot.AddChild(_river);
+
         _grid = new MeshInstance3D { Name = "PlanetGrid", Visible = false };
         _sceneRoot.AddChild(_grid);
 
         _selection = new MeshInstance3D { Name = "PlanetSelection" };
         _sceneRoot.AddChild(_selection);
+
+        _entityMarkers = new MeshInstance3D { Name = "PlanetEntities" };
+        _sceneRoot.AddChild(_entityMarkers);
 
         _camera = new Camera3D
         {
@@ -352,27 +376,37 @@ public sealed partial class PlanetWorldView : Control
         foreach (var cell in map.Cells)
         {
             var centerDirection = ToGodot(cell.Direction);
-            var center = centerDirection * VisualRadius(cell);
+            var center = centerDirection * VisualRadiusFromMeters(cell.ElevationMeters);
             var polygon = map.GetPolygon(cell);
+            var polygonElevation = map.GetPolygonTerrainElevationMeters(cell);
             var color = CellColor(cell, _debugMode);
 
             for (var corner = 0; corner < polygon.Length; corner++)
             {
+                var nextCorner = (corner + 1) % polygon.Length;
                 var a = center;
-                var b = ToGodot(polygon[corner]) * PlanetRadius;
-                var d = ToGodot(polygon[(corner + 1) % polygon.Length]) * PlanetRadius;
+                var b = ToGodot(polygon[corner]) * VisualRadiusFromMeters(polygonElevation[corner]);
+                var d = ToGodot(polygon[nextCorner]) * VisualRadiusFromMeters(polygonElevation[nextCorner]);
                 var cross = (b - a).Cross(d - a);
                 if (cross.Dot(centerDirection) < 0f)
                     (b, d) = (d, b);
 
+                var faceNormal = (b - a).Cross(d - a);
+                faceNormal = faceNormal.LengthSquared() > 0.0000001f
+                    ? faceNormal.Normalized()
+                    : centerDirection;
+                var centerNormal = (centerDirection * 0.68f + faceNormal * 0.32f).Normalized();
+                var bNormal = (b.Normalized() * 0.74f + faceNormal * 0.26f).Normalized();
+                var dNormal = (d.Normalized() * 0.74f + faceNormal * 0.26f).Normalized();
+
                 vertices[cursor] = a;
-                normals[cursor] = centerDirection;
+                normals[cursor] = centerNormal;
                 colors[cursor++] = color;
                 vertices[cursor] = b;
-                normals[cursor] = b.Normalized();
+                normals[cursor] = bNormal;
                 colors[cursor++] = color;
                 vertices[cursor] = d;
-                normals[cursor] = d.Normalized();
+                normals[cursor] = dNormal;
                 colors[cursor++] = color;
             }
         }
@@ -394,8 +428,186 @@ public sealed partial class PlanetWorldView : Control
         mesh.SurfaceSetMaterial(0, material);
         _terrain.Mesh = mesh;
         _terrainRebuilds++;
-        _estimatedDrawCommands = (_grid?.Visible ?? false ? 2 : 1) + (_selection?.Mesh is null ? 0 : 1);
-        _terrainNodeCount = 3;
+        UpdateEstimatedDrawCommands();
+        _terrainNodeCount = 6;
+    }
+
+    private void RebuildWaterMesh()
+    {
+        if (_water is null || _world?.PlanetMap is not { } map)
+            return;
+
+        var triangleCount = 0;
+        foreach (var cell in map.Cells)
+        {
+            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
+                continue;
+            triangleCount += map.GetPolygon(cell).Length;
+        }
+
+        if (triangleCount == 0)
+        {
+            _water.Mesh = null;
+            return;
+        }
+
+        var vertices = new Vector3[triangleCount * 3];
+        var normals = new Vector3[vertices.Length];
+        var colors = new Color[vertices.Length];
+        var cursor = 0;
+
+        foreach (var cell in map.Cells)
+        {
+            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
+                continue;
+
+            var polygon = map.GetPolygon(cell);
+            var direction = ToGodot(cell.Direction).Normalized();
+            var surfaceElevation = PlanetWorldMap.VisibleSurfaceElevationMeters(cell);
+            var radius = VisualRadiusFromMeters(surfaceElevation) + 0.006f;
+            var center = direction * radius;
+            var waterColor = cell.WaterKind == HexWaterKind.Ocean
+                ? (cell.WaterDepthMeters > 700f
+                    ? new Color(0.018f, 0.12f, 0.20f)
+                    : new Color(0.035f, 0.25f, 0.32f))
+                : new Color(0.045f, 0.34f, 0.38f);
+
+            for (var corner = 0; corner < polygon.Length; corner++)
+            {
+                var next = (corner + 1) % polygon.Length;
+                var a = center;
+                var b = ToGodot(polygon[corner]) * radius;
+                var d = ToGodot(polygon[next]) * radius;
+                if ((b - a).Cross(d - a).Dot(direction) < 0f)
+                    (b, d) = (d, b);
+
+                vertices[cursor] = a;
+                normals[cursor] = direction;
+                colors[cursor++] = waterColor;
+                vertices[cursor] = b;
+                normals[cursor] = b.Normalized();
+                colors[cursor++] = waterColor;
+                vertices[cursor] = d;
+                normals[cursor] = d.Normalized();
+                colors[cursor++] = waterColor;
+            }
+        }
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = normals;
+        arrays[(int)Mesh.ArrayType.Color] = colors;
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(0, new StandardMaterial3D
+        {
+            VertexColorUseAsAlbedo = true,
+            Roughness = 0.36f,
+            Metallic = 0.08f
+        });
+        _water.Mesh = mesh;
+        _water.Visible = _debugMode == GenerationDebugMode.None;
+        UpdateEstimatedDrawCommands();
+    }
+
+    private void RebuildRiverMesh()
+    {
+        if (_river is null || _world?.PlanetMap is not { } map)
+            return;
+
+        const int segments = 4;
+        var riverCount = 0;
+        foreach (var cell in map.Cells)
+            if (cell.WaterKind == HexWaterKind.River &&
+                cell.DrainageTarget >= 0 &&
+                map.TryGetCell(cell.DrainageTarget, out _))
+                riverCount++;
+
+        if (riverCount == 0)
+        {
+            _river.Mesh = null;
+            return;
+        }
+
+        var vertices = new Vector3[riverCount * (segments + 1) * 2];
+        var normals = new Vector3[vertices.Length];
+        var colors = new Color[vertices.Length];
+        var indices = new int[riverCount * segments * 6];
+        var vertexCursor = 0;
+        var indexCursor = 0;
+        var riverColor = new Color(0.08f, 0.55f, 0.62f);
+
+        foreach (var cell in map.Cells)
+        {
+            if (cell.WaterKind != HexWaterKind.River ||
+                cell.DrainageTarget < 0 ||
+                !map.TryGetCell(cell.DrainageTarget, out var target))
+                continue;
+
+            var startDirection = ToGodot(cell.Direction).Normalized();
+            var endDirection = ToGodot(target.Direction).Normalized();
+            var startElevation = PlanetWorldMap.VisibleSurfaceElevationMeters(cell);
+            var endElevation = PlanetWorldMap.VisibleSurfaceElevationMeters(target);
+            var width = 0.0045f + Mathf.Clamp(cell.RiverWidth / 5.2f, 0.08f, 1f) * 0.0105f;
+            var baseVertex = vertexCursor;
+
+            for (var sample = 0; sample <= segments; sample++)
+            {
+                var t = sample / (float)segments;
+                var radial = (startDirection * (1f - t) + endDirection * t).Normalized();
+                var tangent = endDirection - radial * endDirection.Dot(radial);
+                if (tangent.LengthSquared() <= 0.000001f)
+                    tangent = radial.Cross(Vector3.Up);
+                tangent = tangent.Normalized();
+                var side = radial.Cross(tangent).Normalized();
+                var elevation = Mathf.Lerp(startElevation, endElevation, t);
+                var radius = VisualRadiusFromMeters(elevation) + 0.012f;
+                var center = radial * radius;
+
+                vertices[vertexCursor] = center + side * width;
+                normals[vertexCursor] = radial;
+                colors[vertexCursor++] = riverColor;
+                vertices[vertexCursor] = center - side * width;
+                normals[vertexCursor] = radial;
+                colors[vertexCursor++] = riverColor;
+            }
+
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var a = baseVertex + segment * 2;
+                var b = a + 1;
+                var c0 = a + 2;
+                var d = a + 3;
+                indices[indexCursor++] = a;
+                indices[indexCursor++] = c0;
+                indices[indexCursor++] = b;
+                indices[indexCursor++] = b;
+                indices[indexCursor++] = c0;
+                indices[indexCursor++] = d;
+            }
+        }
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = normals;
+        arrays[(int)Mesh.ArrayType.Color] = colors;
+        arrays[(int)Mesh.ArrayType.Index] = indices;
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(0, new StandardMaterial3D
+        {
+            VertexColorUseAsAlbedo = true,
+            Roughness = 0.42f,
+            Metallic = 0.02f
+        });
+        _river.Mesh = mesh;
+        _river.Visible =
+            _debugMode == GenerationDebugMode.None &&
+            _distance <= RiverVisibleDistance;
     }
 
     private void RebuildGridMesh()
@@ -412,10 +624,12 @@ public sealed partial class PlanetWorldView : Control
         foreach (var cell in map.Cells)
         {
             var polygon = map.GetPolygon(cell);
+            var elevation = map.GetPolygonSurfaceElevationMeters(cell);
             for (var i = 0; i < polygon.Length; i++)
             {
-                vertices[cursor++] = ToGodot(polygon[i]) * (PlanetRadius + 0.006f);
-                vertices[cursor++] = ToGodot(polygon[(i + 1) % polygon.Length]) * (PlanetRadius + 0.006f);
+                var next = (i + 1) % polygon.Length;
+                vertices[cursor++] = ToGodot(polygon[i]) * (VisualRadiusFromMeters(elevation[i]) + 0.014f);
+                vertices[cursor++] = ToGodot(polygon[next]) * (VisualRadiusFromMeters(elevation[next]) + 0.014f);
             }
         }
 
@@ -444,13 +658,14 @@ public sealed partial class PlanetWorldView : Control
         }
 
         var polygon = map.GetPolygon(_selectedCell);
-        var vertices = new Vector3[(polygon.Length + 1) * 2];
+        var elevation = map.GetPolygonSurfaceElevationMeters(_selectedCell);
+        var vertices = new Vector3[polygon.Length * 2];
         var cursor = 0;
-        var radius = PlanetRadius + 0.026f;
         for (var i = 0; i < polygon.Length; i++)
         {
-            vertices[cursor++] = ToGodot(polygon[i]) * radius;
-            vertices[cursor++] = ToGodot(polygon[(i + 1) % polygon.Length]) * radius;
+            var next = (i + 1) % polygon.Length;
+            vertices[cursor++] = ToGodot(polygon[i]) * (VisualRadiusFromMeters(elevation[i]) + 0.026f);
+            vertices[cursor++] = ToGodot(polygon[next]) * (VisualRadiusFromMeters(elevation[next]) + 0.026f);
         }
 
         var arrays = new Godot.Collections.Array();
@@ -464,13 +679,30 @@ public sealed partial class PlanetWorldView : Control
             Roughness = 0.72f
         });
         _selection.Mesh = mesh;
-        _estimatedDrawCommands = (_grid?.Visible ?? false ? 2 : 1) + 1;
+        UpdateEstimatedDrawCommands();
     }
 
     private void RebuildEntityMarkers()
     {
-        if (_sceneRoot is null || _world?.PlanetMap is not { } map)
+        if (_entityMarkers is null || _world?.PlanetMap is not { } map)
             return;
+
+        var drawable = 0;
+        foreach (var entity in _world.Entities)
+            if (entity.SurfaceCellId.HasValue && map.TryGetCell(entity.SurfaceCellId.Value, out _))
+                drawable++;
+
+        if (drawable == 0)
+        {
+            _entityMarkers.Mesh = null;
+            return;
+        }
+
+        const int trianglesPerMarker = 8;
+        var vertices = new Vector3[drawable * trianglesPerMarker * 3];
+        var normals = new Vector3[vertices.Length];
+        var colors = new Color[vertices.Length];
+        var cursor = 0;
 
         foreach (var entity in _world.Entities)
         {
@@ -478,26 +710,76 @@ public sealed partial class PlanetWorldView : Control
                 !map.TryGetCell(entity.SurfaceCellId.Value, out var cell))
                 continue;
 
-            var marker = new MeshInstance3D { Name = $"Entity_{entity.Id}" };
-            var sphere = new SphereMesh
-            {
-                Radius = entity.Kind == DemoEntityKind.Creature ? 0.055f : 0.046f,
-                Height = entity.Kind == DemoEntityKind.Creature ? 0.11f : 0.092f,
-                RadialSegments = 10,
-                Rings = 6
-            };
-            sphere.Material = new StandardMaterial3D
-            {
-                AlbedoColor = entity.Kind == DemoEntityKind.Creature
-                    ? new Color(0.72f, 0.95f, 0.93f)
-                    : new Color(0.44f, 0.83f, 0.48f),
-                Roughness = 0.72f
-            };
-            marker.Mesh = sphere;
-            marker.Position = ToGodot(cell.Direction) * (VisualRadius(cell) + 0.075f);
-            _sceneRoot.AddChild(marker);
-            _terrainNodeCount++;
+            var radial = ToGodot(cell.Direction).Normalized();
+            var reference = Math.Abs(radial.Y) < 0.92f ? Vector3.Up : Vector3.Right;
+            var tangent = reference.Cross(radial).Normalized();
+            var bitangent = radial.Cross(tangent).Normalized();
+            var size = entity.Kind == DemoEntityKind.Creature ? 0.052f : 0.044f;
+            var center = radial * (VisualRadius(cell) + 0.060f);
+            var apex = center + radial * size * 1.35f;
+            var baseA = center + tangent * size;
+            var baseB = center + bitangent * size;
+            var baseC = center - tangent * size;
+            var baseD = center - bitangent * size;
+            var inner = center - radial * size * 0.32f;
+            var color = entity.Kind == DemoEntityKind.Creature
+                ? new Color(0.72f, 0.95f, 0.93f)
+                : new Color(0.44f, 0.83f, 0.48f);
+
+            AddMarkerTriangle(apex, baseA, baseB, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(apex, baseB, baseC, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(apex, baseC, baseD, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(apex, baseD, baseA, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(inner, baseA, baseD, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(inner, baseD, baseC, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(inner, baseC, baseB, radial, color, vertices, normals, colors, ref cursor);
+            AddMarkerTriangle(inner, baseB, baseA, radial, color, vertices, normals, colors, ref cursor);
         }
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = normals;
+        arrays[(int)Mesh.ArrayType.Color] = colors;
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(0, new StandardMaterial3D
+        {
+            VertexColorUseAsAlbedo = true,
+            Roughness = 0.72f
+        });
+        _entityMarkers.Mesh = mesh;
+        _entityMarkers.Visible =
+            _debugMode == GenerationDebugMode.None &&
+            _distance <= EntityVisibleDistance;
+        _terrainNodeCount = 6;
+        UpdateEstimatedDrawCommands();
+    }
+
+    private static void AddMarkerTriangle(
+        Vector3 a,
+        Vector3 b,
+        Vector3 d,
+        Vector3 outward,
+        Color color,
+        Vector3[] vertices,
+        Vector3[] normals,
+        Color[] colors,
+        ref int cursor)
+    {
+        if ((b - a).Cross(d - a).Dot(outward) < 0f)
+            (b, d) = (d, b);
+
+        vertices[cursor] = a;
+        normals[cursor] = outward;
+        colors[cursor++] = color;
+        vertices[cursor] = b;
+        normals[cursor] = outward;
+        colors[cursor++] = color;
+        vertices[cursor] = d;
+        normals[cursor] = outward;
+        colors[cursor++] = color;
     }
 
     private void UpdateCamera(bool force = false)
@@ -516,15 +798,50 @@ public sealed partial class PlanetWorldView : Control
         _camera.Position = position;
         _camera.LookAt(Vector3.Zero, Vector3.Up);
 
+        var visibilityChanged = force;
         if (_grid is not null)
         {
             var next = _distance <= GridVisibleDistance;
-            if (_grid.Visible != next || force)
+            if (_grid.Visible != next)
             {
                 _grid.Visible = next;
-                _estimatedDrawCommands = 1 + (next ? 1 : 0) + (_selection?.Mesh is null ? 0 : 1);
+                visibilityChanged = true;
             }
         }
+
+        if (_river is not null)
+        {
+            var next = _debugMode == GenerationDebugMode.None && _distance <= RiverVisibleDistance;
+            if (_river.Visible != next)
+            {
+                _river.Visible = next;
+                visibilityChanged = true;
+            }
+        }
+
+        if (_entityMarkers is not null)
+        {
+            var next = _debugMode == GenerationDebugMode.None && _distance <= EntityVisibleDistance;
+            if (_entityMarkers.Visible != next)
+            {
+                _entityMarkers.Visible = next;
+                visibilityChanged = true;
+            }
+        }
+
+        if (visibilityChanged)
+            UpdateEstimatedDrawCommands();
+    }
+
+    private void UpdateEstimatedDrawCommands()
+    {
+        _estimatedDrawCommands =
+            1 +
+            (_water?.Visible == true && _water.Mesh is not null ? 1 : 0) +
+            (_river?.Visible == true && _river.Mesh is not null ? 1 : 0) +
+            (_grid?.Visible == true ? 1 : 0) +
+            (_selection?.Mesh is null ? 0 : 1) +
+            (_entityMarkers?.Visible == true && _entityMarkers.Mesh is not null ? 1 : 0);
     }
 
     private void SetTargetDistance(float value)
@@ -628,20 +945,28 @@ public sealed partial class PlanetWorldView : Control
             ? $"Вода: {env.WaterDepthMeters:0.0} м"
             : $"Высота: {env.ElevationMeters:0} м";
         var wind = MathF.Sqrt(physical.WindX * physical.WindX + physical.WindY * physical.WindY);
+        var water = cell.WaterKind == HexWaterKind.None ? "суша" : cell.WaterKind.ToString();
+        var river = cell.WaterKind == HexWaterKind.River
+            ? $"\nРека: длина {cell.RiverLength} · ширина {cell.RiverWidth:0.00} · order {cell.StreamOrder} · ветви {cell.UpstreamBranches} · dir {cell.RiverDirection} · target {cell.DrainageTarget}"
+            : string.Empty;
         return
-            $"Клетка {cell.Id.PlanetIndex}\nРельеф: {terrain}\n{vertical}\n" +
+            $"Клетка {cell.Id.PlanetIndex}\nРельеф: {terrain} · вода: {water}\n{vertical}\n" +
             $"Климат: {env.TemperatureCelsius:0.0} °C · {env.Humidity * 100f:0}% · {env.PressureKPa:0.0} кПа\n" +
             $"Ветер: {wind:0.000} · Осадки: {physical.Precipitation:0.000}\n" +
             $"Материал: {env.Substrate} · Минералы: {env.MineralPotential:0.00}\n" +
             $"Питательность: {env.NutrientPotential:0.00} · Геотермия: {env.GeothermalPotential:0.00}\n" +
-            $"Провинция: {cell.ProvinceId} · Бассейн: {cell.BasinId} · Берег: {cell.CoastDistance}";
+            $"Провинция: {cell.ProvinceId} · Бассейн: {cell.BasinId} · Берег: {cell.CoastDistance}" +
+            river;
     }
 
-    private static float VisualRadius(PlanetWorldCell cell)
+    private static float VisualRadius(PlanetWorldCell cell) =>
+        VisualRadiusFromMeters(PlanetWorldMap.VisibleSurfaceElevationMeters(cell));
+
+    private static float VisualRadiusFromMeters(float elevationMeters)
     {
-        var offset = cell.ElevationMeters >= 0f
-            ? Math.Clamp(cell.ElevationMeters / 45_000f, 0f, 0.095f)
-            : -Math.Clamp(-cell.ElevationMeters / 70_000f, 0f, 0.080f);
+        var offset = elevationMeters >= 0f
+            ? Math.Clamp(elevationMeters / 45_000f, 0f, 0.095f)
+            : -Math.Clamp(-elevationMeters / 70_000f, 0f, 0.080f);
         return PlanetRadius + offset;
     }
 
@@ -659,6 +984,7 @@ public sealed partial class PlanetWorldView : Control
             HexTerrainType.Sand => new Color(0.58f, 0.51f, 0.31f),
             HexTerrainType.Desert => new Color(0.62f, 0.47f, 0.23f),
             HexTerrainType.Grassland => new Color(0.23f, 0.48f, 0.27f),
+            HexTerrainType.Highland => new Color(0.36f, 0.44f, 0.28f),
             HexTerrainType.Rocky => new Color(0.34f, 0.38f, 0.34f),
             HexTerrainType.Mountain => new Color(0.49f, 0.51f, 0.48f),
             _ => new Color(0.24f, 0.45f, 0.30f)
@@ -680,6 +1006,8 @@ public sealed partial class PlanetWorldView : Control
             GenerationDebugMode.CoastDistance => Mathf.Clamp(cell.CoastDistance / 18f, 0f, 1f),
             GenerationDebugMode.WaterDepth => Mathf.Clamp(cell.WaterDepthMeters / 3200f, 0f, 1f),
             GenerationDebugMode.FlowAccumulation => Mathf.Clamp(MathF.Log10(1f + cell.FlowAccumulation) / 4f, 0f, 1f),
+            GenerationDebugMode.StreamOrder => Mathf.Clamp(cell.StreamOrder / 6f, 0f, 1f),
+            GenerationDebugMode.RiverDirection => cell.RiverDirection < 0 ? 0f : Mathf.Clamp((cell.RiverDirection + 1f) / 6f, 0f, 1f),
             GenerationDebugMode.TectonicUplift => Mathf.Clamp(cell.TectonicUplift, 0f, 1f),
             GenerationDebugMode.Temperature => Mathf.Clamp((cell.TemperatureCelsius + 45f) / 90f, 0f, 1f),
             GenerationDebugMode.Humidity => Mathf.Clamp(cell.Humidity, 0f, 1f),
@@ -691,7 +1019,7 @@ public sealed partial class PlanetWorldView : Control
             _ => 0.5f
         };
 
-        if (mode is GenerationDebugMode.Province or GenerationDebugMode.Basin or GenerationDebugMode.Substrate or GenerationDebugMode.Region)
+        if (mode is GenerationDebugMode.Province or GenerationDebugMode.Basin or GenerationDebugMode.Substrate or GenerationDebugMode.Region or GenerationDebugMode.RiverDirection)
             return HashColor((int)(value * 10000f));
 
         return new Color(
@@ -730,6 +1058,7 @@ public sealed partial class PlanetWorldView : Control
         HexTerrainType.Sand => "Песок",
         HexTerrainType.Desert => "Пустыня",
         HexTerrainType.Grassland => "Равнина",
+        HexTerrainType.Highland => "Возвышенность",
         HexTerrainType.Rocky => "Камни",
         HexTerrainType.Mountain => "Горы",
         _ => terrain.ToString()

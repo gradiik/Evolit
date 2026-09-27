@@ -18,6 +18,8 @@ public enum GenerationDebugMode
     CoastDistance,
     WaterDepth,
     FlowAccumulation,
+    StreamOrder,
+    RiverDirection,
     Basin,
     TectonicUplift,
     Temperature,
@@ -603,7 +605,7 @@ public sealed partial class DemoWorldView : Control
             $"Органика: {env.OrganicMatter:0.000} · substrate dev {env.SubstrateDevelopment * 100f:0}%\n" +
             $"Субстрат: {env.Substrate} · регион: {physical.Region}\n" +
             $"Сток: {cell.FlowAccumulation:0.0} · уклон {cell.Slope:0.0} м\n" +
-            $"Река: длина {cell.RiverLength} · ширина {cell.RiverWidth:0.00} · basin {cell.BasinId}\n" +
+            $"Река: длина {cell.RiverLength} · ширина {cell.RiverWidth:0.00} · order {cell.StreamOrder} · ветви {cell.UpstreamBranches} · dir {cell.RiverDirection} · basin {cell.BasinId}\n" +
             $"Plate: {cell.ProvinceId} · continental {cell.Continentalness:0.00} · coast {cell.CoastDistance}\n" +
             $"Uplift: {cell.TectonicUplift * 100f:0}% · geo {cell.GeothermalPotential * 100f:0}% · mineral {cell.MineralPotential * 100f:0}%";
     }
@@ -629,6 +631,7 @@ public sealed partial class DemoWorldView : Control
             HexTerrainType.Sand => "Песчаный берег",
             HexTerrainType.Desert => "Пустыня",
             HexTerrainType.Grassland => "Равнина",
+            HexTerrainType.Highland => "Возвышенность",
             HexTerrainType.Rocky => "Каменистая возвышенность",
             HexTerrainType.Mountain => "Горы",
             _ => terrain.ToString()

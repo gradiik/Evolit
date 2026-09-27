@@ -95,10 +95,19 @@ public static class PlanetTopologyFactory
             var va = positions[a];
             var vb = positions[b];
             var vc = positions[c];
+            var radialCenter = (va + vb + vc).Normalized();
             var normal = CoreVector3.Cross(vb - va, vc - va);
-            var center = (va + vb + vc).Normalized();
-            if (CoreVector3.Dot(normal, center) < 0f)
+            if (CoreVector3.Dot(normal, radialCenter) < 0f)
+            {
                 (b, c) = (c, b);
+                vb = positions[b];
+                vc = positions[c];
+                normal = CoreVector3.Cross(vb - va, vc - va);
+            }
+
+            // On the unit sphere the normalized triangle-plane normal is the
+            // spherical circumcenter, which is the correct dual/Voronoi corner.
+            var center = normal.Normalized();
 
             var triangleIndex = triangles.Count;
             triangles.Add(new Triangle(a, b, c, center));
@@ -262,17 +271,21 @@ public static class PlanetWorldGenerator
         var uplift = new float[count];
         var province = new int[count];
         var plates = BuildPlates(settings, seed);
+        var continentAnchors = BuildContinentAnchors(seed);
         var raw = new float[count];
+        var warpedDirections = new CoreVector3[count];
 
         for (var i = 0; i < count; i++)
         {
             var p = geometry.Centers[i];
+            var warped = WarpDirection(p, seed);
+            warpedDirections[i] = warped;
             var bestDot = -2f;
             var secondDot = -2f;
             var bestPlate = 0;
             for (var plateIndex = 0; plateIndex < plates.Length; plateIndex++)
             {
-                var dot = CoreVector3.Dot(p, plates[plateIndex].Center);
+                var dot = CoreVector3.Dot(warped, plates[plateIndex].Center);
                 if (dot > bestDot)
                 {
                     secondDot = bestDot;
@@ -285,11 +298,20 @@ public static class PlanetWorldGenerator
                 }
             }
 
+            var continentShape = float.MinValue;
+            for (var anchorIndex = 0; anchorIndex < continentAnchors.Length; anchorIndex++)
+            {
+                var anchor = continentAnchors[anchorIndex];
+                var dot = CoreVector3.Dot(warped, anchor.Center);
+                var shape = (dot - anchor.CosRadius) / Math.Max(0.0001f, 1f - anchor.CosRadius);
+                continentShape = Math.Max(continentShape, shape);
+            }
+
             var plate = plates[bestPlate];
             var boundary = Math.Clamp(1f - (bestDot - secondDot) * 14f, 0f, 1f);
-            var macro = Fbm(p * 1.35f, SeedMixer.Combine(seed, 101), 4);
-            var regional = Fbm(p * 3.1f, SeedMixer.Combine(seed, 102), 3);
-            var ridgeNoise = 1f - Math.Abs(Fbm(p * 5.4f, SeedMixer.Combine(seed, 103), 3));
+            var macro = Fbm(warped * 1.28f, SeedMixer.Combine(seed, 101), 4);
+            var regional = Fbm(warped * 3.35f, SeedMixer.Combine(seed, 102), 3);
+            var ridgeNoise = 1f - Math.Abs(Fbm(warped * 5.7f, SeedMixer.Combine(seed, 103), 3));
             var geologyScale = settings.Geology switch
             {
                 GeologicalActivity.Calm => 0.58f,
@@ -300,8 +322,18 @@ public static class PlanetWorldGenerator
             var tectonic = boundary * (0.35f + plate.Uplift * 0.65f) * geologyScale;
             province[i] = bestPlate;
             uplift[i] = Math.Clamp(tectonic, 0f, 1f);
-            raw[i] = plateBias + macro * 0.72f + regional * 0.22f + tectonic * 0.24f + ridgeNoise * tectonic * 0.18f;
+            raw[i] =
+                continentShape * 1.30f +
+                plateBias * 0.12f +
+                macro * 0.14f +
+                regional * 0.13f +
+                tectonic * 0.12f +
+                ridgeNoise * tectonic * 0.08f;
         }
+
+        // Suppress single-cell speckle without flattening regional coast detail.
+        // The field is smoothed over the actual closed spherical graph, not UV space.
+        SmoothField(topology, raw, passes: 2, blend: 0.14f);
 
         var targetLand = settings.LandAmount switch
         {
@@ -316,7 +348,7 @@ public static class PlanetWorldGenerator
 
         for (var i = 0; i < count; i++)
         {
-            var p = geometry.Centers[i];
+            var p = warpedDirections[i];
             var c = raw[i] - seaThreshold;
             continentalness[i] = c;
             var detail = Fbm(p * 11.7f, SeedMixer.Combine(seed, 104), 3);
@@ -334,11 +366,13 @@ public static class PlanetWorldGenerator
         }
         var macroElevationMs = Stopwatch.GetElapsedTime(elevationStarted).TotalMilliseconds;
 
+        var oceanCells = ClassifyOceanCells(topology, elevation);
+
         var coastStarted = Stopwatch.GetTimestamp();
         var coastDistance = ComputeCoastDistance(topology, elevation);
         for (var i = 0; i < count; i++)
         {
-            if (elevation[i] >= 0f)
+            if (!oceanCells[i])
                 continue;
             var deepening = Math.Min(1900f, Math.Max(0, coastDistance[i] - 1) * 95f);
             elevation[i] = Math.Max(-5200f, elevation[i] - deepening);
@@ -357,7 +391,7 @@ public static class PlanetWorldGenerator
                 maxSlope = Math.Max(maxSlope, Math.Abs(elevation[i] - elevation[neighbors[n]]));
             slope[i] = maxSlope;
             geothermal[i] = Math.Clamp(
-                0.18f + uplift[i] * 0.62f + (Fbm(geometry.Centers[i] * 7.2f, SeedMixer.Combine(seed, 202), 2) + 1f) * 0.10f,
+                0.18f + uplift[i] * 0.62f + (Fbm(warpedDirections[i] * 7.2f, SeedMixer.Combine(seed, 202), 2) + 1f) * 0.10f,
                 0f,
                 1f);
             substrate[i] = elevation[i] < 0f
@@ -390,17 +424,15 @@ public static class PlanetWorldGenerator
         Array.Fill(riverDirection, -1);
         Array.Fill(accumulation, 1f);
 
-        // Closed-sphere priority flood. Ocean cells are the only global sinks;
-        // every land cell receives a deterministic downstream route through the
-        // topology graph, so drainage never relies on a map edge.
-        var flood = new PriorityQueue<int, float>();
-        var flooded = new bool[count];
+        // Closed-sphere priority flood. Only connected ocean components are
+        // global sinks; enclosed below-sea-level depressions remain inland seas.
+        var flood = new PriorityQueue<int, (float Surface, int Cell)>();
+        var flooded = (bool[])oceanCells.Clone();
         for (var i = 0; i < count; i++)
         {
-            if (elevation[i] >= 0f)
+            if (!oceanCells[i])
                 continue;
-            flooded[i] = true;
-            flood.Enqueue(i, hydraulicSurface[i]);
+            flood.Enqueue(i, (hydraulicSurface[i], i));
         }
 
         while (flood.Count > 0)
@@ -429,16 +461,17 @@ public static class PlanetWorldGenerator
                     }
                 }
 
-                flood.Enqueue(ni, spillSurface);
+                flood.Enqueue(ni, (spillSurface, ni));
             }
         }
 
         for (var i = 0; i < count; i++)
         {
-            if (elevation[i] < 0f)
+            if (oceanCells[i])
                 continue;
-            lakes[i] = filledDepth[i] > 1.5f;
+            lakes[i] = elevation[i] < 0f || filledDepth[i] > 1.5f;
         }
+        PruneTinyLakes(topology, lakes, elevation, filledDepth);
 
         var descending = CreateIndexOrder(count);
         Array.Sort(descending, (a, b) =>
@@ -453,10 +486,10 @@ public static class PlanetWorldGenerator
                 accumulation[target] += accumulation[i];
         }
 
-        var riverThreshold = Math.Max(20f, count / 1250f);
+        var riverThreshold = Math.Max(28f, count / 950f);
         for (var i = 0; i < count; i++)
         {
-            if (elevation[i] < 0f || lakes[i] || drainage[i] < 0 || accumulation[i] < riverThreshold)
+            if (oceanCells[i] || lakes[i] || elevation[i] < 0f || drainage[i] < 0 || accumulation[i] < riverThreshold)
                 continue;
             rivers[i] = true;
             riverWidth[i] = Math.Clamp(0.45f + MathF.Log2(1f + accumulation[i] / riverThreshold) * 0.65f, 0.45f, 4.5f);
@@ -467,11 +500,11 @@ public static class PlanetWorldGenerator
         var nextBasin = 0;
         for (var i = 0; i < count; i++)
         {
-            if (elevation[i] < 0f)
+            if (oceanCells[i])
                 continue;
             var at = i;
             var guard = 0;
-            while (drainage[at] >= 0 && elevation[at] >= 0f && guard++ < count)
+            while (drainage[at] >= 0 && !oceanCells[at] && guard++ < count)
                 at = drainage[at];
             if (!basinByRoot.TryGetValue(at, out var id))
             {
@@ -508,20 +541,22 @@ public static class PlanetWorldGenerator
         for (var i = 0; i < count; i++)
         {
             var p = geometry.Centers[i];
+            var noisePoint = warpedDirections[i];
             var latitude = Math.Clamp(Math.Abs(p.Y), 0f, 1f);
-            var tempNoise = Fbm(p * 4.4f, SeedMixer.Combine(seed, 301), 3) * 3.5f;
+            var tempNoise = Fbm(noisePoint * 4.4f, SeedMixer.Combine(seed, 301), 3) * 3.5f;
             temperature[i] = Math.Clamp(
                 29f + climateOffset - latitude * 34f - Math.Max(0f, elevation[i]) * 0.0062f + tempNoise,
                 -65f,
                 52f);
             var coastMoisture = MathF.Exp(-Math.Max(0, coastDistance[i]) * 0.16f);
-            var humidityNoise = Fbm(p * 5.7f, SeedMixer.Combine(seed, 302), 3) * 0.16f;
+            var humidityNoise = Fbm(noisePoint * 5.7f, SeedMixer.Combine(seed, 302), 3) * 0.16f;
             humidity[i] = Math.Clamp(
                 0.30f + coastMoisture * 0.42f + humidityNoise + (elevation[i] < 0f ? 0.25f : 0f),
                 0f,
                 1f);
             pressure[i] = Math.Max(20f, 101.325f * MathF.Exp(-Math.Max(-500f, elevation[i]) / 8434f));
         }
+        SmoothClimate(topology, elevation, temperature, humidity);
         var climateMs = Stopwatch.GetElapsedTime(climateStarted).TotalMilliseconds;
 
         var resourcesStarted = Stopwatch.GetTimestamp();
@@ -529,7 +564,7 @@ public static class PlanetWorldGenerator
         var nutrients = new float[count];
         for (var i = 0; i < count; i++)
         {
-            var p = geometry.Centers[i];
+            var p = warpedDirections[i];
             minerals[i] = Math.Clamp(
                 0.26f + uplift[i] * 0.30f + geothermal[i] * 0.20f + Fbm(p * 9.4f, SeedMixer.Combine(seed, 401), 2) * 0.18f,
                 0f,
@@ -545,13 +580,13 @@ public static class PlanetWorldGenerator
         var cells = new GeneratedWorldCell[count];
         for (var i = 0; i < count; i++)
         {
-            var ocean = elevation[i] < 0f;
+            var ocean = oceanCells[i];
             var lake = lakes[i];
             var river = rivers[i];
             var waterDepth = ocean
-                ? -elevation[i]
+                ? Math.Max(0f, -elevation[i])
                 : lake
-                    ? Math.Clamp(Math.Max(1.5f, filledDepth[i]), 1.5f, 160f)
+                    ? Math.Max(1.5f, filledDepth[i])
                     : river
                         ? Math.Clamp(0.8f + riverWidth[i] * 0.7f, 0.8f, 5f)
                         : 0f;
@@ -598,6 +633,7 @@ public static class PlanetWorldGenerator
                 substrate[i]));
         }
         var environmentBuildMs = Stopwatch.GetElapsedTime(environmentStarted).TotalMilliseconds;
+        ValidatePlanet(topology, cells);
         var summary = Summarize(topology, cells);
         var totalMs = Stopwatch.GetElapsedTime(totalStarted).TotalMilliseconds;
 
@@ -624,12 +660,13 @@ public static class PlanetWorldGenerator
 
     private static Plate[] BuildPlates(PlanetGenerationSettings settings, ulong seed)
     {
-        var count = settings.Frequency switch
+        var baseCount = settings.Frequency switch
         {
-            <= PlanetGenerationScale.SmallFrequency => 12,
-            >= PlanetGenerationScale.LargeFrequency => 20,
-            _ => 16
+            <= PlanetGenerationScale.SmallFrequency => 11,
+            >= PlanetGenerationScale.LargeFrequency => 18,
+            _ => 14
         };
+        var count = baseCount + (int)(SeedMixer.Combine(seed, 77) % 5UL);
         var result = new Plate[count];
         var rng = new DeterministicRandom(SeedMixer.Combine(seed, 55));
         for (var i = 0; i < count; i++)
@@ -644,6 +681,390 @@ public static class PlanetWorldGenerator
                 rng.NextFloat());
         }
         return result;
+    }
+
+    private static ContinentAnchor[] BuildContinentAnchors(ulong seed)
+    {
+        var desired = 4 + (int)(SeedMixer.Combine(seed, 806) % 2UL);
+        var baseRadius = desired == 4 ? 0.74f : 0.66f;
+        const float maximumPairDot = 0.20f;
+
+        var result = new List<ContinentAnchor>(desired);
+        var rng = new DeterministicRandom(SeedMixer.Combine(seed, 805));
+
+        for (var attempt = 0; attempt < 512 && result.Count < desired; attempt++)
+        {
+            var candidate = RandomSphereDirection(ref rng);
+            var separated = true;
+            for (var i = 0; i < result.Count; i++)
+            {
+                if (CoreVector3.Dot(candidate, result[i].Center) >= maximumPairDot)
+                {
+                    separated = false;
+                    break;
+                }
+            }
+
+            if (!separated)
+                continue;
+
+            var radius = baseRadius + (rng.NextFloat() - 0.5f) * 0.10f;
+            result.Add(new ContinentAnchor(candidate, MathF.Cos(radius)));
+        }
+
+        while (result.Count < desired)
+        {
+            var best = CoreVector3.UnitY;
+            var bestSeparation = float.MinValue;
+            for (var sample = 0; sample < 64; sample++)
+            {
+                var candidate = RandomSphereDirection(ref rng);
+                var minimumSeparation = float.MaxValue;
+                for (var i = 0; i < result.Count; i++)
+                    minimumSeparation = Math.Min(
+                        minimumSeparation,
+                        1f - CoreVector3.Dot(candidate, result[i].Center));
+
+                if (minimumSeparation <= bestSeparation)
+                    continue;
+                bestSeparation = minimumSeparation;
+                best = candidate;
+            }
+
+            result.Add(new ContinentAnchor(best, MathF.Cos(baseRadius)));
+        }
+
+        return result.ToArray();
+    }
+
+    private static CoreVector3 RandomSphereDirection(ref DeterministicRandom rng)
+    {
+        var z = rng.NextFloat() * 2f - 1f;
+        var angle = rng.NextFloat() * MathF.PI * 2f;
+        var radial = MathF.Sqrt(Math.Max(0f, 1f - z * z));
+        return new CoreVector3(
+            radial * MathF.Cos(angle),
+            z,
+            radial * MathF.Sin(angle));
+    }
+
+    private static CoreVector3 WarpDirection(CoreVector3 direction, ulong seed)
+    {
+        var scale = direction * 2.05f;
+        var warp = new CoreVector3(
+            Fbm(scale + new CoreVector3(17.1f, -3.7f, 8.3f), SeedMixer.Combine(seed, 501), 3),
+            Fbm(scale + new CoreVector3(-11.4f, 19.6f, 2.2f), SeedMixer.Combine(seed, 502), 3),
+            Fbm(scale + new CoreVector3(4.8f, 7.5f, -16.3f), SeedMixer.Combine(seed, 503), 3));
+        return (direction + warp * 0.13f).Normalized();
+    }
+
+    private static void SmoothField(
+        WorldTopology topology,
+        float[] values,
+        int passes,
+        float blend)
+    {
+        if (passes <= 0 || values.Length == 0 || blend <= 0f)
+            return;
+
+        var scratch = new float[values.Length];
+        blend = Math.Clamp(blend, 0f, 1f);
+        for (var pass = 0; pass < passes; pass++)
+        {
+            for (var i = 0; i < values.Length; i++)
+            {
+                var neighbors = topology.GetNeighborIndices(i);
+                if (neighbors.Length == 0)
+                {
+                    scratch[i] = values[i];
+                    continue;
+                }
+
+                var sum = 0f;
+                for (var n = 0; n < neighbors.Length; n++)
+                    sum += values[neighbors[n]];
+                var average = sum / neighbors.Length;
+                scratch[i] = values[i] + (average - values[i]) * blend;
+            }
+
+            Array.Copy(scratch, values, values.Length);
+        }
+    }
+
+    private static void SmoothClimate(
+        WorldTopology topology,
+        float[] elevation,
+        float[] temperature,
+        float[] humidity)
+    {
+        var temperatureScratch = new float[temperature.Length];
+        var humidityScratch = new float[humidity.Length];
+
+        for (var pass = 0; pass < 2; pass++)
+        {
+            for (var i = 0; i < temperature.Length; i++)
+            {
+                var neighbors = topology.GetNeighborIndices(i);
+                if (neighbors.Length == 0)
+                {
+                    temperatureScratch[i] = temperature[i];
+                    humidityScratch[i] = humidity[i];
+                    continue;
+                }
+
+                var temperatureSum = 0f;
+                var humiditySum = 0f;
+                var waterNeighbors = 0;
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var ni = neighbors[n];
+                    temperatureSum += temperature[ni];
+                    humiditySum += humidity[ni];
+                    if (elevation[ni] < 0f)
+                        waterNeighbors++;
+                }
+
+                var neighborTemperature = temperatureSum / neighbors.Length;
+                var neighborHumidity = humiditySum / neighbors.Length;
+                var maritime = waterNeighbors / (float)neighbors.Length;
+
+                temperatureScratch[i] = Math.Clamp(
+                    temperature[i] * 0.86f + neighborTemperature * 0.14f,
+                    -65f,
+                    52f);
+                humidityScratch[i] = Math.Clamp(
+                    humidity[i] * 0.72f +
+                    neighborHumidity * 0.24f +
+                    maritime * 0.04f,
+                    0f,
+                    1f);
+            }
+
+            Array.Copy(temperatureScratch, temperature, temperature.Length);
+            Array.Copy(humidityScratch, humidity, humidity.Length);
+        }
+    }
+
+    private static void PruneTinyLakes(
+        WorldTopology topology,
+        bool[] lakes,
+        float[] elevation,
+        float[] filledDepth)
+    {
+        var visited = new bool[lakes.Length];
+        var queue = new Queue<int>();
+        var component = new List<int>();
+
+        for (var start = 0; start < lakes.Length; start++)
+        {
+            if (!lakes[start] || visited[start])
+                continue;
+
+            queue.Clear();
+            component.Clear();
+            visited[start] = true;
+            queue.Enqueue(start);
+            var maxDepth = 0f;
+            var remainsBelowSeaLevel = false;
+
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                component.Add(at);
+                maxDepth = Math.Max(maxDepth, filledDepth[at]);
+                if (elevation[at] + filledDepth[at] < 0f)
+                    remainsBelowSeaLevel = true;
+
+                var neighbors = topology.GetNeighborIndices(at);
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var ni = neighbors[n];
+                    if (!lakes[ni] || visited[ni])
+                        continue;
+                    visited[ni] = true;
+                    queue.Enqueue(ni);
+                }
+            }
+
+            var discard =
+                !remainsBelowSeaLevel &&
+                ((component.Count == 1 && maxDepth < 24f) ||
+                 (component.Count == 2 && maxDepth < 10f));
+            if (!discard)
+                continue;
+
+            for (var i = 0; i < component.Count; i++)
+            {
+                var cell = component[i];
+                elevation[cell] += filledDepth[cell];
+                filledDepth[cell] = 0f;
+                lakes[cell] = false;
+            }
+        }
+    }
+
+    private static void ValidatePlanet(WorldTopology topology, GeneratedWorldCell[] cells)
+    {
+        if (topology.Kind != WorldTopologyKind.Planet || topology.Count != cells.Length)
+            throw new InvalidOperationException("Planet generation topology/cell mismatch.");
+
+        var state = new byte[cells.Length];
+        var stack = new int[cells.Length];
+
+        for (var i = 0; i < cells.Length; i++)
+        {
+            var cell = cells[i];
+            if (!float.IsFinite(cell.ElevationMeters) ||
+                !float.IsFinite(cell.WaterDepthMeters) || cell.WaterDepthMeters < 0f ||
+                !float.IsFinite(cell.TemperatureCelsius) ||
+                !float.IsFinite(cell.Humidity) || cell.Humidity is < 0f or > 1f ||
+                !float.IsFinite(cell.PressureKPa) || cell.PressureKPa <= 0f ||
+                !float.IsFinite(cell.FlowAccumulation) || cell.FlowAccumulation < 0f ||
+                !float.IsFinite(cell.Slope) || cell.Slope < 0f ||
+                cell.MineralPotential is < 0f or > 1f ||
+                cell.NutrientPotential is < 0f or > 1f ||
+                cell.GeothermalPotential is < 0f or > 1f)
+            {
+                throw new InvalidOperationException($"Planet cell {cell.Id} violates physical bounds.");
+            }
+
+            var isOcean = cell.ElevationMeters < 0f && !cell.IsLake;
+            if (cell.IsRiver && isOcean)
+                throw new InvalidOperationException($"Planet river {cell.Id} is inside ocean terrain.");
+
+            if (!isOcean)
+            {
+                if (cell.DrainageTarget < 0 || cell.DrainageTarget >= cells.Length)
+                    throw new InvalidOperationException($"Planet land cell {cell.Id} has no valid drainage target.");
+
+                var neighbors = topology.GetNeighborIndices(i);
+                var directNeighbor = false;
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    if (neighbors[n] == cell.DrainageTarget)
+                    {
+                        directNeighbor = true;
+                        break;
+                    }
+                }
+                if (!directNeighbor)
+                    throw new InvalidOperationException($"Planet drainage from {cell.Id} skips topology neighbors.");
+
+                var target = cells[cell.DrainageTarget];
+                if (target.FlowAccumulation + 0.001f < cell.FlowAccumulation)
+                    throw new InvalidOperationException($"Planet flow accumulation decreases downstream from {cell.Id}.");
+                if (cell.IsRiver && target.IsRiver)
+                {
+                    if (target.RiverWidth + 0.001f < cell.RiverWidth)
+                        throw new InvalidOperationException($"Planet river narrows downstream from {cell.Id}.");
+                    if (target.StreamOrder < cell.StreamOrder)
+                        throw new InvalidOperationException($"Planet stream order decreases downstream from {cell.Id}.");
+                }
+
+                var sourceSurface = cell.ElevationMeters + (cell.IsLake ? cell.WaterDepthMeters : 0f);
+                var targetSurface = target.ElevationMeters + (target.IsLake ? target.WaterDepthMeters : 0f);
+                if (targetSurface > sourceSurface + 2f)
+                    throw new InvalidOperationException($"Planet drainage flows uphill from {cell.Id}.");
+
+                var degree = topology.GetNeighborIndices(i).Length;
+                if (cell.RiverDirection < 0 || cell.RiverDirection >= degree)
+                    throw new InvalidOperationException($"Planet cell {cell.Id} has invalid drainage direction.");
+            }
+
+            if (cell.StreamOrder < 0 || cell.UpstreamBranches < 0)
+                throw new InvalidOperationException($"Planet river metadata is invalid in {cell.Id}.");
+        }
+
+        for (var start = 0; start < cells.Length; start++)
+        {
+            var startIsOcean = cells[start].ElevationMeters < 0f && !cells[start].IsLake;
+            if (startIsOcean || state[start] != 0)
+                continue;
+
+            var depth = 0;
+            var current = start;
+            while (current >= 0 &&
+                   !(cells[current].ElevationMeters < 0f && !cells[current].IsLake))
+            {
+                if (state[current] == 2)
+                    break;
+                if (state[current] == 1)
+                    throw new InvalidOperationException($"Planet drainage contains a cycle at {cells[current].Id}.");
+
+                if (depth >= cells.Length)
+                    throw new InvalidOperationException("Planet drainage traversal exceeded world size.");
+                state[current] = 1;
+                stack[depth++] = current;
+                current = cells[current].DrainageTarget;
+            }
+
+            while (depth > 0)
+                state[stack[--depth]] = 2;
+        }
+    }
+
+    private static bool[] ClassifyOceanCells(
+        WorldTopology topology,
+        float[] elevation)
+    {
+        var visited = new bool[elevation.Length];
+        var components = new List<List<int>>();
+        var queue = new Queue<int>();
+        var waterCells = 0;
+
+        for (var start = 0; start < elevation.Length; start++)
+        {
+            if (elevation[start] >= 0f)
+                continue;
+            waterCells++;
+            if (visited[start])
+                continue;
+
+            var component = new List<int>();
+            visited[start] = true;
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                component.Add(at);
+                var neighbors = topology.GetNeighborIndices(at);
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var next = neighbors[n];
+                    if (visited[next] || elevation[next] >= 0f)
+                        continue;
+                    visited[next] = true;
+                    queue.Enqueue(next);
+                }
+            }
+            components.Add(component);
+        }
+
+        if (components.Count == 0)
+            throw new InvalidOperationException("Planet generation produced no ocean candidates.");
+
+        components.Sort((a, b) => b.Count.CompareTo(a.Count));
+        var ocean = new bool[elevation.Length];
+        var majorOceanThreshold = Math.Max(64, waterCells / 12);
+        var marked = 0;
+
+        for (var componentIndex = 0; componentIndex < components.Count; componentIndex++)
+        {
+            var component = components[componentIndex];
+            if (componentIndex > 0 && component.Count < majorOceanThreshold)
+                continue;
+
+            for (var i = 0; i < component.Count; i++)
+            {
+                ocean[component[i]] = true;
+                marked++;
+            }
+        }
+
+        if (marked == 0)
+            throw new InvalidOperationException("Planet generation could not classify a connected ocean.");
+
+        return ocean;
     }
 
     private static int[] ComputeCoastDistance(WorldTopology topology, float[] elevation)
@@ -838,4 +1259,5 @@ public static class PlanetWorldGenerator
     private static float Smooth(float value) => value * value * (3f - 2f * value);
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
     private readonly record struct Plate(CoreVector3 Center, bool Continental, float Uplift, float Volcanism);
+    private readonly record struct ContinentAnchor(CoreVector3 Center, float CosRadius);
 }

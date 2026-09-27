@@ -198,7 +198,13 @@ public sealed partial class AppRoot : Control
                 if (_session is null)
                     return;
 
-                var manual = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld, _coreRuntime?.CaptureSnapshot());
+                var manual = _saves.SaveManual(
+                    _session,
+                    _gameTime,
+                    _simulationSpeed,
+                    _demoWorld,
+                    _coreRuntime?.CaptureSnapshot(),
+                    CaptureCurrentViewState()?.ToSaveState());
                 if (!manual.Success)
                 {
                     _toasts?.ShowToast($"Не удалось создать сохранение: {manual.Error}", ToastKind.Error);
@@ -256,7 +262,13 @@ public sealed partial class AppRoot : Control
             if (_session is null)
                 return;
 
-            var result = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld, _coreRuntime?.CaptureSnapshot());
+            var result = _saves.SaveManual(
+                _session,
+                _gameTime,
+                _simulationSpeed,
+                _demoWorld,
+                _coreRuntime?.CaptureSnapshot(),
+                CaptureCurrentViewState()?.ToSaveState());
             if (result.Success)
             {
                 RefreshSaveCount();
@@ -291,7 +303,7 @@ public sealed partial class AppRoot : Control
 
         _session = GameSession.FromSave(document);
         ClearGameRuntime();
-        _gameViewState = null;
+        _gameViewState = GameViewState.FromSaveState(document.Runtime?.View);
 
         if (recovered)
             _toasts?.ShowToast("Основной save восстановлен из backup", ToastKind.Warning);
@@ -403,7 +415,13 @@ public sealed partial class AppRoot : Control
         if (_session is null)
             return;
 
-        var result = _saves.SaveManual(_session, _gameTime, _simulationSpeed, _demoWorld, _coreRuntime?.CaptureSnapshot());
+        var result = _saves.SaveManual(
+            _session,
+            _gameTime,
+            _simulationSpeed,
+            _demoWorld,
+            _coreRuntime?.CaptureSnapshot(),
+            CaptureCurrentViewState()?.ToSaveState());
         if (result.Success)
         {
             RefreshSaveCount();
@@ -473,7 +491,13 @@ public sealed partial class AppRoot : Control
         if (_session is null)
             return;
 
-        var result = _saves.CreateAutosave(_session, _gameTime, _simulationSpeed, _demoWorld, _coreRuntime?.CaptureSnapshot());
+        var result = _saves.CreateAutosave(
+            _session,
+            _gameTime,
+            _simulationSpeed,
+            _demoWorld,
+            _coreRuntime?.CaptureSnapshot(),
+            CaptureCurrentViewState()?.ToSaveState());
         if (result.Success)
             RecordSystemEvent("Автосохранение создано", "Текущее состояние сессии записано в кольцевой autosave.", "simulation/history.svg");
         else
@@ -508,6 +532,11 @@ public sealed partial class AppRoot : Control
         _gameTime = null;
         _demoWorld = null;
         _coreRuntime = null;
+    }
+
+    private GameViewState? CaptureCurrentViewState()
+    {
+        return _activeGameScreen?.CaptureViewState() ?? _gameViewState;
     }
 
     private void CaptureGameViewState()

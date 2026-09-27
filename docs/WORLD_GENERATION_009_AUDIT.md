@@ -117,3 +117,77 @@ alignment, broad gray uplands, low frequency of four-continent layouts, and the
 large one-shot memory delta. In-game 0.0.8/0.0.9 FPS comparison and older
 0.0.8 save-file UI migration were not performed. No GitHub Actions, merge,
 tag or release was run as part of this audit.
+
+
+## 2026-09-27 second refinement implementation
+
+Starting checkpoint for this pass: `7e7b85a2c7bb5a93a99cd990a8ef252f7094961e`.
+
+The implementation addresses the P2 findings recorded above: river straightness,
+hex-axis coastline runs, low macro-layout variety, broad gray uplands and
+candidate-search memory pressure. It adds deterministic hydraulic routing
+preferences, stream-order metadata, continuous-space coast curvature, selected
+one-cell bridge cleanup, wider pseudo-plate/crust variation, rift-style
+fragmentation bias, derived highlands, river/coast geometry metrics, 50-seed
+quality tooling and deferred EnvironmentStore materialization.
+
+Verification status in the environment that produced this commit:
+
+- `dotnet restore`: NOT RUN — .NET SDK unavailable.
+- `dotnet build`: NOT RUN — .NET SDK unavailable.
+- `verify`: NOT RUN.
+- `environment-verify`: NOT RUN.
+- `worldgen-verify`: NOT RUN.
+- `worldgen-seeds`: NOT RUN.
+- `worldgen-quality 20/50`: NOT RUN.
+- `worldgen-benchmark`: NOT RUN.
+- `worldgen-gallery`: NOT RUN.
+- Godot visual review/screenshots: NOT RUN — Godot unavailable.
+- FPS/TPS comparison: NOT MEASURED.
+- 0.0.8 save UI migration: NOT RUN.
+
+Static repository review confirmed balanced changed C# source delimiters, preserved
+0.0.9 version scope, append-only terrain enum compatibility and no change to the
+manual-only GitHub Actions trigger. Runtime P0/P1 status must therefore remain
+unverified until the local .NET/Godot suite above is run; no PASS metrics are
+claimed by this appendix.
+
+
+## 2026-09-27 visual realism pass — implementation checkpoint
+
+Starting checkpoint: `45e9036342267897bfc6ecea8da4e57df3341b75`.
+
+The repository audit confirmed an important presentation-level cause of geometric
+rivers: generated river cells were still classified and colored as full
+`HexTerrainType.River` hexes. Even a better drainage path therefore remained
+visually locked to the six-cell grid.
+
+This checkpoint separates river hydrology from terrain presentation:
+
+- new generated river cells keep their physical land terrain classification;
+- `WaterKind.River` remains authoritative for water/movement semantics;
+- each base terrain chunk caches one additional batched `ArrayMesh` containing
+  curved river ribbons;
+- ribbon endpoints use deterministic sub-cell anchors shared by adjacent cells,
+  so tributaries connect while no river geometry is rebuilt per frame;
+- width continues to come from generated `RiverWidth`;
+- generation debug layers hide the river overlay;
+- legacy saves without route-direction metadata keep their old full-hex river
+  rendering so old rivers do not disappear during migration.
+
+Static checks in this environment found balanced changed C# source delimiters
+and the workflow remains manual-only. The required Godot screenshot gate from
+the visual-pass specification cannot be completed here because this execution
+environment has no .NET SDK, Mono C# compiler or Godot executable, and direct
+GitHub network access from the local shell is unavailable.
+
+Therefore the mandatory visual classifications remain:
+
+- `visual-00..19 BEFORE`: NOT REVIEWED in this environment;
+- `visual-00..19 AFTER`: NOT REVIEWED;
+- `unseen-00..19 AFTER`: NOT REVIEWED;
+- Small/Large screenshot set: NOT REVIEWED;
+- FPS/TPS: NOT MEASURED;
+- old 0.0.8 save UI migration: NOT RUN.
+
+No visual PASS is claimed by this checkpoint.

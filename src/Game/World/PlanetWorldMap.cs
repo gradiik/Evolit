@@ -33,6 +33,10 @@ public sealed class PlanetWorldCell
     public int BasinId { get; init; }
     public int RiverLength { get; init; }
     public float RiverWidth { get; init; }
+    public int DrainageTarget { get; init; } = -1;
+    public int StreamOrder { get; init; }
+    public int UpstreamBranches { get; init; }
+    public int RiverDirection { get; init; } = -1;
 
     public bool IsWater => WaterKind != HexWaterKind.None;
 }
@@ -42,6 +46,8 @@ public sealed class PlanetWorldMap
     private const int BucketResolution = 18;
     private readonly Dictionary<CellId, PlanetWorldCell> _byId;
     private readonly Dictionary<(int X, int Y, int Z), List<int>> _buckets = new();
+    private readonly float[] _cornerTerrainElevationMeters;
+    private readonly float[] _cornerSurfaceElevationMeters;
 
     public PlanetWorldMap(
         string seed,
@@ -59,6 +65,8 @@ public sealed class PlanetWorldMap
         Geometry = geometry;
         InitialEnvironment = environment;
         Cells = cells;
+        _cornerTerrainElevationMeters = BuildCornerElevations(geometry, cells, static cell => cell.ElevationMeters);
+        _cornerSurfaceElevationMeters = BuildCornerElevations(geometry, cells, VisibleSurfaceElevationMeters);
         _byId = new Dictionary<CellId, PlanetWorldCell>(cells.Count);
         for (var i = 0; i < cells.Count; i++)
         {
@@ -84,7 +92,39 @@ public sealed class PlanetWorldMap
 
     public bool TryGetCell(CellId id, out PlanetWorldCell cell) => _byId.TryGetValue(id, out cell!);
 
+    public bool TryGetCell(int index, out PlanetWorldCell cell)
+    {
+        if ((uint)index >= (uint)Cells.Count)
+        {
+            cell = null!;
+            return false;
+        }
+        cell = Cells[index];
+        return true;
+    }
+
     public ReadOnlySpan<CoreVector3> GetPolygon(PlanetWorldCell cell) => Geometry.GetPolygon(cell.Index);
+
+    public ReadOnlySpan<float> GetPolygonTerrainElevationMeters(PlanetWorldCell cell)
+    {
+        var start = Geometry.PolygonOffsets[cell.Index];
+        var length = Geometry.PolygonOffsets[cell.Index + 1] - start;
+        return _cornerTerrainElevationMeters.AsSpan(start, length);
+    }
+
+    public ReadOnlySpan<float> GetPolygonSurfaceElevationMeters(PlanetWorldCell cell)
+    {
+        var start = Geometry.PolygonOffsets[cell.Index];
+        var length = Geometry.PolygonOffsets[cell.Index + 1] - start;
+        return _cornerSurfaceElevationMeters.AsSpan(start, length);
+    }
+
+    public static float VisibleSurfaceElevationMeters(PlanetWorldCell cell) => cell.WaterKind switch
+    {
+        HexWaterKind.Ocean => 0f,
+        HexWaterKind.Lake => cell.ElevationMeters + Math.Max(0f, cell.WaterDepthMeters),
+        _ => cell.ElevationMeters
+    };
 
     public PlanetWorldCell FindNearestCell(CoreVector3 direction)
     {
@@ -93,20 +133,23 @@ public sealed class PlanetWorldMap
         var bestIndex = -1;
         var bestDot = float.MinValue;
 
-        for (var dx = -1; dx <= 1; dx++)
-        for (var dy = -1; dy <= 1; dy++)
-        for (var dz = -1; dz <= 1; dz++)
+        for (var radius = 0; radius <= 3 && bestIndex < 0; radius++)
         {
-            var key = (bucket.X + dx, bucket.Y + dy, bucket.Z + dz);
-            if (!_buckets.TryGetValue(key, out var candidates))
-                continue;
-            foreach (var index in candidates)
+            for (var dx = -radius; dx <= radius; dx++)
+            for (var dy = -radius; dy <= radius; dy++)
+            for (var dz = -radius; dz <= radius; dz++)
             {
-                var dot = CoreVector3.Dot(target, Cells[index].Direction);
-                if (dot <= bestDot)
+                var key = (bucket.X + dx, bucket.Y + dy, bucket.Z + dz);
+                if (!_buckets.TryGetValue(key, out var candidates))
                     continue;
-                bestDot = dot;
-                bestIndex = index;
+                foreach (var index in candidates)
+                {
+                    var dot = CoreVector3.Dot(target, Cells[index].Direction);
+                    if (dot <= bestDot)
+                        continue;
+                    bestDot = dot;
+                    bestIndex = index;
+                }
             }
         }
 
@@ -140,6 +183,43 @@ public sealed class PlanetWorldMap
             best = cell;
         }
         return best ?? Cells[0];
+    }
+
+    private static float[] BuildCornerElevations(
+        PlanetSurfaceGeometry geometry,
+        IReadOnlyList<PlanetWorldCell> cells,
+        Func<PlanetWorldCell, float> valueSelector)
+    {
+        var aggregates = new Dictionary<CornerKey, (double Sum, int Count)>();
+        for (var cellIndex = 0; cellIndex < cells.Count; cellIndex++)
+        {
+            var value = valueSelector(cells[cellIndex]);
+            var polygon = geometry.GetPolygon(cellIndex);
+            for (var p = 0; p < polygon.Length; p++)
+            {
+                var key = CornerKey.From(polygon[p]);
+                if (aggregates.TryGetValue(key, out var aggregate))
+                    aggregates[key] = (aggregate.Sum + value, aggregate.Count + 1);
+                else
+                    aggregates.Add(key, (value, 1));
+            }
+        }
+
+        var result = new float[geometry.PolygonVertices.Length];
+        for (var i = 0; i < geometry.PolygonVertices.Length; i++)
+        {
+            var aggregate = aggregates[CornerKey.From(geometry.PolygonVertices[i])];
+            result[i] = (float)(aggregate.Sum / Math.Max(1, aggregate.Count));
+        }
+        return result;
+    }
+
+    private readonly record struct CornerKey(long X, long Y, long Z)
+    {
+        public static CornerKey From(CoreVector3 value) => new(
+            (long)MathF.Round(value.X * 100_000_000f),
+            (long)MathF.Round(value.Y * 100_000_000f),
+            (long)MathF.Round(value.Z * 100_000_000f));
     }
 
     private static (int X, int Y, int Z) BucketFor(CoreVector3 direction)
@@ -208,6 +288,41 @@ public static class PlanetWorldMapGenerator
                 ? (HexTerrainType)saved.Terrain : HexTerrainType.Grassland;
             var water = Enum.IsDefined(typeof(HexWaterKind), saved.WaterKind)
                 ? (HexWaterKind)saved.WaterKind : HexWaterKind.None;
+            var substrate = Enum.IsDefined((SubstrateKind)saved.Substrate)
+                ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown;
+            if (water == HexWaterKind.River && terrain == HexTerrainType.River)
+            {
+                terrain = ClassifyTerrain(
+                    saved.ElevationMeters,
+                    saved.WaterDepthMeters,
+                    saved.TemperatureCelsius,
+                    saved.Humidity,
+                    substrate,
+                    HexWaterKind.None,
+                    Math.Max(0f, saved.Slope));
+            }
+
+            var drainageTarget = saved.DrainageTarget is >= 0 && saved.DrainageTarget < topology.Count
+                ? saved.DrainageTarget
+                : -1;
+            if (drainageTarget >= 0 && NeighborOrdinal(topology, i, drainageTarget) < 0)
+                drainageTarget = -1;
+            if (drainageTarget < 0 && water == HexWaterKind.River)
+                drainageTarget = InferLegacyDrainageTarget(i, saved, topology, savedById);
+
+            var degree = topology.GetNeighborIndices(i).Length;
+            var riverDirection = saved.RiverDirection is >= 0 && saved.RiverDirection < degree
+                ? saved.RiverDirection
+                : -1;
+            if (riverDirection < 0 && drainageTarget >= 0)
+                riverDirection = NeighborOrdinal(topology, i, drainageTarget);
+
+            var streamOrder = saved.StreamOrder > 0
+                ? Math.Clamp(saved.StreamOrder, 1, 8)
+                : water == HexWaterKind.River
+                    ? Math.Clamp(1 + (int)MathF.Log2(1f + Math.Max(0f, saved.FlowAccumulation) / 20f), 1, 8)
+                    : 0;
+
             cells[i] = new PlanetWorldCell
             {
                 Id = id,
@@ -220,22 +335,28 @@ public static class PlanetWorldMapGenerator
                 Humidity = Math.Clamp(saved.Humidity, 0f, 1f),
                 TemperatureCelsius = saved.TemperatureCelsius,
                 PressureKPa = Math.Max(0f, saved.PressureKPa),
-                MovementCost = Math.Max(0.01f, saved.MovementCost),
-                MovementSpeedMultiplier = Math.Max(0f, saved.MovementSpeedMultiplier),
+                MovementCost = water == HexWaterKind.River ? 1.6f : Math.Max(0.01f, saved.MovementCost),
+                MovementSpeedMultiplier = water == HexWaterKind.River
+                    ? Math.Clamp(1f / 1.6f, 0.22f, 1.2f)
+                    : Math.Max(0f, saved.MovementSpeedMultiplier),
                 VisualVariation = Math.Clamp(saved.VisualVariation, 0f, 1f),
                 FlowAccumulation = Math.Max(0f, saved.FlowAccumulation),
                 Slope = Math.Max(0f, saved.Slope),
                 MineralPotential = Math.Clamp(saved.MineralPotential, 0f, 1f),
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
-                Substrate = Enum.IsDefined((SubstrateKind)saved.Substrate) ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown,
+                Substrate = substrate,
                 ProvinceId = saved.ProvinceId,
                 Continentalness = saved.Continentalness,
                 TectonicUplift = saved.TectonicUplift,
                 CoastDistance = saved.CoastDistance,
                 BasinId = saved.BasinId,
                 RiverLength = saved.RiverLength,
-                RiverWidth = saved.RiverWidth
+                RiverWidth = saved.RiverWidth,
+                DrainageTarget = drainageTarget,
+                StreamOrder = streamOrder,
+                UpstreamBranches = Math.Max(0, saved.UpstreamBranches),
+                RiverDirection = riverDirection
             };
             environment.SetInitial(id, ToEnvironment(cells[i]));
         }
@@ -252,8 +373,15 @@ public static class PlanetWorldMapGenerator
                 : source.ElevationMeters < 0f
                     ? HexWaterKind.Ocean
                     : HexWaterKind.None;
-        var terrain = ClassifyTerrain(source, water);
-        var cost = MovementCost(terrain, source.ElevationMeters);
+        var terrain = ClassifyTerrain(
+            source.ElevationMeters,
+            source.WaterDepthMeters,
+            source.TemperatureCelsius,
+            source.Humidity,
+            source.Substrate,
+            water,
+            source.Slope);
+        var cost = MovementCost(terrain, water, source.ElevationMeters);
         var mixed = SeedMixer.Combine(SeedMixer.FromString(seed), unchecked((ulong)source.Id.Value));
         return new PlanetWorldCell
         {
@@ -282,8 +410,57 @@ public static class PlanetWorldMapGenerator
             CoastDistance = source.CoastDistance,
             BasinId = source.BasinId,
             RiverLength = source.RiverLength,
-            RiverWidth = source.RiverWidth
+            RiverWidth = source.RiverWidth,
+            DrainageTarget = source.DrainageTarget,
+            StreamOrder = source.StreamOrder,
+            UpstreamBranches = source.UpstreamBranches,
+            RiverDirection = source.RiverDirection
         };
+    }
+
+    private static int InferLegacyDrainageTarget(
+        int index,
+        PlanetWorldCellSaveState source,
+        WorldTopology topology,
+        IReadOnlyDictionary<long, PlanetWorldCellSaveState> savedById)
+    {
+        var sourceSurface = source.ElevationMeters +
+            ((HexWaterKind)source.WaterKind == HexWaterKind.Lake ? Math.Max(0f, source.WaterDepthMeters) : 0f);
+        var best = -1;
+        var bestSurface = float.MaxValue;
+        var neighbors = topology.GetNeighborIndices(index);
+
+        for (var n = 0; n < neighbors.Length; n++)
+        {
+            var neighborIndex = neighbors[n];
+            var neighborId = topology.GetCellId(neighborIndex).Value;
+            if (!savedById.TryGetValue(neighborId, out var candidate))
+                continue;
+
+            var candidateWater = Enum.IsDefined(typeof(HexWaterKind), candidate.WaterKind)
+                ? (HexWaterKind)candidate.WaterKind
+                : HexWaterKind.None;
+            var surface = candidate.ElevationMeters +
+                (candidateWater == HexWaterKind.Lake ? Math.Max(0f, candidate.WaterDepthMeters) : 0f);
+
+            if (surface < bestSurface ||
+                (Math.Abs(surface - bestSurface) <= 0.001f && (best < 0 || neighborIndex < best)))
+            {
+                best = neighborIndex;
+                bestSurface = surface;
+            }
+        }
+
+        return best >= 0 && bestSurface <= sourceSurface + 2f ? best : -1;
+    }
+
+    private static int NeighborOrdinal(WorldTopology topology, int sourceIndex, int targetIndex)
+    {
+        var neighbors = topology.GetNeighborIndices(sourceIndex);
+        for (var n = 0; n < neighbors.Length; n++)
+            if (neighbors[n] == targetIndex)
+                return n;
+        return -1;
     }
 
     private static EnvironmentCellState ToEnvironment(PlanetWorldCell cell) => new(
@@ -300,33 +477,51 @@ public static class PlanetWorldMapGenerator
         cell.GeothermalPotential,
         cell.Substrate);
 
-    private static HexTerrainType ClassifyTerrain(GeneratedWorldCell cell, HexWaterKind water)
+    private static HexTerrainType ClassifyTerrain(
+        float elevationMeters,
+        float waterDepthMeters,
+        float temperature,
+        float humidity,
+        SubstrateKind substrate,
+        HexWaterKind water,
+        float slope)
     {
-        if (water == HexWaterKind.River) return HexTerrainType.River;
         if (water == HexWaterKind.Lake) return HexTerrainType.Lake;
-        if (water == HexWaterKind.Ocean) return cell.WaterDepthMeters > 700f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
-        if ((cell.ElevationMeters > 1500f && cell.Slope > 250f) || cell.ElevationMeters > 2650f)
+        if (water == HexWaterKind.Ocean)
+            return waterDepthMeters > 700f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
+        if ((elevationMeters > 1600f && slope > 150f) || elevationMeters > 3000f)
             return HexTerrainType.Mountain;
-        if (cell.Slope > 540f || cell.ElevationMeters > 1600f || cell.Substrate is SubstrateKind.BareRock or SubstrateKind.Basalt)
+        if (slope > 175f ||
+            elevationMeters > 1950f ||
+            (substrate == SubstrateKind.BareRock && elevationMeters > 1100f && slope > 85f) ||
+            (substrate == SubstrateKind.Basalt && elevationMeters > 850f))
             return HexTerrainType.Rocky;
-        if (cell.Substrate == SubstrateKind.Sand && cell.ElevationMeters < 220f)
+        if (elevationMeters > 900f && slope < 175f)
+            return HexTerrainType.Highland;
+        if (substrate == SubstrateKind.Sand && elevationMeters < 220f)
             return HexTerrainType.Sand;
-        if (cell.Humidity < 0.28f && cell.TemperatureCelsius > 18f)
+        if (humidity < 0.28f && temperature > 18f)
             return HexTerrainType.Desert;
         return HexTerrainType.Grassland;
     }
 
-    private static float MovementCost(HexTerrainType terrain, float elevationMeters)
+    private static float MovementCost(
+        HexTerrainType terrain,
+        HexWaterKind water,
+        float elevationMeters)
     {
+        if (water == HexWaterKind.River)
+            return 1.6f;
+
         var cost = terrain switch
         {
             HexTerrainType.DeepWater => 2.8f,
             HexTerrainType.ShallowWater => 2.0f,
             HexTerrainType.Lake => 2.3f,
-            HexTerrainType.River => 1.6f,
             HexTerrainType.Sand => 1.18f,
             HexTerrainType.Desert => 1.32f,
             HexTerrainType.Grassland => 1.0f,
+            HexTerrainType.Highland => 1.18f,
             HexTerrainType.Rocky => 1.45f,
             HexTerrainType.Mountain => 2.25f,
             _ => 1f

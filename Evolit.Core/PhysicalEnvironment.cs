@@ -346,6 +346,8 @@ public sealed partial class EnvironmentStore
         snapshot.Evaporation = (float[])_evaporation!.Clone();
         snapshot.Runoff = (float[])_runoff!.Clone();
         snapshot.WaterAvailability = (float[])_waterAvailability!.Clone();
+        snapshot.BaseClimateTemperature = (float[])_baseClimateTemperature!.Clone();
+        snapshot.TargetPressure = (float[])_targetPressure!.Clone();
     }
 
     internal void RestorePhysical(EnvironmentSnapshot snapshot)
@@ -357,6 +359,8 @@ public sealed partial class EnvironmentStore
         CopyOptional(snapshot.Evaporation, _evaporation!);
         CopyOptional(snapshot.Runoff, _runoff!);
         CopyOptional(snapshot.WaterAvailability, _waterAvailability!);
+        CopyOptional(snapshot.BaseClimateTemperature, _baseClimateTemperature!);
+        CopyOptional(snapshot.TargetPressure, _targetPressure!);
         for (var i = 0; i < Count; i++)
             if (snapshot.WaterAvailability.Length == 0)
                 _waterAvailability![i] = _waterDepthMeters[i] > 0 ? 1f : _humidity[i] * 0.72f;
@@ -404,7 +408,9 @@ public sealed partial class EnvironmentStore
                 ? Math.Clamp(Math.Abs(surfaceDirection.Y), 0f, 1f)
                 : Math.Clamp(Math.Abs(_topology.GetCellId(i).R) / (float)maxAbsR, 0f, 1f);
             var elevationCooling = Math.Max(0f, _elevationMeters[i]) * 0.0062f;
-            _baseClimateTemperature[i] = 29f - latitude * 31f - elevationCooling;
+            _baseClimateTemperature[i] = _topology.Kind == WorldTopologyKind.Planet
+                ? _temperatureCelsius[i]
+                : 29f - latitude * 31f - elevationCooling;
             _targetPressure[i] = Math.Max(
                 20f,
                 101.325f * MathF.Exp(-Math.Max(-500f, _elevationMeters[i]) / 8434f));
@@ -476,4 +482,6 @@ public sealed partial class EnvironmentSnapshot
     public float[] Evaporation { get; set; } = Array.Empty<float>();
     public float[] Runoff { get; set; } = Array.Empty<float>();
     public float[] WaterAvailability { get; set; } = Array.Empty<float>();
+    public float[] BaseClimateTemperature { get; set; } = Array.Empty<float>();
+    public float[] TargetPressure { get; set; } = Array.Empty<float>();
 }
