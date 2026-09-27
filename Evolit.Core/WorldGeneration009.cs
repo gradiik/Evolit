@@ -33,6 +33,9 @@ internal static class WorldGeneration009Pipeline
         public required int[] BasinId { get; init; }
         public required int[] RiverLength { get; init; }
         public required float[] RiverWidth { get; init; }
+        public required int[] StreamOrder { get; init; }
+        public required int[] UpstreamBranches { get; init; }
+        public required int[] RiverDirection { get; init; }
         public required float[] FilledElevation { get; init; }
     }
 
@@ -86,8 +89,21 @@ internal static class WorldGeneration009Pipeline
         var coastStart = Stopwatch.GetTimestamp();
         var seaLevel = ChooseSeaLevel(settings, elevation);
         for (var i = 0; i < count; i++)
-        {
             elevation[i] -= seaLevel;
+
+        // Coast detail is applied in continuous world space before the land/water
+        // mask is compressed to hex cells. This weakens long shoreline runs that
+        // merely follow one of the six grid axes without adding noisy teeth.
+        ApplyContinuousCoastCurvature(
+            settings,
+            ids,
+            macroSeed,
+            elevation,
+            province);
+        RefineNarrowCoastalFeatures(topology, ids, macroSeed, elevation);
+
+        for (var i = 0; i < count; i++)
+        {
             // Continental crust controls the land mask. Broad interior height
             // stays low until geological uplift creates mountain belts.
             if (elevation[i] >= 0f)
@@ -151,10 +167,14 @@ internal static class WorldGeneration009Pipeline
         var geologyMs = Stopwatch.GetElapsedTime(geologyStart).TotalMilliseconds;
 
         var hydrologyStart = Stopwatch.GetTimestamp();
-        var hydro = BuildHydrology(topology, elevation);
+        var hydro = BuildHydrology(topology, ids, elevation, erosionSeed);
         CarveMainRiverValleys(topology, elevation, hydro, erosionSeed);
         // A second pass makes drainage match the final carved relief.
-        hydro = BuildHydrology(topology, elevation);
+        hydro = BuildHydrology(
+            topology,
+            ids,
+            elevation,
+            SeedMixer.Combine(erosionSeed, 1));
         ApplyLakeWaterDepth(elevation, water, hydro);
         ApplyRiverWaterDepth(water, hydro);
         FinalizeHydrologicSubstrate(water, hydro, substrate);
@@ -238,7 +258,10 @@ internal static class WorldGeneration009Pipeline
                 coastDistance[i],
                 hydro.BasinId[i],
                 hydro.RiverLength[i],
-                hydro.RiverWidth[i]);
+                hydro.RiverWidth[i],
+                hydro.StreamOrder[i],
+                hydro.UpstreamBranches[i],
+                hydro.RiverDirection[i]);
         }
 
         var summary = Summarize(topology, cells);
