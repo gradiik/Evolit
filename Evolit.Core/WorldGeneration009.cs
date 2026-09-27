@@ -1668,40 +1668,75 @@ internal static class WorldGeneration009Pipeline
         HydrologyResult hydro)
     {
         var landSizes = ComponentSizes(topology, cells, static c => c.ElevationMeters >= 0f);
-        var landCellCount = Math.Max(1, landSizes.Sum());
-        var continentThreshold = Math.Max(80, (int)MathF.Round(landCellCount * 0.035f));
-        var continentCount = landSizes.Count(size => size >= continentThreshold);
-        var secondLargest = landSizes.Count > 1 ? landSizes[1] : 0;
-        var tinyIslandThreshold = Math.Max(4, cells.Length / 1800);
-        var tinyIslands = landSizes.Count(size => size <= tinyIslandThreshold);
+        var landCellCount = 0;
+        for (var i = 0; i < landSizes.Count; i++)
+            landCellCount += landSizes[i];
+        landCellCount = Math.Max(1, landCellCount);
 
-        var inlandWaterComponents = CountInlandWaterComponents(topology, cells);
+        var continentThreshold = Math.Max(80, (int)MathF.Round(landCellCount * 0.035f));
+        var continentCount = 0;
+        var tinyIslandThreshold = Math.Max(4, cells.Length / 1800);
+        var tinyIslands = 0;
+
+        for (var i = 0; i < landSizes.Count; i++)
+        {
+            if (landSizes[i] >= continentThreshold)
+                continentCount++;
+            if (landSizes[i] <= tinyIslandThreshold)
+                tinyIslands++;
+        }
+
+        var secondLargest = landSizes.Count > 1 ? landSizes[1] : 0;
         var coastlineEdges = 0;
         var boundaryCells = 0;
         var boundaryOcean = 0;
         var slopeSum = 0.0;
+        var rockyCells = 0;
+        var mountainCells = 0;
+        var plainCells = 0;
 
         for (var i = 0; i < cells.Length; i++)
         {
-            slopeSum += cells[i].Slope;
+            var cell = cells[i];
+            slopeSum += cell.Slope;
             var neighbors = topology.GetNeighborIndices(i);
+
             if (neighbors.Length < 6)
             {
                 boundaryCells++;
-                if (cells[i].ElevationMeters < 0f)
+                if (cell.ElevationMeters < 0f)
                     boundaryOcean++;
             }
 
-            if (cells[i].ElevationMeters < 0f)
+            if (cell.ElevationMeters < 0f)
                 continue;
+
+            var mountain =
+                (cell.ElevationMeters > 1600f && cell.Slope > 150f) ||
+                cell.ElevationMeters > 3000f;
+            var rocky =
+                !mountain &&
+                (cell.Slope > 175f ||
+                 cell.ElevationMeters > 1950f ||
+                 (cell.Substrate == SubstrateKind.BareRock &&
+                  cell.ElevationMeters > 1100f &&
+                  cell.Slope > 85f) ||
+                 (cell.Substrate == SubstrateKind.Basalt &&
+                  cell.GeothermalPotential > 0.72f));
+
+            if (mountain)
+                mountainCells++;
+            else if (rocky)
+                rockyCells++;
+            else
+                plainCells++;
 
             for (var n = 0; n < neighbors.Length; n++)
                 if (cells[neighbors[n]].ElevationMeters < 0f)
                     coastlineEdges++;
         }
 
-        var landCells = Math.Max(1, cells.Count(c => c.ElevationMeters >= 0f));
-        var coastlineComplexity = coastlineEdges / MathF.Sqrt(landCells);
+        var coastlineComplexity = coastlineEdges / MathF.Sqrt(landCellCount);
 
         var mountainRanges = CountComponents(
             topology,
@@ -1721,40 +1756,34 @@ internal static class WorldGeneration009Pipeline
             cells,
             static c => c.IsLake);
 
-        var tributaries = 0;
-        for (var i = 0; i < cells.Length; i++)
-        {
-            if (!hydro.Rivers[i])
-                continue;
-            var upstream = 0;
-            var neighbors = topology.GetNeighborIndices(i);
-            for (var n = 0; n < neighbors.Length; n++)
-                if (hydro.Rivers[neighbors[n]] && hydro.Drainage[neighbors[n]] == i)
-                    upstream++;
-            if (upstream >= 2)
-                tributaries++;
-        }
-
         var basinIds = new HashSet<int>();
+        var longestRiver = 0;
+        var riverCells = 0;
+        var tributaries = 0;
+
         for (var i = 0; i < hydro.BasinId.Length; i++)
+        {
             if (hydro.BasinId[i] >= 0)
                 basinIds.Add(hydro.BasinId[i]);
 
-        var longestRiver = 0;
-        var riverCells = 0;
-        for (var i = 0; i < hydro.Rivers.Length; i++)
-        {
             if (!hydro.Rivers[i])
                 continue;
+
             riverCells++;
             longestRiver = Math.Max(longestRiver, hydro.RiverLength[i]);
+            if (hydro.UpstreamBranches[i] >= 2)
+                tributaries++;
         }
+
+        var riverStraight = AnalyzeRiverStraightness(cells, hydro);
+        var coastAxis = AnalyzeCoastAxisRuns(topology, cells);
+        var inlandSeas = AnalyzeInlandSeas(topology, cells);
 
         return new WorldGenerationQuality(
             ContinentCount: continentCount,
             SecondLargestContinentCells: secondLargest,
             TinyIslandCount: tinyIslands,
-            InlandWaterComponents: inlandWaterComponents,
+            InlandWaterComponents: inlandSeas.Count,
             CoastlineEdges: coastlineEdges,
             CoastlineComplexity: coastlineComplexity,
             MountainRangeCount: mountainRanges,
@@ -1766,7 +1795,197 @@ internal static class WorldGeneration009Pipeline
             LargestLakeCells: lakeSizes.Count == 0 ? 0 : lakeSizes[0],
             DrainageBasinCount: basinIds.Count,
             BoundaryOceanRatio: boundaryCells == 0 ? 1f : boundaryOcean / (float)boundaryCells,
-            MeanSlope: (float)(slopeSum / Math.Max(1, cells.Length)));
+            MeanSlope: (float)(slopeSum / Math.Max(1, cells.Length)),
+            LongestRiverStraightRun: riverStraight.Longest,
+            MeanRiverStraightRun: riverStraight.Mean,
+            LongRiverStraightFraction: riverStraight.LongFraction,
+            LongestCoastAxisRun: coastAxis.Longest,
+            MeanCoastAxisRun: coastAxis.Mean,
+            LongCoastAxisFraction: coastAxis.LongFraction,
+            RockyLandRatio: rockyCells / (float)landCellCount,
+            MountainLandRatio: mountainCells / (float)landCellCount,
+            PlainLandRatio: plainCells / (float)landCellCount,
+            InlandSeaCount: inlandSeas.Count,
+            LargestInlandSeaCells: inlandSeas.Largest);
+    }
+
+    private static (int Longest, float Mean, float LongFraction) AnalyzeRiverStraightness(
+        GeneratedWorldCell[] cells,
+        HydrologyResult hydro)
+    {
+        var order = CreateIndexOrder(cells.Length);
+        Array.Sort(order, (a, b) => hydro.FilledElevation[a].CompareTo(hydro.FilledElevation[b]));
+
+        var straightRun = new int[cells.Length];
+        var longest = 0;
+        var sum = 0L;
+        var riverCells = 0;
+        var longCells = 0;
+
+        for (var orderIndex = 0; orderIndex < order.Length; orderIndex++)
+        {
+            var i = order[orderIndex];
+            if (!hydro.Rivers[i])
+                continue;
+
+            var run = 1;
+            var parent = hydro.Drainage[i];
+            if (parent >= 0 &&
+                hydro.Rivers[parent] &&
+                hydro.RiverDirection[i] >= 0 &&
+                hydro.RiverDirection[i] == hydro.RiverDirection[parent])
+            {
+                run = straightRun[parent] + 1;
+            }
+
+            straightRun[i] = run;
+            longest = Math.Max(longest, run);
+            sum += run;
+            riverCells++;
+            if (run >= 4)
+                longCells++;
+        }
+
+        return (
+            longest,
+            riverCells == 0 ? 0f : sum / (float)riverCells,
+            riverCells == 0 ? 0f : longCells / (float)riverCells);
+    }
+
+    private static (int Longest, float Mean, float LongFraction) AnalyzeCoastAxisRuns(
+        WorldTopology topology,
+        GeneratedWorldCell[] cells)
+    {
+        var edgeCount = cells.Length * Directions.Length;
+        var edges = new bool[edgeCount];
+        var totalEdges = 0;
+
+        for (var i = 0; i < cells.Length; i++)
+        {
+            if (cells[i].ElevationMeters < 0f)
+                continue;
+
+            for (var direction = 0; direction < Directions.Length; direction++)
+            {
+                var neighborId = CellId.FromAxial(
+                    cells[i].Id.Q + Directions[direction].Q,
+                    cells[i].Id.R + Directions[direction].R);
+                if (!topology.TryGetIndex(neighborId, out var ni) ||
+                    cells[ni].ElevationMeters >= 0f)
+                    continue;
+
+                edges[i * 6 + direction] = true;
+                totalEdges++;
+            }
+        }
+
+        if (totalEdges == 0)
+            return (0, 0f, 0f);
+
+        var visited = new bool[edgeCount];
+        var queue = new Queue<int>();
+        var longest = 0;
+        var runCount = 0;
+        var longEdges = 0;
+
+        for (var edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++)
+        {
+            if (!edges[edgeIndex] || visited[edgeIndex])
+                continue;
+
+            var direction = edgeIndex % 6;
+            var startCell = edgeIndex / 6;
+            var size = 0;
+            queue.Clear();
+            queue.Enqueue(startCell);
+            visited[edgeIndex] = true;
+
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                size++;
+
+                // Move along the two tangent directions of the same shoreline
+                // edge orientation. Curved coasts naturally terminate the run.
+                var tangentA = (direction + 2) % 6;
+                var tangentB = (direction + 4) % 6;
+
+                for (var t = 0; t < 2; t++)
+                {
+                    var tangent = t == 0 ? tangentA : tangentB;
+                    var neighborId = CellId.FromAxial(
+                        cells[at].Id.Q + Directions[tangent].Q,
+                        cells[at].Id.R + Directions[tangent].R);
+                    if (!topology.TryGetIndex(neighborId, out var ni))
+                        continue;
+
+                    var nextEdge = ni * 6 + direction;
+                    if (!edges[nextEdge] || visited[nextEdge])
+                        continue;
+
+                    visited[nextEdge] = true;
+                    queue.Enqueue(ni);
+                }
+            }
+
+            runCount++;
+            longest = Math.Max(longest, size);
+            if (size >= 5)
+                longEdges += size;
+        }
+
+        return (
+            longest,
+            runCount == 0 ? 0f : totalEdges / (float)runCount,
+            longEdges / (float)totalEdges);
+    }
+
+    private static (int Count, int Largest) AnalyzeInlandSeas(
+        WorldTopology topology,
+        GeneratedWorldCell[] cells)
+    {
+        var visited = new bool[cells.Length];
+        var queue = new Queue<int>();
+        var count = 0;
+        var largest = 0;
+
+        for (var i = 0; i < cells.Length; i++)
+        {
+            if (visited[i] || cells[i].ElevationMeters >= 0f)
+                continue;
+
+            var touchesBoundary = false;
+            var size = 0;
+            queue.Clear();
+            queue.Enqueue(i);
+            visited[i] = true;
+
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                size++;
+                if (topology.GetNeighborIndices(at).Length < 6)
+                    touchesBoundary = true;
+
+                var neighbors = topology.GetNeighborIndices(at);
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var ni = neighbors[n];
+                    if (visited[ni] || cells[ni].ElevationMeters >= 0f)
+                        continue;
+                    visited[ni] = true;
+                    queue.Enqueue(ni);
+                }
+            }
+
+            if (touchesBoundary)
+                continue;
+
+            count++;
+            largest = Math.Max(largest, size);
+        }
+
+        return (count, largest);
     }
 
     private static List<int> ComponentSizes(
