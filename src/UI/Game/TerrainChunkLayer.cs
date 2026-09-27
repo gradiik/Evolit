@@ -105,8 +105,11 @@ internal sealed partial class TerrainChunkLayer : Control
         {
             _baseMesh = BuildBaseMesh();
             _coastMesh = BuildCoastMesh();
-            _ridgeMesh = BuildRidgeMesh();
-            _riverMesh = BuildRiverMesh();
+            // Geological information already affects the cell elevation and
+            // colour. Long ribbon overlays made ridges look ruler-straight.
+            _ridgeMesh = null;
+            // A river occupies its complete water cell in the base mesh.
+            _riverMesh = null;
         }
         EstimatedCommands = EstimateCommands();
 
@@ -578,7 +581,7 @@ internal sealed partial class TerrainChunkLayer : Control
             return commands;
         }
 
-        var commands = 0;
+        var detailCommands = 0;
         foreach (var cell in _cells)
         {
             if (_kind == TerrainLayerKind.Detail)
@@ -587,23 +590,23 @@ internal sealed partial class TerrainChunkLayer : Control
                     continue;
 
                 if (cell.Terrain is HexTerrainType.Mountain or HexTerrainType.Highland or HexTerrainType.Rocky or HexTerrainType.River)
-                    commands++;
+                    detailCommands++;
                 else if (_quality.WaterDetail > 0
                          && (cell.Terrain is HexTerrainType.DeepWater or HexTerrainType.ShallowWater or HexTerrainType.Lake))
-                    commands++;
+                    detailCommands++;
             }
             else
             {
                 if (_quality.DetailLevel <= 0)
                     continue;
 
-                commands++;
+                detailCommands++;
                 if (_quality.WaterDetail >= 2
                     && (cell.Terrain is HexTerrainType.DeepWater or HexTerrainType.ShallowWater or HexTerrainType.Lake))
-                    commands++;
+                    detailCommands++;
             }
         }
-        return commands;
+        return detailCommands;
     }
 
     private static void FillHexPoints(Vector2 center, float radius, Vector2[] target)
@@ -756,6 +759,9 @@ internal sealed partial class TerrainChunkLayer : Control
     {
         if (debugMode != GenerationDebugMode.None)
             return DebugColor(cell, debugMode);
+
+        if (cell.WaterKind == HexWaterKind.River)
+            return new Color(0.070f, 0.420f, 0.455f);
 
         var baseColor = cell.Terrain switch
         {

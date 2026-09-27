@@ -109,6 +109,7 @@ public sealed partial class DemoWorldView : Control
     private bool _inspectorActive;
     private readonly Vector2[] _inspectorPoints = new Vector2[6];
     private readonly Vector2[] _inspectorOutline = new Vector2[7];
+    private readonly List<(Vector2 Start, Vector2 End)> _worldBoundary = new();
     private GenerationDebugMode _generationDebugMode;
     private Label? _generationDebugLabel;
 
@@ -134,6 +135,7 @@ public sealed partial class DemoWorldView : Control
         Resized += HandleResized;
 
         BuildWorldLayers();
+        BuildWorldBoundary();
         BuildInspectorPanel();
         BuildGenerationDebugLabel();
 
@@ -289,7 +291,36 @@ public sealed partial class DemoWorldView : Control
             new Color(0.010f, 0.040f, 0.047f),
             true);
 
+        foreach (var (start, end) in _worldBoundary)
+        {
+            var a = WorldToScreen(start);
+            var b = WorldToScreen(end);
+            DrawLine(a, b, new Color(0.01f, 0.07f, 0.09f), 5f, true);
+            DrawLine(a, b, new Color(0.59f, 0.90f, 0.85f), 2.2f, true);
+        }
+
         DrawInspectorHighlight();
+    }
+
+    private void BuildWorldBoundary()
+    {
+        _worldBoundary.Clear();
+        if (_world is null)
+            return;
+
+        var map = _world.Map;
+        foreach (var cell in map.Cells)
+        {
+            for (var i = 0; i < UnitHexPoints.Length; i++)
+            {
+                var a = cell.WorldCenter + UnitHexPoints[i] * map.HexSize;
+                var b = cell.WorldCenter + UnitHexPoints[(i + 1) % UnitHexPoints.Length] * map.HexSize;
+                var midpoint = (a + b) * 0.5f;
+                var across = cell.WorldCenter + (midpoint - cell.WorldCenter) * 2f;
+                if (!map.TryGetCell(WorldMap.WorldToHex(across, map.HexSize), out _))
+                    _worldBoundary.Add((a, b));
+            }
+        }
     }
 
     public GameViewState CaptureViewState()
@@ -495,8 +526,7 @@ public sealed partial class DemoWorldView : Control
         _entityOverlay?.SetView(_cameraPosition, _zoom, Size, _selected);
         _overlayRedrawsThisSample++;
 
-        if (_inspectorActive || _generationDebugMode != GenerationDebugMode.None)
-            QueueRedraw();
+        QueueRedraw();
     }
 
     private void UpdateChunkVisibility(bool force = false)

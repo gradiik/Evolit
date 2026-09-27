@@ -315,7 +315,8 @@ public static class PlanetWorldMapGenerator
                 water,
                 localSlope,
                 localRelief,
-                saved.TectonicUplift);
+                saved.TectonicUplift,
+                saved.CoastDistance);
 
             var drainageTarget = saved.DrainageTarget is >= 0 && saved.DrainageTarget < topology.Count
                 ? saved.DrainageTarget
@@ -401,7 +402,8 @@ public static class PlanetWorldMapGenerator
             water,
             source.Slope,
             source.LocalReliefMeters,
-            source.TectonicUplift);
+            source.TectonicUplift,
+            source.CoastDistance);
         var cost = MovementCost(terrain, water, source.ElevationMeters);
         var mixed = SeedMixer.Combine(SeedMixer.FromString(seed), unchecked((ulong)source.Id.Value));
         return new PlanetWorldCell
@@ -511,7 +513,8 @@ public static class PlanetWorldMapGenerator
         HexWaterKind water,
         float slope,
         float localReliefMeters = 0f,
-        float tectonicUplift = 0f) =>
+        float tectonicUplift = 0f,
+        int coastDistance = -1) =>
         WorldTerrainClassifier.Classify(
             elevationMeters,
             waterDepthMeters,
@@ -521,7 +524,8 @@ public static class PlanetWorldMapGenerator
             water,
             slope,
             localReliefMeters,
-            tectonicUplift);
+            tectonicUplift,
+            coastDistance);
 
     private static float MovementCost(
         HexTerrainType terrain,

@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace Evolit.Core;
 
@@ -58,9 +59,8 @@ public readonly record struct CellId(long Value)
     public int Q => unchecked((int)(Value >> 32));
     public int R => unchecked((int)Value);
     public bool IsPlanet => Q == PlanetMarkerQ;
-    public int PlanetIndex => IsPlanet
-        ? R
-        : throw new InvalidOperationException("Cell ID is not a planet cell.");
+    [JsonIgnore]
+    public int PlanetIndex => R;
     public override string ToString() => IsPlanet ? $"planet:{PlanetIndex}" : $"{Q}:{R}";
 }
 

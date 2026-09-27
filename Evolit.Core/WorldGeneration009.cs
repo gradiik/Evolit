@@ -381,18 +381,25 @@ internal static class WorldGeneration009Pipeline
             var plateVolcanism = geography.MacroplateVolcanism(province[i]);
             var (x, y) = NormalizedWorldPosition(ids[i], settings.Radius);
             var ridgeNoise = 0.72f + Fbm(x * 7.5f, y * 7.5f, SeedMixer.Combine(seed, 211), 3) * 0.56f;
+            // The continuous plate field also marks continental/ocean margins
+            // as convergent. Applying full uplift to every low coastal cell
+            // turned whole islands into a near-continuous mountain rim.
+            var inlandRelief = Math.Clamp((elevation[i] - 100f) / 800f, 0f, 1f);
+            var coastalReliefFactor = 0.15f + inlandRelief * 0.85f;
 
             var style = geography.Style;
             var convergentUplift =
                 MathF.Pow(Math.Clamp(convergence[i], 0f, 1f), 0.72f) *
                 (1900f + style.MountainSharpness * 1300f) *
                 activity *
-                ridgeNoise;
+                ridgeNoise *
+                coastalReliefFactor;
             var volcanicUplift =
                 convergence[i] *
                 plateVolcanism *
                 (420f + style.MountainSharpness * 420f) *
-                activity;
+                activity *
+                coastalReliefFactor;
             var riftValley =
                 divergence[i] *
                 (360f + style.RiftStrength * 480f) *

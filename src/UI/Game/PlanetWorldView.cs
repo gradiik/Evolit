@@ -44,6 +44,7 @@ public sealed partial class PlanetWorldView : Control
     private float _distance = 7.2f;
     private float _targetDistance = 7.2f;
     private float _minimumDistance = 3.55f;
+    private float _overviewDistance = 8.8f;
     private float _maximumSurfaceRadius = PlanetVisualScale.PlanetRadius;
     private bool _dragging;
     private MouseButton _dragButton;
@@ -91,6 +92,14 @@ public sealed partial class PlanetWorldView : Control
         RebuildEntityMarkers();
         UpdateSurfaceBounds();
         UpdateCamera(true);
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what != NotificationResized || _camera is null || _world?.PlanetMap is null)
+            return;
+
+        UpdateOverviewDistance();
     }
 
     public override void _Process(double delta)
@@ -245,8 +254,8 @@ public sealed partial class PlanetWorldView : Control
     public void ResetCamera()
     {
         _orbit = new Vector3(-0.24f, 0.72f, 0f);
-        _distance = 7.2f;
-        _targetDistance = 7.2f;
+        _distance = _overviewDistance;
+        _targetDistance = _overviewDistance;
         _selectedCell = null;
         _selectedEntity = null;
         RebuildSelectionMesh();
@@ -263,7 +272,13 @@ public sealed partial class PlanetWorldView : Control
             return;
 
         _orbit = state.PlanetOrbit;
-        _distance = Mathf.Clamp(state.PlanetDistance <= 0f ? 7.2f : state.PlanetDistance, _minimumDistance, MaxDistance);
+        var savedDistance = state.PlanetDistance;
+        // 7.2 was the old hard-coded overview, but it cannot fit a radius-3
+        // sphere inside a 42-degree camera. Upgrade that legacy view only;
+        // intentional closer/farther views remain intact.
+        if (savedDistance <= 0f || Math.Abs(savedDistance - 7.2f) <= 0.06f)
+            savedDistance = _overviewDistance;
+        _distance = Mathf.Clamp(savedDistance, _minimumDistance, MaxDistance);
         _targetDistance = _distance;
 
         _selectedCell = null;
@@ -509,7 +524,7 @@ public sealed partial class PlanetWorldView : Control
         var triangleCount = 0;
         foreach (var cell in map.Cells)
         {
-            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
+            if (cell.WaterKind == HexWaterKind.None)
                 continue;
             triangleCount += map.GetPolygon(cell).Length;
         }
@@ -527,7 +542,7 @@ public sealed partial class PlanetWorldView : Control
 
         foreach (var cell in map.Cells)
         {
-            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
+            if (cell.WaterKind == HexWaterKind.None)
                 continue;
 
             var polygon = map.GetPolygon(cell);
@@ -535,11 +550,16 @@ public sealed partial class PlanetWorldView : Control
             var surfaceElevation = PlanetWorldMap.VisibleSurfaceElevationMeters(cell);
             var radius = VisualRadiusFromMeters(surfaceElevation) + 0.006f;
             var center = direction * radius;
-            var waterColor = cell.WaterKind == HexWaterKind.Ocean
-                ? (cell.WaterDepthMeters > 2000f
-                    ? new Color(0.018f, 0.12f, 0.20f)
-                    : new Color(0.035f, 0.25f, 0.32f))
-                : new Color(0.045f, 0.34f, 0.38f);
+            var waterColor = cell.WaterKind switch
+            {
+                HexWaterKind.Ocean when cell.WaterDepthMeters > 2000f => new Color(0.018f, 0.12f, 0.20f),
+                HexWaterKind.Ocean => new Color(0.035f, 0.25f, 0.32f),
+                HexWaterKind.Lake => new Color(0.045f, 0.34f, 0.38f),
+                // A river is a complete traversable water cell. Rendering the
+                // whole polygon keeps its banks aligned with the world grid.
+                HexWaterKind.River => new Color(0.055f, 0.40f, 0.45f),
+                _ => new Color(0.035f, 0.25f, 0.32f)
+            };
 
             for (var corner = 0; corner < polygon.Length; corner++)
             {
@@ -590,17 +610,12 @@ public sealed partial class PlanetWorldView : Control
             if (IsDrawableRiver(map, cell))
                 _riverSegmentCount++;
 
-        if (_riverMajor is not null)
-            _riverMajor.Mesh = BuildRiverMesh(map, static cell =>
-                cell.StreamOrder >= 3 || cell.RiverWidth >= 2.4f);
-        if (_riverTributaries is not null)
-            _riverTributaries.Mesh = BuildRiverMesh(map, static cell =>
-                cell.StreamOrder == 2 && cell.RiverWidth < 2.4f);
-        if (_riverFine is not null)
-            _riverFine.Mesh = BuildRiverMesh(map, static cell =>
-                cell.StreamOrder <= 1 && cell.RiverWidth < 2.4f);
-
-        _cachedGeometryBytes += _riverSegmentCount * 7L * 2L * (3L + 3L + 4L) * sizeof(float);
+        // Rivers are represented by their complete water cells in the water
+        // mesh. The former ribbons crossed unrelated terrain and made rivers
+        // cosmetic rather than part of the playable topology.
+        if (_riverMajor is not null) _riverMajor.Mesh = null;
+        if (_riverTributaries is not null) _riverTributaries.Mesh = null;
+        if (_riverFine is not null) _riverFine.Mesh = null;
         ApplyLayerVisibility(true);
     }
 
@@ -1174,8 +1189,18 @@ public sealed partial class PlanetWorldView : Control
 
         _maximumSurfaceRadius = maxRadius;
         _minimumDistance = _maximumSurfaceRadius + CameraNear + 0.18f;
+        UpdateOverviewDistance();
         _distance = Mathf.Clamp(_distance, _minimumDistance, MaxDistance);
         _targetDistance = Mathf.Clamp(_targetDistance, _minimumDistance, MaxDistance);
+    }
+
+    private void UpdateOverviewDistance()
+    {
+        var aspect = Size.Y > 1f ? Size.X / Size.Y : 16f / 9f;
+        _overviewDistance = Mathf.Clamp(
+            PlanetVisualScale.OverviewDistance(_maximumSurfaceRadius, _camera?.Fov ?? 42f, aspect),
+            _minimumDistance,
+            MaxDistance);
     }
 
     private static string FormatVertical(

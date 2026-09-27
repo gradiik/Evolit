@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Linq;
 using Evolit.Flow;
 using Evolit.Game;
 using Evolit.Game.Core;
@@ -62,6 +64,95 @@ public sealed partial class AppRoot : Control
 
         RefreshSaveCount();
         ShowMainMenu();
+
+        // Diagnostic launch for checking the actual exported renderer without
+        // writing to the user's save slots. Used only when explicitly requested
+        // on the command line: -- --capture-flat=<png path> --seed=<seed>.
+        string? capturePath = null;
+        var captureSeed = "evolit-render-check";
+        foreach (var argument in OS.GetCmdlineUserArgs())
+        {
+            if (argument.StartsWith("--capture-flat=", StringComparison.Ordinal))
+                capturePath = argument[15..];
+            else if (argument.StartsWith("--seed=", StringComparison.Ordinal))
+                captureSeed = argument[7..];
+        }
+        if (!string.IsNullOrWhiteSpace(capturePath))
+            CaptureFlatWorld(capturePath, captureSeed);
+    }
+
+    private async void CaptureFlatWorld(string path, string seed)
+    {
+        var isolatedSaves = Path.Combine(Path.GetTempPath(), $"Evolit-verify-{Guid.NewGuid():N}");
+        try
+        {
+            _session = GameSession.CreateNew(
+                "Render check", seed, "Маленький",
+                Evolit.Core.WorldLandAmount.Normal,
+                Evolit.Core.WorldClimate.Temperate,
+                Evolit.Core.GeologicalActivity.Normal,
+                Evolit.Core.WorldShape.Flat);
+            PrepareGameRuntime();
+            VerifyIsolatedSaveRoundTrip(isolatedSaves);
+            ShowGame();
+            for (var frame = 0; frame < 12; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            var result = GetViewport().GetTexture().GetImage().SavePng(path);
+            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed}");
+        }
+        catch (Exception ex)
+        {
+            GD.PushError($"EVOLIT_CAPTURE_FAILED: {ex}");
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(isolatedSaves))
+                    Directory.Delete(isolatedSaves, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                GD.PushWarning($"EVOLIT_TEMP_SAVE_CLEANUP_FAILED: {ex.Message}");
+            }
+        }
+        GetTree().Quit();
+    }
+
+    private void VerifyIsolatedSaveRoundTrip(string saveDirectory)
+    {
+        if (_session is null || _demoWorld is null)
+            throw new InvalidOperationException("New-world runtime was not created.");
+
+        var temporarySaves = new SaveManager(saveDirectory);
+        var saved = temporarySaves.SaveManual(
+            _session,
+            _gameTime,
+            _simulationSpeed,
+            _demoWorld,
+            _coreRuntime?.CaptureSnapshot());
+        if (!saved.Success)
+            throw new InvalidOperationException($"Isolated save failed: {saved.Error}");
+
+        var slot = temporarySaves.ListSaves().SingleOrDefault();
+        if (slot is null)
+            throw new InvalidOperationException("Isolated save did not create a loadable slot.");
+        if (!temporarySaves.TryLoad(slot, out var document, out _, out var error))
+            throw new InvalidOperationException($"Isolated save reload failed: {error}");
+
+        var restoredSession = GameSession.FromSave(document);
+        var restoredWorld = new DemoWorldDataProvider(
+            restoredSession,
+            document.Runtime?.World,
+            document.Runtime?.Core);
+        var originalMap = _demoWorld.Map;
+        var restoredMap = restoredWorld.Map;
+        var originalRivers = originalMap.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
+        var restoredRivers = restoredMap.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
+        if (originalMap.Cells.Count != restoredMap.Cells.Count || originalRivers != restoredRivers)
+            throw new InvalidOperationException("Isolated save round-trip changed map or river cells.");
+
+        GD.Print($"EVOLIT_SAVE_ROUNDTRIP_PASS cells={restoredMap.Cells.Count} river_cells={restoredRivers}");
     }
 
     public override void _Process(double delta)

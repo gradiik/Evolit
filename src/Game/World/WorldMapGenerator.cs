@@ -70,7 +70,8 @@ public static class WorldMapGenerator
                 waterKind,
                 localSlope,
                 localRelief,
-                saved.TectonicUplift);
+                saved.TectonicUplift,
+                saved.CoastDistance);
 
             cells.Add(new WorldHexCell
             {
@@ -118,6 +119,31 @@ public static class WorldMapGenerator
             hexSize,
             cells,
             presentation: RestorePresentation(state.Presentation));
+    }
+
+    private static WorldGenerationPresentation RestorePresentation(WorldGeographyPresentationSaveState? state)
+    {
+        if (state is null)
+            return WorldGenerationPresentation.Empty;
+
+        static WorldGeometrySegment Segment(WorldGeometrySegmentSaveState value) =>
+            new(value.X1, value.Y1, value.X2, value.Y2, value.Strength, value.Width);
+
+        var style = state.Style ?? new WorldGeographyStyleSaveState();
+        return new WorldGenerationPresentation
+        {
+            GeologicalRegionCount = state.GeologicalRegionCount,
+            MacroplateCount = state.MacroplateCount,
+            FieldResolution = state.FieldResolution,
+            Style = new WorldGeographyStyle(
+                style.ContinentalFragmentation, style.CoastRoughness, style.CoastScale,
+                style.PeninsulaStrength, style.BayStrength, style.IslandArcDensity,
+                style.RiftStrength, style.MountainSharpness, style.MountainWidth,
+                style.PlateauStrength, style.PlainSmoothness, style.RiverMeander,
+                style.ShelfWidth, style.OceanBasinDepth),
+            CoastSegments = state.CoastSegments?.ConvertAll(Segment).ToArray() ?? Array.Empty<WorldGeometrySegment>(),
+            RidgeSegments = state.RidgeSegments?.ConvertAll(Segment).ToArray() ?? Array.Empty<WorldGeometrySegment>()
+        };
     }
 
     public static WorldMap RestoreFromCore(string seed, string sizeName, CoreSimulationSnapshot snapshot)
@@ -249,7 +275,8 @@ public static class WorldMapGenerator
             water,
             cell.Slope,
             cell.LocalReliefMeters,
-            cell.TectonicUplift);
+            cell.TectonicUplift,
+            cell.CoastDistance);
 
     private static HexTerrainType ClassifyTerrain(
         float elevationMeters,
@@ -260,7 +287,8 @@ public static class WorldMapGenerator
         HexWaterKind water,
         float slope = 0f,
         float localReliefMeters = 0f,
-        float tectonicUplift = 0f) =>
+        float tectonicUplift = 0f,
+        int coastDistance = -1) =>
         WorldTerrainClassifier.Classify(
             elevationMeters,
             waterDepthMeters,
@@ -270,7 +298,8 @@ public static class WorldMapGenerator
             water,
             slope,
             localReliefMeters,
-            tectonicUplift);
+            tectonicUplift,
+            coastDistance);
 
     private static float DeriveSavedLocalRelief(
         WorldHexCellSaveState source,

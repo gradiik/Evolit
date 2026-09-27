@@ -26,9 +26,9 @@ public sealed class SaveManager
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
-    public SaveManager()
+    public SaveManager(string? saveDirectory = null)
     {
-        _saveDirectory = ProjectSettings.GlobalizePath("user://saves");
+        _saveDirectory = saveDirectory ?? ProjectSettings.GlobalizePath("user://saves");
         Directory.CreateDirectory(_saveDirectory);
     }
 
