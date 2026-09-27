@@ -48,6 +48,16 @@ internal sealed partial class TerrainChunkLayer : Control
         new Vector2(0.8660254f, -0.5f)
     ];
 
+    private static readonly HexCoord[] AxialDirections =
+    [
+        new HexCoord(1, 0),
+        new HexCoord(1, -1),
+        new HexCoord(0, -1),
+        new HexCoord(-1, 0),
+        new HexCoord(-1, 1),
+        new HexCoord(0, 1)
+    ];
+
     private WorldHexCell[] _cells = Array.Empty<WorldHexCell>();
     private Rect2 _worldBounds;
     private float _hexSize;
@@ -57,6 +67,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private readonly Vector2[] _hexPoints = new Vector2[6];
     private readonly Vector2[] _hexOutline = new Vector2[7];
     private ArrayMesh? _baseMesh;
+    private ArrayMesh? _riverMesh;
 
     public int EstimatedCommands { get; private set; }
 
@@ -73,7 +84,10 @@ internal sealed partial class TerrainChunkLayer : Control
         _quality = quality;
         _kind = kind;
         if (_kind == TerrainLayerKind.Base)
+        {
             _baseMesh = BuildBaseMesh();
+            _riverMesh = BuildRiverMesh();
+        }
         EstimatedCommands = EstimateCommands();
 
         Position = worldBounds.Position;
@@ -98,6 +112,8 @@ internal sealed partial class TerrainChunkLayer : Control
         {
             if (_baseMesh is not null)
                 DrawMesh(_baseMesh, null, Transform2D.Identity, Colors.White);
+            if (_debugMode == GenerationDebugMode.None && _riverMesh is not null)
+                DrawMesh(_riverMesh, null, Transform2D.Identity, Colors.White);
             return;
         }
 
@@ -153,6 +169,137 @@ internal sealed partial class TerrainChunkLayer : Control
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
+    }
+
+    private ArrayMesh? BuildRiverMesh()
+    {
+        var riverCount = 0;
+        for (var i = 0; i < _cells.Length; i++)
+            if (_cells[i].WaterKind == HexWaterKind.River &&
+                _cells[i].RiverDirection is >= 0 and <= 5)
+                riverCount++;
+
+        if (riverCount == 0)
+            return null;
+
+        const int segments = 4;
+        var vertices = new List<Vector2>(riverCount * (segments + 1) * 2);
+        var colors = new List<Color>(riverCount * (segments + 1) * 2);
+        var indices = new List<int>(riverCount * segments * 6);
+        var riverColor = new Color(0.10f, 0.50f, 0.54f, 0.92f);
+
+        for (var cellIndex = 0; cellIndex < _cells.Length; cellIndex++)
+        {
+            var cell = _cells[cellIndex];
+            if (cell.WaterKind != HexWaterKind.River ||
+                cell.RiverDirection is < 0 or > 5)
+                continue;
+
+            var direction = AxialDirections[cell.RiverDirection];
+            var targetCoord = new HexCoord(
+                cell.Coord.Q + direction.Q,
+                cell.Coord.R + direction.R);
+
+            var start =
+                cell.WorldCenter -
+                _worldBounds.Position +
+                RiverAnchorOffset(cell.Coord, _hexSize);
+            var end =
+                WorldMap.HexToWorld(targetCoord, _hexSize) -
+                _worldBounds.Position +
+                RiverAnchorOffset(targetCoord, _hexSize);
+
+            var chord = end - start;
+            if (chord.LengthSquared() <= 0.001f)
+                continue;
+
+            var perpendicular = new Vector2(-chord.Y, chord.X).Normalized();
+            var curveSign = RiverCurveSign(cell.Coord, cell.RiverDirection);
+            var riverScale = Math.Clamp(cell.RiverWidth / 5.2f, 0.10f, 1f);
+            var curveAmount = _hexSize * (0.045f + (1f - riverScale) * 0.035f) * curveSign;
+            var control = (start + end) * 0.5f + perpendicular * curveAmount;
+            var halfWidth = _hexSize * (0.018f + riverScale * 0.050f);
+            var baseIndex = vertices.Count;
+
+            for (var sample = 0; sample <= segments; sample++)
+            {
+                var t = sample / (float)segments;
+                var inverse = 1f - t;
+                var point =
+                    start * (inverse * inverse) +
+                    control * (2f * inverse * t) +
+                    end * (t * t);
+
+                var tangent =
+                    (control - start) * (2f * inverse) +
+                    (end - control) * (2f * t);
+                if (tangent.LengthSquared() <= 0.0001f)
+                    tangent = chord;
+
+                var normal = new Vector2(-tangent.Y, tangent.X).Normalized();
+                vertices.Add(point + normal * halfWidth);
+                vertices.Add(point - normal * halfWidth);
+                colors.Add(riverColor);
+                colors.Add(riverColor);
+            }
+
+            for (var segment = 0; segment < segments; segment++)
+            {
+                var a = baseIndex + segment * 2;
+                var b = a + 1;
+                var c0 = a + 2;
+                var d = a + 3;
+
+                indices.Add(a);
+                indices.Add(c0);
+                indices.Add(b);
+                indices.Add(b);
+                indices.Add(c0);
+                indices.Add(d);
+            }
+        }
+
+        if (indices.Count == 0)
+            return null;
+
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+        arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
+        arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
+    }
+
+    private static Vector2 RiverAnchorOffset(HexCoord coord, float hexSize)
+    {
+        var hash = unchecked(
+            (uint)coord.Q * 0x9E3779B9u ^
+            (uint)coord.R * 0x85EBCA6Bu ^
+            0xC2B2AE35u);
+        hash ^= hash >> 16;
+        hash *= 0x7FEB352Du;
+        hash ^= hash >> 15;
+
+        var x = ((hash & 0xFFFFu) / 65535f - 0.5f) * 2f;
+        var y = (((hash >> 16) & 0xFFFFu) / 65535f - 0.5f) * 2f;
+        var offset = new Vector2(x, y);
+        if (offset.LengthSquared() > 1f)
+            offset = offset.Normalized();
+
+        return offset * hexSize * 0.12f;
+    }
+
+    private static float RiverCurveSign(HexCoord coord, int direction)
+    {
+        var hash = unchecked(
+            (uint)(coord.Q * 73856093) ^
+            (uint)(coord.R * 19349663) ^
+            (uint)(direction * 83492791));
+        hash ^= hash >> 13;
+        return (hash & 1u) == 0u ? -1f : 1f;
     }
 
     private void DrawDetail(WorldHexCell cell, Vector2 center)
@@ -239,7 +386,7 @@ internal sealed partial class TerrainChunkLayer : Control
     private int EstimateCommands()
     {
         if (_kind == TerrainLayerKind.Base)
-            return _cells.Length == 0 ? 0 : 1;
+            return _cells.Length == 0 ? 0 : 1 + (_riverMesh is null ? 0 : 1);
 
         var commands = 0;
         foreach (var cell in _cells)
@@ -433,7 +580,7 @@ internal sealed partial class TerrainChunkLayer : Control
         };
 
         var variation = (cell.VisualVariation - 0.5f) * 0.10f;
-        var elevationLight = cell.IsWater
+        var elevationLight = cell.WaterKind is HexWaterKind.Ocean or HexWaterKind.Lake
             ? -Mathf.Clamp(cell.WaterDepth * 0.32f, 0f, 0.24f)
             : Mathf.Clamp(cell.Elevation * 0.20f, -0.06f, 0.18f);
         var factor = Mathf.Clamp(1f + variation + elevationLight, 0.68f, 1.22f);

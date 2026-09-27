@@ -151,3 +151,43 @@ Static repository review confirmed balanced changed C# source delimiters, preser
 manual-only GitHub Actions trigger. Runtime P0/P1 status must therefore remain
 unverified until the local .NET/Godot suite above is run; no PASS metrics are
 claimed by this appendix.
+
+
+## 2026-09-27 visual realism pass — implementation checkpoint
+
+Starting checkpoint: `45e9036342267897bfc6ecea8da4e57df3341b75`.
+
+The repository audit confirmed an important presentation-level cause of geometric
+rivers: generated river cells were still classified and colored as full
+`HexTerrainType.River` hexes. Even a better drainage path therefore remained
+visually locked to the six-cell grid.
+
+This checkpoint separates river hydrology from terrain presentation:
+
+- new generated river cells keep their physical land terrain classification;
+- `WaterKind.River` remains authoritative for water/movement semantics;
+- each base terrain chunk caches one additional batched `ArrayMesh` containing
+  curved river ribbons;
+- ribbon endpoints use deterministic sub-cell anchors shared by adjacent cells,
+  so tributaries connect while no river geometry is rebuilt per frame;
+- width continues to come from generated `RiverWidth`;
+- generation debug layers hide the river overlay;
+- legacy saves without route-direction metadata keep their old full-hex river
+  rendering so old rivers do not disappear during migration.
+
+Static checks in this environment found balanced changed C# source delimiters
+and the workflow remains manual-only. The required Godot screenshot gate from
+the visual-pass specification cannot be completed here because this execution
+environment has no .NET SDK, Mono C# compiler or Godot executable, and direct
+GitHub network access from the local shell is unavailable.
+
+Therefore the mandatory visual classifications remain:
+
+- `visual-00..19 BEFORE`: NOT REVIEWED in this environment;
+- `visual-00..19 AFTER`: NOT REVIEWED;
+- `unseen-00..19 AFTER`: NOT REVIEWED;
+- Small/Large screenshot set: NOT REVIEWED;
+- FPS/TPS: NOT MEASURED;
+- old 0.0.8 save UI migration: NOT RUN.
+
+No visual PASS is claimed by this checkpoint.

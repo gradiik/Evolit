@@ -198,3 +198,14 @@ Rejected generation candidates no longer retain a fully materialized Environment
 Save-map diagnostics now include stream order, branch count and river direction. Missing fields in older schema-1 / 0.0.8 JSON use safe defaults, and Highland was appended to the terrain enum rather than inserted into existing numeric values.
 
 The refinement does not change world radii, runtime environment scheduling, the batched terrain renderer architecture, biological scope, or the flat-hex world model.
+
+
+## Visual river surface pass
+
+The generated hydrology remains cell-based and deterministic, but the presentation no longer needs to paint an entire land hex blue just because a river crosses it.
+
+New worlds keep `WaterKind.River` for hydrology/movement while retaining the physical land terrain classification underneath. Each visible terrain chunk builds one cached river `ArrayMesh` at configure/load time. Every river cell contributes a short quadratic ribbon toward its downstream neighbour using deterministic sub-cell anchor offsets and a small curvature term. Tributaries therefore meet through shared downstream anchors, channel width still comes from generated `RiverWidth`, and the river overlay adds at most one extra base draw call per visible chunk.
+
+This is presentation-only. Drainage, stream order, flow accumulation, basin ids and physical water depth stay unchanged. Debug generation layers hide the overlay so scalar fields remain readable.
+
+Legacy saves without `RiverDirection` keep their old full-hex River terrain instead of silently losing visible rivers. Saves that contain 0.0.9 route metadata are normalized to land terrain plus the cached overlay on restore.

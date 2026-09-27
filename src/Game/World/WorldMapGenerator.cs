@@ -41,14 +41,36 @@ public static class WorldMapGenerator
         foreach (var saved in state.Cells)
         {
             var coord = new HexCoord(saved.Q, saved.R);
+            var waterKind = Enum.IsDefined(typeof(HexWaterKind), saved.WaterKind)
+                ? (HexWaterKind)saved.WaterKind : HexWaterKind.None;
+            var substrate = saved.Substrate is >= 0 and <= byte.MaxValue && Enum.IsDefined((SubstrateKind)saved.Substrate)
+                ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown;
+            var terrain = Enum.IsDefined(typeof(HexTerrainType), saved.Terrain)
+                ? (HexTerrainType)saved.Terrain : HexTerrainType.Grassland;
+
+            // Old 0.0.8/early-0.0.9 saves encoded a river by turning the whole
+            // terrain hex blue. Keep WaterKind.River, but recover the physical
+            // land surface underneath so the cached river overlay can render it.
+            if (waterKind == HexWaterKind.River &&
+                terrain == HexTerrainType.River &&
+                saved.RiverDirection is >= 0 and <= 5)
+            {
+                terrain = ClassifyTerrain(
+                    saved.ElevationMeters,
+                    saved.WaterDepthMeters,
+                    saved.TemperatureCelsius,
+                    saved.Humidity,
+                    substrate,
+                    HexWaterKind.None,
+                    Math.Max(0f, saved.Slope));
+            }
+
             cells.Add(new WorldHexCell
             {
                 Coord = coord,
                 WorldCenter = WorldMap.HexToWorld(coord, hexSize),
-                Terrain = Enum.IsDefined(typeof(HexTerrainType), saved.Terrain)
-                    ? (HexTerrainType)saved.Terrain : HexTerrainType.Grassland,
-                WaterKind = Enum.IsDefined(typeof(HexWaterKind), saved.WaterKind)
-                    ? (HexWaterKind)saved.WaterKind : HexWaterKind.None,
+                Terrain = terrain,
+                WaterKind = waterKind,
                 Elevation = saved.Elevation,
                 ElevationMeters = saved.ElevationMeters,
                 WaterDepth = Math.Max(0f, saved.WaterDepth),
@@ -64,8 +86,7 @@ public static class WorldMapGenerator
                 MineralPotential = Math.Clamp(saved.MineralPotential, 0f, 1f),
                 NutrientPotential = Math.Clamp(saved.NutrientPotential, 0f, 1f),
                 GeothermalPotential = Math.Clamp(saved.GeothermalPotential, 0f, 1f),
-                Substrate = saved.Substrate is >= 0 and <= byte.MaxValue && Enum.IsDefined((SubstrateKind)saved.Substrate)
-                    ? (SubstrateKind)saved.Substrate : SubstrateKind.Unknown,
+                Substrate = substrate,
                 ProvinceId = saved.ProvinceId,
                 Continentalness = saved.Continentalness,
                 TectonicUplift = saved.TectonicUplift,
@@ -215,7 +236,8 @@ public static class WorldMapGenerator
         HexWaterKind water,
         float slope = 0f)
     {
-        if (water == HexWaterKind.River) return HexTerrainType.River;
+        // Rivers are a hydrology overlay over the physical land surface. They
+        // must not replace the entire hex terrain with a blue River tile.
         if (water == HexWaterKind.Lake) return HexTerrainType.Lake;
         if (water == HexWaterKind.Ocean) return waterDepthMeters > 180f ? HexTerrainType.DeepWater : HexTerrainType.ShallowWater;
         if ((elevationMeters > 1600f && slope > 150f) || elevationMeters > 3000f)
