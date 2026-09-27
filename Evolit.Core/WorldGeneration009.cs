@@ -290,8 +290,8 @@ internal static class WorldGeneration009Pipeline
 
     private static Plate[] BuildPlates(ulong seed)
     {
-        var count = 9 + (int)(SeedMixer.Combine(seed, 17) % 5UL);
-        var continentalCount = 3 + (int)(SeedMixer.Combine(seed, 23) % 3UL);
+        var count = 10 + (int)(SeedMixer.Combine(seed, 17) % 6UL);
+        var continentalCount = 3 + (int)(SeedMixer.Combine(seed, 23) % 4UL);
         var continentalScores = new (float Score, int Index)[count];
 
         for (var i = 0; i < count; i++)
@@ -309,16 +309,16 @@ internal static class WorldGeneration009Pipeline
         for (var i = 0; i < count; i++)
         {
             var radial01 = (i + 0.55f) / count;
-            var radius = MathF.Sqrt(radial01) * 0.79f;
-            var angle = rotation + i * goldenAngle + SignedHash(seed, 100 + i) * 0.16f;
-            var x = MathF.Cos(angle) * radius + SignedHash(seed, 200 + i) * 0.055f;
-            var y = MathF.Sin(angle) * radius + SignedHash(seed, 300 + i) * 0.055f;
+            var radius = MathF.Sqrt(radial01) * (0.72f + Hash01(i + 17, 91, seed) * 0.13f);
+            var angle = rotation + i * goldenAngle + SignedHash(seed, 100 + i) * 0.28f;
+            var x = MathF.Cos(angle) * radius + SignedHash(seed, 200 + i) * 0.085f;
+            var y = MathF.Sin(angle) * radius + SignedHash(seed, 300 + i) * 0.085f;
 
             var motionAngle = Hash01(i + 101, 131, SeedMixer.Combine(seed, 41)) * MathF.PI * 2f;
             var speed = 0.35f + Hash01(i + 151, 181, SeedMixer.Combine(seed, 43)) * 0.65f;
             var crust = continental[i]
-                ? 0.72f + Hash01(i + 211, 227, seed) * 0.24f
-                : -0.72f - Hash01(i + 229, 241, seed) * 0.18f;
+                ? 0.60f + Hash01(i + 211, 227, seed) * 0.42f
+                : -0.66f - Hash01(i + 229, 241, seed) * 0.28f;
             var volcanism = Hash01(i + 251, 269, SeedMixer.Combine(seed, 47));
 
             plates[i] = new Plate(
@@ -352,6 +352,7 @@ internal static class WorldGeneration009Pipeline
             WorldLandAmount.High => 0.09f,
             _ => 0f
         };
+        var fragmentationStyle = Hash01(401, 419, SeedMixer.Combine(macroSeed, 131));
 
         for (var i = 0; i < ids.Length; i++)
         {
@@ -394,8 +395,15 @@ internal static class WorldGeneration009Pipeline
             var local = Fbm(x0 * 8.5f + 19f, y0 * 8.5f - 23f, SeedMixer.Combine(macroSeed, 113), 2) - 0.5f;
             var coastStyle = 0.58f + Hash01(first + 307, 313, SeedMixer.Combine(macroSeed, 127)) * 0.78f;
 
-            // Divergent continental boundaries can open large rift-like lowlands.
-            var rift = p.Continental && s.Continental ? divergence[i] * 0.24f : 0f;
+            // Different seeds get genuinely different macro separation pressure.
+            // It acts through continental plate boundaries rather than drawing a
+            // requested continent count directly.
+            var continentalBoundary = p.Continental && s.Continental ? boundaryStrength : 0f;
+            var rift =
+                p.Continental && s.Continental
+                    ? divergence[i] * (0.22f + fragmentationStyle * 0.28f) +
+                      continentalBoundary * Math.Max(0f, 0.56f - relative) * fragmentationStyle * 0.13f
+                    : 0f;
 
             // Oceanic convergent borders receive a small arc potential. Whether they
             // become islands is decided later, after the global land mask.
