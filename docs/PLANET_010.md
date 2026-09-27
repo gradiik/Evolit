@@ -118,3 +118,10 @@ The completed 0.1.0 pipeline also applies these spherical-specific rules:
 - Planet entities are rendered through one batched marker mesh instead of one `MeshInstance3D` per entity.
 - LOD hides cell grid, entity markers and finally rivers as the camera moves away, leaving a clean global planet view.
 - Core environment snapshots persist the generated climate baseline and target pressure, preserving deterministic continued simulation across Planet save/load.
+
+
+## Post-audit picking and polar rendering hardening
+
+The planet cell spatial lookup now evaluates the complete local bucket neighbourhood before accepting a nearest-cell result. This avoids incorrect selection near quantization boundaries while keeping normal picking bounded to a small local candidate set instead of an O(N) scan.
+
+Planet river ribbon tangent construction is also pole-safe: when the projected downstream tangent degenerates, the renderer chooses a reference axis that is not parallel to the local radial direction. This prevents zero-width/invalid river geometry near the poles.

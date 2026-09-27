@@ -559,7 +559,13 @@ public sealed partial class PlanetWorldView : Control
                 var radial = (startDirection * (1f - t) + endDirection * t).Normalized();
                 var tangent = endDirection - radial * endDirection.Dot(radial);
                 if (tangent.LengthSquared() <= 0.000001f)
-                    tangent = radial.Cross(Vector3.Up);
+                {
+                    // Vector3.Up becomes degenerate at the poles. Pick a
+                    // reference axis that is guaranteed to stay away from the
+                    // current radial direction.
+                    var reference = Math.Abs(radial.Y) < 0.92f ? Vector3.Up : Vector3.Right;
+                    tangent = reference.Cross(radial);
+                }
                 tangent = tangent.Normalized();
                 var side = radial.Cross(tangent).Normalized();
                 var elevation = Mathf.Lerp(startElevation, endElevation, t);

@@ -133,23 +133,25 @@ public sealed class PlanetWorldMap
         var bestIndex = -1;
         var bestDot = float.MinValue;
 
-        for (var radius = 0; radius <= 3 && bestIndex < 0; radius++)
+        // Always inspect the full local neighbourhood before accepting a
+        // candidate. Stopping at the first non-empty bucket can select the
+        // wrong cell when the true nearest centre lies just across a bucket
+        // boundary.
+        const int localSearchRadius = 2;
+        for (var dx = -localSearchRadius; dx <= localSearchRadius; dx++)
+        for (var dy = -localSearchRadius; dy <= localSearchRadius; dy++)
+        for (var dz = -localSearchRadius; dz <= localSearchRadius; dz++)
         {
-            for (var dx = -radius; dx <= radius; dx++)
-            for (var dy = -radius; dy <= radius; dy++)
-            for (var dz = -radius; dz <= radius; dz++)
+            var key = (bucket.X + dx, bucket.Y + dy, bucket.Z + dz);
+            if (!_buckets.TryGetValue(key, out var candidates))
+                continue;
+            foreach (var index in candidates)
             {
-                var key = (bucket.X + dx, bucket.Y + dy, bucket.Z + dz);
-                if (!_buckets.TryGetValue(key, out var candidates))
+                var dot = CoreVector3.Dot(target, Cells[index].Direction);
+                if (dot <= bestDot)
                     continue;
-                foreach (var index in candidates)
-                {
-                    var dot = CoreVector3.Dot(target, Cells[index].Direction);
-                    if (dot <= bestDot)
-                        continue;
-                    bestDot = dot;
-                    bestIndex = index;
-                }
+                bestDot = dot;
+                bestIndex = index;
             }
         }
 
