@@ -1503,7 +1503,7 @@ internal static class WorldGeneration009Pipeline
 
         var distanceToWater = DistanceToWater(topology, water);
         var windMoisture = new float[elevation.Length];
-        var order = Enumerable.Range(0, elevation.Length).ToArray();
+        var order = CreateIndexOrder(elevation.Length);
         Array.Sort(order, (a, b) =>
         {
             var qa = ids[a].Q;
@@ -1982,6 +1982,35 @@ internal static class WorldGeneration009Pipeline
         }
 
         return builder.Build();
+    }
+
+    private static int[] CreateIndexOrder(int count)
+    {
+        var order = new int[count];
+        for (var i = 0; i < count; i++)
+            order[i] = i;
+        return order;
+    }
+
+    private static int DirectionIndex(CellId from, CellId to)
+    {
+        var dq = to.Q - from.Q;
+        var dr = to.R - from.R;
+
+        for (var direction = 0; direction < Directions.Length; direction++)
+            if (Directions[direction].Q == dq && Directions[direction].R == dr)
+                return direction;
+
+        return -1;
+    }
+
+    private static int DirectionDifference(int a, int b)
+    {
+        if (a < 0 || b < 0)
+            return 0;
+
+        var difference = Math.Abs(a - b);
+        return Math.Min(difference, 6 - difference);
     }
 
     private static void FindNearestPlates(
