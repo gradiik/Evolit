@@ -1064,7 +1064,9 @@ internal static class WorldGeneration009Pipeline
 
     private static HydrologyResult BuildHydrology(
         WorldTopology topology,
-        float[] elevation)
+        CellId[] ids,
+        float[] elevation,
+        ulong seed)
     {
         var count = elevation.Length;
         var filled = (float[])elevation.Clone();
@@ -1076,13 +1078,17 @@ internal static class WorldGeneration009Pipeline
         var basin = new int[count];
         var riverLength = new int[count];
         var riverWidth = new float[count];
+        var streamOrder = new int[count];
+        var upstreamBranches = new int[count];
+        var riverDirection = new int[count];
         var visited = new bool[count];
         Array.Fill(drainage, -1);
         Array.Fill(basin, -1);
+        Array.Fill(riverDirection, -1);
 
         var queue = new PriorityQueue<int, float>();
 
-        // All ocean cells are valid outlets. Priority flood then resolves every
+        // All ocean cells are valid outlets. Priority flood resolves every
         // inland depression deterministically on the hex topology.
         for (var i = 0; i < count; i++)
         {
@@ -1114,29 +1120,7 @@ internal static class WorldGeneration009Pipeline
             }
         }
 
-        // Priority flood gives every cell a safe escape route, but its first
-        // discovery tree can turn rivers into long straight spokes. Prefer the
-        // steepest adjacent hydraulic descent while keeping the filled surface
-        // strictly decreasing, so drainage remains acyclic.
-        for (var i = 0; i < count; i++)
-        {
-            if (elevation[i] < 0f)
-                continue;
-
-            var neighbors = topology.GetNeighborIndices(i);
-            var best = drainage[i];
-            var bestDrop = best >= 0 ? filled[i] - filled[best] : float.NegativeInfinity;
-            for (var n = 0; n < neighbors.Length; n++)
-            {
-                var ni = neighbors[n];
-                var drop = filled[i] - filled[ni];
-                if (drop <= PriorityFloodEpsilon * 0.5f || drop <= bestDrop)
-                    continue;
-                best = ni;
-                bestDrop = drop;
-            }
-            drainage[i] = best;
-        }
+        RefineDrainageGeometry(topology, ids, elevation, filled, seed, drainage);
 
         var depression = new float[count];
         for (var i = 0; i < count; i++)
@@ -1146,7 +1130,7 @@ internal static class WorldGeneration009Pipeline
         MarkLakeBasins(topology, elevation, filled, depression, lakes);
 
         // Tiny depressions are filled into the terrain itself; significant basins
-        // remain as lake floors and drain through their priority-flood spill path.
+        // remain as lake floors and retain the priority-flood spill surface.
         for (var i = 0; i < count; i++)
         {
             if (elevation[i] < 0f || lakes[i])
@@ -1155,33 +1139,54 @@ internal static class WorldGeneration009Pipeline
                 elevation[i] = filled[i];
         }
 
-        var order = Enumerable.Range(0, count).ToArray();
+        var order = CreateIndexOrder(count);
         Array.Sort(order, (a, b) => filled[b].CompareTo(filled[a]));
 
         for (var i = 0; i < count; i++)
             accumulation[i] = elevation[i] >= 0f ? 1f : 0f;
 
         var upstreamLength = new int[count];
+        var maxChildOrder = new int[count];
+        var maxChildOrderCount = new int[count];
         Array.Fill(upstreamLength, 1);
 
-        foreach (var i in order)
+        // Highest hydraulic cells are visited first. Every upstream child is
+        // therefore complete before its lower parent is processed.
+        for (var orderIndex = 0; orderIndex < order.Length; orderIndex++)
         {
+            var i = order[orderIndex];
+
+            var currentOrder = maxChildOrder[i] == 0
+                ? 1
+                : maxChildOrder[i] + (maxChildOrderCount[i] >= 2 ? 1 : 0);
+            streamOrder[i] = currentOrder;
+
             var parent = drainage[i];
             if (parent < 0)
                 continue;
 
             accumulation[parent] += accumulation[i];
+            upstreamBranches[parent]++;
             if (elevation[i] >= 0f)
                 upstreamLength[parent] = Math.Max(upstreamLength[parent], upstreamLength[i] + 1);
+
+            if (currentOrder > maxChildOrder[parent])
+            {
+                maxChildOrder[parent] = currentOrder;
+                maxChildOrderCount[parent] = 1;
+            }
+            else if (currentOrder == maxChildOrder[parent])
+            {
+                maxChildOrderCount[parent]++;
+            }
         }
 
-        // Basin ids are assigned from mouths toward upstream cells.
-        var ascending = (int[])order.Clone();
-        Array.Reverse(ascending);
+        // Basin ids are assigned from mouths toward upstream cells. Reuse the
+        // same order array instead of cloning/reversing it.
         var nextBasin = 0;
-
-        foreach (var i in ascending)
+        for (var orderIndex = order.Length - 1; orderIndex >= 0; orderIndex--)
         {
+            var i = order[orderIndex];
             if (elevation[i] < 0f)
                 continue;
 
@@ -1204,15 +1209,29 @@ internal static class WorldGeneration009Pipeline
             if (elevation[i] < 0f || lakes[i] || drainage[i] < 0)
                 continue;
 
-            if (accumulation[i] >= riverThreshold && upstreamLength[i] >= 5)
-            {
-                rivers[i] = true;
-                riverLength[i] = upstreamLength[i];
-                riverWidth[i] = Math.Clamp(
-                    0.65f + MathF.Sqrt(accumulation[i] / riverThreshold) * 0.72f,
-                    0.65f,
-                    4.5f);
-            }
+            var visible =
+                accumulation[i] >= riverThreshold &&
+                upstreamLength[i] >= 5 &&
+                (streamOrder[i] >= 2 || accumulation[i] >= riverThreshold * 1.35f);
+
+            if (!visible)
+                continue;
+
+            rivers[i] = true;
+            riverLength[i] = upstreamLength[i];
+            riverDirection[i] = DirectionIndex(ids[i], ids[drainage[i]]);
+
+            var width =
+                0.48f +
+                MathF.Sqrt(accumulation[i] / riverThreshold) * 0.54f +
+                Math.Max(0, streamOrder[i] - 1) * 0.30f;
+
+            // A high-order river widens gently at its final coastal cell, giving
+            // the mouth a delta-like visual foundation without a sediment sim.
+            if (elevation[drainage[i]] < 0f && streamOrder[i] >= 3)
+                width += 0.48f;
+
+            riverWidth[i] = Math.Clamp(width, 0.55f, 5.2f);
         }
 
         for (var i = 0; i < count; i++)
@@ -1239,8 +1258,104 @@ internal static class WorldGeneration009Pipeline
             BasinId = basin,
             RiverLength = riverLength,
             RiverWidth = riverWidth,
+            StreamOrder = streamOrder,
+            UpstreamBranches = upstreamBranches,
+            RiverDirection = riverDirection,
             FilledElevation = filled
         };
+    }
+
+    private static void RefineDrainageGeometry(
+        WorldTopology topology,
+        CellId[] ids,
+        float[] elevation,
+        float[] filled,
+        ulong seed,
+        int[] drainage)
+    {
+        var ascending = CreateIndexOrder(filled.Length);
+        Array.Sort(ascending, (a, b) => filled[a].CompareTo(filled[b]));
+
+        for (var orderIndex = 0; orderIndex < ascending.Length; orderIndex++)
+        {
+            var i = ascending[orderIndex];
+            if (elevation[i] < 0f)
+                continue;
+
+            var neighbors = topology.GetNeighborIndices(i);
+            var maximumDrop = 0f;
+            var maximumTerrainDrop = 0f;
+
+            for (var n = 0; n < neighbors.Length; n++)
+            {
+                var ni = neighbors[n];
+                var hydraulicDrop = filled[i] - filled[ni];
+                if (hydraulicDrop > maximumDrop)
+                    maximumDrop = hydraulicDrop;
+
+                var terrainDrop = elevation[i] - elevation[ni];
+                if (terrainDrop > maximumTerrainDrop)
+                    maximumTerrainDrop = terrainDrop;
+            }
+
+            if (maximumDrop <= PriorityFloodEpsilon * 0.5f)
+                continue;
+
+            var best = drainage[i];
+            var bestScore = float.NegativeInfinity;
+
+            for (var n = 0; n < neighbors.Length; n++)
+            {
+                var ni = neighbors[n];
+                var hydraulicDrop = filled[i] - filled[ni];
+                if (hydraulicDrop <= PriorityFloodEpsilon * 0.5f)
+                    continue;
+
+                // Physics stays dominant: do not take a scenic detour when an
+                // alternative loses most of the available hydraulic descent.
+                if (hydraulicDrop < maximumDrop * 0.58f && ni != drainage[i])
+                    continue;
+
+                var direction = DirectionIndex(ids[i], ids[ni]);
+                var downstream = drainage[ni];
+                var downstreamDirection = downstream >= 0
+                    ? DirectionIndex(ids[ni], ids[downstream])
+                    : -1;
+
+                var turnPreference = 0f;
+                if (direction >= 0 && downstreamDirection >= 0)
+                {
+                    var difference = DirectionDifference(direction, downstreamDirection);
+                    turnPreference = difference switch
+                    {
+                        0 => -0.115f, // long ruler-straight continuation
+                        1 => 0.032f,  // gentle 60-degree bend
+                        2 => -0.052f, // sharper bend
+                        _ => -0.13f
+                    };
+                }
+
+                var terrainDrop = Math.Max(0f, elevation[i] - elevation[ni]);
+                var jitter =
+                    (Hash01(ids[i].Q + direction * 17, ids[i].R - direction * 23, seed) - 0.5f) *
+                    0.028f;
+
+                var score =
+                    hydraulicDrop / maximumDrop * 0.75f +
+                    terrainDrop / Math.Max(1f, maximumTerrainDrop) * 0.20f +
+                    turnPreference +
+                    jitter;
+
+                if (score <= bestScore)
+                    continue;
+
+                best = ni;
+                bestScore = score;
+            }
+
+            if (best >= 0)
+                drainage[i] = best;
+        }
     }
 
     private static void MarkLakeBasins(
