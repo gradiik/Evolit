@@ -153,7 +153,7 @@ public sealed partial class GameHud : Control
 
         var stats = new HBoxContainer
         {
-            CustomMinimumSize = new Vector2(410, 0)
+            CustomMinimumSize = new Vector2(470, 0)
         };
         stats.AddThemeConstantOverride("separation", 6);
         row.AddChild(stats);
@@ -347,7 +347,7 @@ public sealed partial class GameHud : Control
     {
         var box = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(58, 0),
+            CustomMinimumSize = new Vector2(68, 0),
             Alignment = BoxContainer.AlignmentMode.Center
         };
         box.AddThemeConstantOverride("separation", 0);
@@ -357,7 +357,7 @@ public sealed partial class GameHud : Control
             Text = caption,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        name.AddThemeFontSizeOverride("font_size", 8);
+        name.AddThemeFontSizeOverride("font_size", 13);
         name.AddThemeColorOverride("font_color", new Color(EvolitPalette.FogBlue, 0.86f));
         box.AddChild(name);
 
@@ -366,7 +366,7 @@ public sealed partial class GameHud : Control
             Text = value,
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        data.AddThemeFontSizeOverride("font_size", 16);
+        data.AddThemeFontSizeOverride("font_size", 19);
         data.AddThemeColorOverride("font_color", EvolitPalette.MistWhite);
         box.AddChild(data);
 
@@ -385,12 +385,12 @@ public sealed partial class GameHud : Control
         boxControl = box;
 
         var name = new Label { Text = caption, HorizontalAlignment = HorizontalAlignment.Center };
-        name.AddThemeFontSizeOverride("font_size", 8);
+        name.AddThemeFontSizeOverride("font_size", 10);
         name.AddThemeColorOverride("font_color", EvolitPalette.FogBlue);
         box.AddChild(name);
 
         var value = new Label { Text = "0", HorizontalAlignment = HorizontalAlignment.Center };
-        value.AddThemeFontSizeOverride("font_size", 13);
+        value.AddThemeFontSizeOverride("font_size", 15);
         value.AddThemeColorOverride("font_color", EvolitPalette.SoftAqua);
         box.AddChild(value);
 

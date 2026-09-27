@@ -91,6 +91,7 @@ public sealed partial class PlanetWorldView : Control
         RebuildGridMesh();
         RebuildEntityMarkers();
         UpdateSurfaceBounds();
+        _orbit = FindOverviewOrbit();
         _distance = _overviewDistance;
         _targetDistance = _overviewDistance;
         UpdateCamera(true);
@@ -249,7 +250,7 @@ public sealed partial class PlanetWorldView : Control
     {
         if (_selectedCell is null)
         {
-            _orbit = new Vector3(-0.24f, 0.72f, 0f);
+            _orbit = FindOverviewOrbit();
         }
         else
         {
@@ -262,7 +263,7 @@ public sealed partial class PlanetWorldView : Control
 
     public void ResetCamera()
     {
-        _orbit = new Vector3(-0.24f, 0.72f, 0f);
+        _orbit = FindOverviewOrbit();
         _distance = _overviewDistance;
         _targetDistance = _overviewDistance;
         _selectedCell = null;
@@ -270,6 +271,58 @@ public sealed partial class PlanetWorldView : Control
         RebuildSelectionMesh();
         SelectionChanged?.Invoke(null);
         UpdateCamera(true);
+    }
+
+    private Vector3 FindOverviewOrbit()
+    {
+        if (_world?.PlanetMap is not { } map || map.Cells.Count == 0)
+            return new Vector3(-0.24f, 0.72f, 0f);
+
+        var visited = new bool[map.Cells.Count];
+        var queue = new System.Collections.Generic.Queue<int>();
+        var largestLandmass = new System.Collections.Generic.List<int>();
+        for (var start = 0; start < map.Cells.Count; start++)
+        {
+            if (visited[start] || map.Cells[start].WaterKind != HexWaterKind.None)
+                continue;
+
+            var component = new System.Collections.Generic.List<int>();
+            visited[start] = true;
+            queue.Enqueue(start);
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                component.Add(at);
+                var neighbors = map.InitialTopology.GetNeighborIndices(at);
+                for (var i = 0; i < neighbors.Length; i++)
+                {
+                    var next = neighbors[i];
+                    if (visited[next] || map.Cells[next].WaterKind != HexWaterKind.None)
+                        continue;
+
+                    visited[next] = true;
+                    queue.Enqueue(next);
+                }
+            }
+
+            if (component.Count > largestLandmass.Count)
+                largestLandmass = component;
+        }
+
+        if (largestLandmass.Count == 0)
+            return new Vector3(-0.24f, 0.72f, 0f);
+
+        var center = Vector3.Zero;
+        foreach (var index in largestLandmass)
+            center += ToGodot(map.Cells[index].Direction).Normalized();
+        if (center.LengthSquared() < 0.0001f)
+            return new Vector3(-0.24f, 0.72f, 0f);
+
+        center = center.Normalized();
+        return new Vector3(
+            MathF.Asin(Mathf.Clamp(center.Y, -1f, 1f)),
+            MathF.Atan2(center.X, center.Z),
+            0f);
     }
 
     public GameViewState CaptureViewState() =>
@@ -347,8 +400,8 @@ public sealed partial class PlanetWorldView : Control
             BackgroundMode = Godot.Environment.BGMode.Color,
             BackgroundColor = new Color(0.006f, 0.018f, 0.026f),
             AmbientLightSource = Godot.Environment.AmbientSource.Color,
-            AmbientLightColor = new Color(0.31f, 0.40f, 0.45f),
-            AmbientLightEnergy = 0.58f
+            AmbientLightColor = new Color(0.68f, 0.78f, 0.84f),
+            AmbientLightEnergy = 0.92f
         };
         _sceneRoot.AddChild(new WorldEnvironment
         {
@@ -359,7 +412,7 @@ public sealed partial class PlanetWorldView : Control
         var light = new DirectionalLight3D
         {
             Name = "PlanetSun",
-            LightEnergy = 0.92f,
+            LightEnergy = 0.58f,
             ShadowEnabled = false,
             RotationDegrees = new Vector3(-42f, -28f, 0f)
         };
@@ -453,6 +506,9 @@ public sealed partial class PlanetWorldView : Control
         var normals = new Vector3[vertices.Length];
         var colors = new Color[vertices.Length];
         var cursor = 0;
+        var baseColors = new Color[map.Cells.Count];
+        for (var i = 0; i < map.Cells.Count; i++)
+            baseColors[i] = CellColor(map.Cells[i], _debugMode);
 
         foreach (var cell in map.Cells)
         {
@@ -460,7 +516,30 @@ public sealed partial class PlanetWorldView : Control
             var center = centerDirection * VisualRadiusFromMeters(cell.ElevationMeters);
             var polygon = map.GetPolygon(cell);
             var polygonElevation = map.GetPolygonTerrainElevationMeters(cell);
-            var color = CellColor(cell, _debugMode);
+            var color = baseColors[cell.Index];
+            var centerColor = color;
+            var edgeColor = color;
+            if (_renderDebugMode == PlanetRenderDebugMode.Normal)
+            {
+                var neighborColor = new Color(0f, 0f, 0f, 0f);
+                var colorNeighbors = 0;
+                var neighborIndices = map.InitialTopology.GetNeighborIndices(cell.Index);
+                for (var neighborIndex = 0; neighborIndex < neighborIndices.Length; neighborIndex++)
+                {
+                    if (!map.TryGetCell(neighborIndices[neighborIndex], out var neighbor) ||
+                        neighbor.WaterKind != cell.WaterKind)
+                        continue;
+                    neighborColor += baseColors[neighbor.Index];
+                    colorNeighbors++;
+                }
+
+                if (colorNeighbors > 0)
+                {
+                    var averageNeighborColor = neighborColor / colorNeighbors;
+                    centerColor = color.Lerp(averageNeighborColor, 0.24f);
+                    edgeColor = color.Lerp(averageNeighborColor, 0.55f);
+                }
+            }
 
             for (var corner = 0; corner < polygon.Length; corner++)
             {
@@ -482,17 +561,17 @@ public sealed partial class PlanetWorldView : Control
                 normals[cursor] = centerNormal;
                 colors[cursor++] = _renderDebugMode == PlanetRenderDebugMode.NormalVisualization
                     ? NormalColor(centerNormal)
-                    : color;
+                    : PlanetLitColor(centerColor, centerNormal, _renderDebugMode);
                 vertices[cursor] = b;
                 normals[cursor] = bNormal;
                 colors[cursor++] = _renderDebugMode == PlanetRenderDebugMode.NormalVisualization
                     ? NormalColor(bNormal)
-                    : color;
+                    : PlanetLitColor(edgeColor, bNormal, _renderDebugMode);
                 vertices[cursor] = d;
                 normals[cursor] = dNormal;
                 colors[cursor++] = _renderDebugMode == PlanetRenderDebugMode.NormalVisualization
                     ? NormalColor(dNormal)
-                    : color;
+                    : PlanetLitColor(edgeColor, dNormal, _renderDebugMode);
             }
         }
 
@@ -509,8 +588,8 @@ public sealed partial class PlanetWorldView : Control
             VertexColorUseAsAlbedo = true,
             Roughness = 0.88f,
             Metallic = 0.02f,
-            ShadingMode =
-                _renderDebugMode is PlanetRenderDebugMode.UnshadedTerrain or PlanetRenderDebugMode.NormalVisualization
+            ShadingMode = _renderDebugMode is PlanetRenderDebugMode.UnshadedTerrain or
+                PlanetRenderDebugMode.NormalVisualization or PlanetRenderDebugMode.Normal
                     ? BaseMaterial3D.ShadingModeEnum.Unshaded
                     : BaseMaterial3D.ShadingModeEnum.PerPixel,
             CullMode =
@@ -579,13 +658,13 @@ public sealed partial class PlanetWorldView : Control
 
                 vertices[cursor] = a;
                 normals[cursor] = direction;
-                colors[cursor++] = waterColor;
+                colors[cursor++] = PlanetLitColor(waterColor, direction, PlanetRenderDebugMode.Normal);
                 vertices[cursor] = b;
                 normals[cursor] = b.Normalized();
-                colors[cursor++] = waterColor;
+                colors[cursor++] = PlanetLitColor(waterColor, b.Normalized(), PlanetRenderDebugMode.Normal);
                 vertices[cursor] = d;
                 normals[cursor] = d.Normalized();
-                colors[cursor++] = waterColor;
+                colors[cursor++] = PlanetLitColor(waterColor, d.Normalized(), PlanetRenderDebugMode.Normal);
             }
         }
 
@@ -600,11 +679,9 @@ public sealed partial class PlanetWorldView : Control
         mesh.SurfaceSetMaterial(0, new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
-            Roughness = 0.36f,
-            Metallic = 0.08f,
-            EmissionEnabled = true,
-            Emission = new Color(0.012f, 0.055f, 0.12f),
-            EmissionEnergyMultiplier = 0.5f
+            Roughness = 0.72f,
+            Metallic = 0.0f,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
         });
         _water.Mesh = mesh;
         _water.Visible = _debugMode == GenerationDebugMode.None;
@@ -1311,6 +1388,18 @@ public sealed partial class PlanetWorldView : Control
             normal.Y * 0.5f + 0.5f,
             normal.Z * 0.5f + 0.5f);
 
+    private static Color PlanetLitColor(Color color, Vector3 normal, PlanetRenderDebugMode mode)
+    {
+        if (mode != PlanetRenderDebugMode.Normal)
+            return color;
+
+        // Keep a readable fill on the night side while retaining enough
+        // directional contrast to make the spherical relief legible.
+        var sunDirection = new Vector3(-0.38f, 0.64f, 0.67f).Normalized();
+        var directLight = Mathf.Max(0f, normal.Dot(sunDirection));
+        return color * (0.72f + directLight * 0.28f);
+    }
+
     private static Color CellColor(PlanetWorldCell cell, GenerationDebugMode mode)
     {
         if (mode != GenerationDebugMode.None)
@@ -1343,7 +1432,7 @@ public sealed partial class PlanetWorldView : Control
         baseColor = baseColor.Lerp(new Color(0.39f, 0.43f, 0.31f), highlandBlend);
         baseColor = baseColor.Lerp(new Color(0.50f, 0.45f, 0.37f), alpineBlend);
         baseColor = baseColor.Lerp(new Color(0.70f, 0.69f, 0.62f), summitBlend);
-        var variation = (cell.VisualVariation - 0.5f) * 0.025f;
+        var variation = (cell.VisualVariation - 0.5f) * 0.012f;
         return new Color(
             Mathf.Clamp(baseColor.R + variation, 0f, 1f),
             Mathf.Clamp(baseColor.G + variation, 0f, 1f),
@@ -1353,7 +1442,7 @@ public sealed partial class PlanetWorldView : Control
     private static Color OceanDepthColor(float depthMeters)
     {
         var blend = SmoothBlend(80f, 9000f, Math.Max(0f, depthMeters));
-        return new Color(0.045f, 0.27f, 0.37f).Lerp(new Color(0.018f, 0.105f, 0.23f), blend);
+        return new Color(0.11f, 0.39f, 0.52f).Lerp(new Color(0.04f, 0.18f, 0.34f), blend);
     }
 
     private static float SmoothBlend(float start, float end, float value)

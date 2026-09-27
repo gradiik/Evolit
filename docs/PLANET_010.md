@@ -102,6 +102,7 @@ The headless executable exposes:
 - `planet-verify` — topology, deterministic generation, physical/hydrology validation, Large topology construction and Core snapshot round trip.
 - `planet-seeds [count]` — deterministic Medium-planet seed sweep, default 20.
 - `planet-benchmark` — Small/Medium/Large generation timings, allocations and memory deltas.
+- Exported-app render capture: `--capture-planet=<png> --seed=<seed> [--zoom-steps=0..6]`; captures use temporary isolated saves and never write to the user's save slots.
 - Existing `worldgen-verify`, `worldgen-quality`, `environment-verify` and benchmark commands remain available for Flat regression checks.
 
 GitHub Actions are not part of the ordinary development verification path. Final release CI remains gated by explicit release approval.
@@ -111,12 +112,16 @@ GitHub Actions are not part of the ordinary development verification path. Final
 
 The completed 0.1.0 pipeline also applies these spherical-specific rules:
 
-- Macro geography is driven by 4–5 deterministic, strongly separated continental anchors combined with pseudo-plate geology and seamless 3D domain-warped noise. This reduces accidental single-supercontinent worlds while still allowing landmasses to merge naturally at higher land settings.
+- Macro geography uses one to three deterministic, strongly separated continental anchors combined with pseudo-plate geology and seamless 3D domain-warped noise. Medium worlds are quality-checked across fixed seeds for 1–3 connected major landmasses; small isolated volcanic island groups are added along tectonically active offshore regions.
+- Sea level is 0 m. Low positive land relief starts at roughly 1.5 m, broad hills rise gradually, and plate uplift supplies higher terrain. Ocean depth transitions through a broad shallow shelf before deep-basin relief; the surface colors are interpolated across adjacent same-medium cells to reduce speckle without changing cell ownership or hydrology.
 - The global ocean is classified from major connected below-sea-level components. Small disconnected negative basins are retained as inland seas/lakes instead of being treated as implicit world-edge ocean.
-- Priority-flood drainage starts from the classified ocean graph. Inland depressions receive deterministic spill routes; tiny shallow lake noise is pruned by raising the terrain to its spill surface, while genuine below-sea-level inland basins remain water.
+- Priority-flood drainage starts from the classified ocean graph. Inland depressions receive deterministic spill routes; tiny/shallow basins are raised to their spill surface, while below-sea-level inland seas remain water. If lake coverage exceeds 20% of land, the shallowest above-sea-level lake systems are deterministically filled first.
+- River cells have positive water depth and remain `HexWaterKind.River` water cells in the simulation map, not only a decorative surface line. Save/load verification checks that river-water habitat cells survive the round trip.
 - River validation checks direct-neighbor drainage, cycle freedom, hydraulic direction, downstream flow accumulation, nondecreasing river width and nondecreasing stream order.
 - Dual-cell polygon corners use spherical triangle circumcenters rather than normalized triangle centroids, improving Voronoi boundaries around ordinary hexagons and the 12 pentagons.
 - Physical bathymetric terrain, visible ocean/lake water, rivers, grid, selection and entity markers are separate batched meshes. Adjacent terrain cells share corner elevations, removing the previous pyramid/crack failure mode.
+- Coastal land starts just above sea level and the classifier renders low near-shore cells as sand; the fixed-seed runtime capture records both 0–2 m and 1–2 m beach counts.
+- The default overview and camera reset center the largest connected landmass. Deep-ocean colors have a brighter blue floor, while same-medium terrain color blending also softens cell centers to reduce close-view speckle without blurring the land/water boundary.
 - Planet entities are rendered through one batched marker mesh instead of one `MeshInstance3D` per entity.
 - LOD hides cell grid, entity markers and finally rivers as the camera moves away, leaving a clean global planet view.
 - Core environment snapshots persist the generated climate baseline and target pressure, preserving deterministic continued simulation across Planet save/load.
@@ -152,6 +157,8 @@ Planet river meshes are cached in three LOD batches. Their centreline follows sp
 The planet camera zoom changes camera distance only. Minimum distance is derived from the maximum visual surface radius, the camera near plane and a safety margin. Grid and river LOD visibility changes do not rebuild meshes.
 
 The planet scene uses ambient environment light in addition to the directional light so the shadow hemisphere remains readable. F6 cycles render diagnostics for unshaded terrain, double-sided terrain, normal visualization, edge overlay, terrain-only, water-only, rivers-only and grid-only views.
+
+Terrain receives a bounded vertex-color light gradient with a high ambient floor, so the night-side geography remains visible while the globe retains directional shape. Planet HUD metric captions and values use larger sizes at the standard 1280×720 window.
 
 Terrain and water triangle construction validates finite vertices, non-zero area, outward winding and bounded edge length before a mesh is accepted. Headless topology verification additionally rejects invalid or giant polygon edges.
 

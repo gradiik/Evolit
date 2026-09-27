@@ -64,21 +64,47 @@ internal static class PlanetVerification
                         tinyIslands++;
                 }
 
-                if (majorContinents is < 2 or > 6)
+                if (majorContinents is < 1 or > 3)
                     throw new InvalidOperationException($"major continents {majorContinents}");
-                if (largestShare > 0.85)
+                if (majorContinents > 1 && largestShare > 0.85)
                     throw new InvalidOperationException($"dominant continent {largestShare:P1}");
-                if (secondShare < 0.04)
+                if (majorContinents > 1 && secondShare < 0.04)
                     throw new InvalidOperationException($"second continent too small {secondShare:P1}");
                 if (tinyIslands > Math.Max(16, summary.Cells / 900))
                     throw new InvalidOperationException($"tiny island fragmentation {tinyIslands}");
+                if (summary.IslandCount is < 1 or > 12)
+                    throw new InvalidOperationException($"archipelago islands {summary.IslandCount}");
                 if (summary.LakeCells > landCells * 0.20)
-                    throw new InvalidOperationException($"excessive lake coverage {summary.LakeCells}/{landCells}");
+                {
+                    var lakeComponents = LakeComponentSizes(world.Topology, world.Cells);
+                    throw new InvalidOperationException(
+                        $"excessive lake coverage {summary.LakeCells}/{landCells}; " +
+                        $"lake_components={string.Join(',', lakeComponents)}");
+                }
 
                 var inlandSeaCells = 0;
+                var beachCells = 0;
+                var lowCoastCells = 0;
+                var shallowLakeCells = 0;
+                var deepLakeCells = 0;
                 for (var cellIndex = 0; cellIndex < world.Cells.Length; cellIndex++)
-                    if (world.Cells[cellIndex].IsLake && world.Cells[cellIndex].ElevationMeters < 0f)
+                {
+                    var cell = world.Cells[cellIndex];
+                    if (cell.IsLake && cell.ElevationMeters < 0f)
                         inlandSeaCells++;
+                    if (!cell.IsLake && !cell.IsRiver && cell.CoastDistance <= 1 &&
+                        cell.ElevationMeters is >= 0f and <= 2f)
+                        beachCells++;
+                    if (!cell.IsLake && !cell.IsRiver && cell.CoastDistance <= 4 &&
+                        cell.ElevationMeters is >= 0f and <= 250f)
+                        lowCoastCells++;
+                    if (cell.IsLake && cell.WaterDepthMeters < 10f)
+                        shallowLakeCells++;
+                    if (cell.IsLake && cell.WaterDepthMeters >= 10f)
+                        deepLakeCells++;
+                }
+                if (beachCells == 0)
+                    throw new InvalidOperationException("no 0–2 m coastal beach cells");
 
                 landRatioSum += summary.LandRatio;
                 landComponentsSum += majorContinents;
@@ -90,7 +116,9 @@ internal static class PlanetVerification
                     $"PLANET_SEED seed={seed} cells={summary.Cells} land={summary.LandRatio:P1} " +
                     $"major_continents={majorContinents} largest={largestShare:P1} second={secondShare:P1} " +
                     $"tiny_islands={tinyIslands} rivers={summary.RiverCells} lakes={summary.LakeCells} " +
-                    $"inland_sea_cells={inlandSeaCells} generation_ms={world.Metrics.TotalMs:0.###}");
+                    $"inland_sea_cells={inlandSeaCells} beach_0_2m={beachCells} low_coast_0_250m={lowCoastCells} " +
+                    $"lake_depth_lt10m={shallowLakeCells} lake_depth_ge10m={deepLakeCells} " +
+                    $"generation_ms={world.Metrics.TotalMs:0.###}");
             }
             catch (Exception ex)
             {
@@ -378,6 +406,8 @@ internal static class PlanetVerification
             var isOcean = cell.ElevationMeters < 0f && !cell.IsLake;
             if (cell.IsRiver && isOcean)
                 throw new InvalidOperationException($"Planet river {cell.Id} is inside ocean terrain.");
+            if (cell.IsRiver && cell.WaterDepthMeters <= 0f)
+                throw new InvalidOperationException($"Planet river {cell.Id} is not a water-bearing habitat cell.");
 
             if (isOcean)
                 continue;
@@ -485,6 +515,40 @@ internal static class PlanetVerification
             result.Add(size);
         }
 
+        result.Sort((a, b) => b.CompareTo(a));
+        return result;
+    }
+
+    private static List<int> LakeComponentSizes(
+        WorldTopology topology,
+        GeneratedWorldCell[] cells)
+    {
+        var visited = new bool[cells.Length];
+        var queue = new Queue<int>();
+        var result = new List<int>();
+        for (var start = 0; start < cells.Length; start++)
+        {
+            if (visited[start] || !cells[start].IsLake)
+                continue;
+            visited[start] = true;
+            queue.Enqueue(start);
+            var size = 0;
+            while (queue.Count > 0)
+            {
+                var at = queue.Dequeue();
+                size++;
+                var neighbors = topology.GetNeighborIndices(at);
+                for (var n = 0; n < neighbors.Length; n++)
+                {
+                    var next = neighbors[n];
+                    if (visited[next] || !cells[next].IsLake)
+                        continue;
+                    visited[next] = true;
+                    queue.Enqueue(next);
+                }
+            }
+            result.Add(size);
+        }
         result.Sort((a, b) => b.CompareTo(a));
         return result;
     }

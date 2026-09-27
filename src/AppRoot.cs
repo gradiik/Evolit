@@ -71,6 +71,7 @@ public sealed partial class AppRoot : Control
         string? capturePath = null;
         var captureSeed = "evolit-render-check";
         var captureShape = Evolit.Core.WorldShape.Flat;
+        var captureZoomSteps = 0;
         var previewPlanet = false;
         foreach (var argument in OS.GetCmdlineUserArgs())
         {
@@ -83,11 +84,14 @@ public sealed partial class AppRoot : Control
             }
             else if (argument.StartsWith("--seed=", StringComparison.Ordinal))
                 captureSeed = argument[7..];
+            else if (argument.StartsWith("--zoom-steps=", StringComparison.Ordinal) &&
+                     int.TryParse(argument[13..], out var requestedZoomSteps))
+                captureZoomSteps = Math.Clamp(requestedZoomSteps, 0, 6);
             else if (string.Equals(argument, "--preview-planet", StringComparison.Ordinal))
                 previewPlanet = true;
         }
         if (!string.IsNullOrWhiteSpace(capturePath))
-            CaptureWorld(capturePath, captureSeed, captureShape);
+            CaptureWorld(capturePath, captureSeed, captureShape, captureZoomSteps);
         else if (previewPlanet)
             PreviewPlanetWorld(captureSeed);
     }
@@ -114,7 +118,7 @@ public sealed partial class AppRoot : Control
         }
     }
 
-    private async void CaptureWorld(string path, string seed, Evolit.Core.WorldShape shape)
+    private async void CaptureWorld(string path, string seed, Evolit.Core.WorldShape shape, int zoomSteps)
     {
         var isolatedSaves = Path.Combine(Path.GetTempPath(), $"Evolit-verify-{Guid.NewGuid():N}");
         try
@@ -126,12 +130,28 @@ public sealed partial class AppRoot : Control
                 Evolit.Core.GeologicalActivity.Normal,
                 shape);
             PrepareGameRuntime();
+            if (shape == Evolit.Core.WorldShape.Planet && _demoWorld?.PlanetMap is { } planetMap)
+            {
+                var lowCoast = planetMap.Cells.Count(cell =>
+                    cell.WaterKind == HexWaterKind.None && cell.CoastDistance <= 1 &&
+                    cell.ElevationMeters is >= 0f and <= 2f);
+                var oneToTwoMeterCoast = planetMap.Cells.Count(cell =>
+                    cell.WaterKind == HexWaterKind.None && cell.CoastDistance <= 1 &&
+                    cell.ElevationMeters is >= 1f and <= 2f);
+                var sandyBeach = planetMap.Cells.Count(cell =>
+                    cell.WaterKind == HexWaterKind.None && cell.Terrain == HexTerrainType.Sand &&
+                    cell.CoastDistance <= 1 && cell.ElevationMeters is >= 0f and <= 2f);
+                GD.Print(
+                    $"EVOLIT_COAST_CAPTURE low_coast_0_2m={lowCoast} " +
+                    $"low_coast_1_2m={oneToTwoMeterCoast} sandy_beach_0_2m={sandyBeach}");
+            }
             VerifyIsolatedSaveRoundTrip(isolatedSaves);
             ShowGame();
+            _activeGameScreen?.ApplyPlanetZoomSteps(zoomSteps);
             for (var frame = 0; frame < 12; frame++)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             var result = GetViewport().GetTexture().GetImage().SavePng(path);
-            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed} SHAPE={shape}");
+            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed} SHAPE={shape} ZOOM_STEPS={zoomSteps}");
         }
         catch (Exception ex)
         {
@@ -190,10 +210,24 @@ public sealed partial class AppRoot : Control
         var restoredRivers = _session.WorldShape == Evolit.Core.WorldShape.Planet
             ? restoredWorld.PlanetMap?.Cells.Count(cell => cell.WaterKind == HexWaterKind.River) ?? 0
             : restoredWorld.Map.Cells.Count(cell => cell.WaterKind == HexWaterKind.River);
-        if (originalCells == 0 || originalCells != restoredCells || originalRivers != restoredRivers)
+        var originalRiverWaterCells = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? _demoWorld.PlanetMap?.Cells.Count(cell =>
+                cell.WaterKind == HexWaterKind.River && cell.IsWater && cell.WaterDepthMeters > 0f) ?? 0
+            : _demoWorld.Map.Cells.Count(cell =>
+                cell.WaterKind == HexWaterKind.River && cell.IsWater && cell.WaterDepth > 0f);
+        var restoredRiverWaterCells = _session.WorldShape == Evolit.Core.WorldShape.Planet
+            ? restoredWorld.PlanetMap?.Cells.Count(cell =>
+                cell.WaterKind == HexWaterKind.River && cell.IsWater && cell.WaterDepthMeters > 0f) ?? 0
+            : restoredWorld.Map.Cells.Count(cell =>
+                cell.WaterKind == HexWaterKind.River && cell.IsWater && cell.WaterDepth > 0f);
+        if (originalCells == 0 || originalCells != restoredCells ||
+            originalRivers != restoredRivers || originalRiverWaterCells != originalRivers ||
+            restoredRiverWaterCells != restoredRivers)
             throw new InvalidOperationException("Isolated save round-trip changed map or river cells.");
 
-        GD.Print($"EVOLIT_SAVE_ROUNDTRIP_PASS shape={_session.WorldShape} cells={restoredCells} river_cells={restoredRivers}");
+        GD.Print(
+            $"EVOLIT_SAVE_ROUNDTRIP_PASS shape={_session.WorldShape} cells={restoredCells} " +
+            $"river_water_habitat_cells={restoredRiverWaterCells}");
     }
 
     public override void _Process(double delta)

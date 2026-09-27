@@ -171,6 +171,15 @@ public sealed partial class GameScreen : Control
         _flatWorldView?.ZoomIn();
     }
 
+    public void ApplyPlanetZoomSteps(int steps)
+    {
+        if (_planetWorldView is null)
+            return;
+
+        for (var step = 0; step < Math.Clamp(steps, 0, 6); step++)
+            _planetWorldView.ZoomIn();
+    }
+
     private void ZoomOut()
     {
         _planetWorldView?.ZoomOut();
