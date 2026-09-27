@@ -182,7 +182,10 @@ public sealed class DemoWorldDataProvider
                     CoastDistance = cell.CoastDistance,
                     BasinId = cell.BasinId,
                     RiverLength = cell.RiverLength,
-                    RiverWidth = cell.RiverWidth
+                    RiverWidth = cell.RiverWidth,
+                    StreamOrder = cell.StreamOrder,
+                    UpstreamBranches = cell.UpstreamBranches,
+                    RiverDirection = cell.RiverDirection
                 }).ToList()
             },
             Entities = _entities.Select(entity => new DemoEntitySaveState

@@ -16,7 +16,8 @@ public enum HexTerrainType
     Desert,
     Grassland,
     Rocky,
-    Mountain
+    Mountain,
+    Highland
 }
 
 public enum HexWaterKind
@@ -84,6 +85,9 @@ public sealed class WorldHexCell
     public int BasinId { get; init; } = -1;
     public int RiverLength { get; init; }
     public float RiverWidth { get; init; }
+    public int StreamOrder { get; init; }
+    public int UpstreamBranches { get; init; }
+    public int RiverDirection { get; init; } = -1;
 
     public bool IsWater => WaterKind != HexWaterKind.None;
 }

@@ -167,4 +167,7 @@ public sealed class WorldHexCellSaveState
     public int BasinId { get; set; } = -1;
     public int RiverLength { get; set; }
     public float RiverWidth { get; set; }
+    public int StreamOrder { get; set; }
+    public int UpstreamBranches { get; set; }
+    public int RiverDirection { get; set; } = -1;
 }

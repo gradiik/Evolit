@@ -166,6 +166,14 @@ internal sealed partial class TerrainChunkLayer : Control
                 FillHexPoints(center, _hexSize * 0.57f, _hexPoints);
                 DrawColoredPolygon(_hexPoints, new Color(0.40f, 0.43f, 0.39f, 0.28f));
                 break;
+            case HexTerrainType.Highland:
+            {
+                var offset = new Vector2(
+                    (cell.VisualVariation - 0.5f) * _hexSize * 0.16f,
+                    (0.5f - cell.VisualVariation) * _hexSize * 0.10f);
+                DrawCircle(center + offset, _hexSize * 0.07f, new Color(0.66f, 0.67f, 0.47f, 0.10f));
+                break;
+            }
             case HexTerrainType.Rocky:
             {
                 var offset = new Vector2(
@@ -191,8 +199,12 @@ internal sealed partial class TerrainChunkLayer : Control
                 }
                 break;
             case HexTerrainType.River:
-                DrawCircle(center, _hexSize * 0.18f, new Color(0.48f, 0.88f, 0.86f, 0.34f));
+            {
+                var riverScale = Math.Clamp(cell.RiverWidth / 5.2f, 0.12f, 1f);
+                var radius = _hexSize * (0.075f + riverScale * 0.16f);
+                DrawCircle(center, radius, new Color(0.48f, 0.88f, 0.86f, 0.34f));
                 break;
+            }
         }
     }
 
@@ -237,7 +249,7 @@ internal sealed partial class TerrainChunkLayer : Control
                 if (_quality.DetailLevel <= 0)
                     continue;
 
-                if (cell.Terrain is HexTerrainType.Mountain or HexTerrainType.Rocky or HexTerrainType.River)
+                if (cell.Terrain is HexTerrainType.Mountain or HexTerrainType.Highland or HexTerrainType.Rocky or HexTerrainType.River)
                     commands++;
                 else if (_quality.WaterDetail > 0
                          && (cell.Terrain is HexTerrainType.DeepWater or HexTerrainType.ShallowWater or HexTerrainType.Lake))
@@ -282,6 +294,8 @@ internal sealed partial class TerrainChunkLayer : Control
                 ? new Color(0.05f, Math.Clamp(0.28f + cell.WaterDepthMeters / 6000f, 0.28f, 0.62f), 0.92f, 1f)
                 : new Color(0.08f, 0.10f, 0.10f, 1f),
             GenerationDebugMode.FlowAccumulation => Ramp(MathF.Log10(1f + cell.FlowAccumulation) / 3.5f),
+            GenerationDebugMode.StreamOrder => Ramp(cell.StreamOrder / 5f),
+            GenerationDebugMode.RiverDirection => RiverDirectionColor(cell.RiverDirection),
             GenerationDebugMode.Basin => BasinColor(cell.BasinId),
             GenerationDebugMode.TectonicUplift => Ramp(cell.TectonicUplift),
             GenerationDebugMode.Temperature => Ramp((cell.TemperatureCelsius + 40f) / 85f),
@@ -312,6 +326,20 @@ internal sealed partial class TerrainChunkLayer : Control
         var g = 0.25f + (((x >> 8) & 0xFFu) / 255f) * 0.65f;
         var b = 0.25f + (((x >> 16) & 0xFFu) / 255f) * 0.65f;
         return new Color(r, g, b);
+    }
+
+    private static Color RiverDirectionColor(int direction)
+    {
+        return direction switch
+        {
+            0 => new Color(0.95f, 0.35f, 0.30f),
+            1 => new Color(0.95f, 0.70f, 0.25f),
+            2 => new Color(0.48f, 0.82f, 0.30f),
+            3 => new Color(0.25f, 0.78f, 0.70f),
+            4 => new Color(0.30f, 0.52f, 0.95f),
+            5 => new Color(0.72f, 0.38f, 0.92f),
+            _ => new Color(0.10f, 0.13f, 0.15f)
+        };
     }
 
     private static Color BasinColor(int basinId)
@@ -360,6 +388,18 @@ internal sealed partial class TerrainChunkLayer : Control
             1f);
     }
 
+    private static Color HighlandColor(WorldHexCell cell)
+    {
+        var baseColor = SurfaceClimateColor(cell);
+        var lift = Math.Clamp((cell.ElevationMeters - 900f) / 1400f, 0f, 1f);
+        var target = new Color(0.43f, 0.47f, 0.33f);
+        return new Color(
+            baseColor.R + (target.R - baseColor.R) * (0.32f + lift * 0.18f),
+            baseColor.G + (target.G - baseColor.G) * (0.32f + lift * 0.18f),
+            baseColor.B + (target.B - baseColor.B) * (0.32f + lift * 0.18f),
+            1f);
+    }
+
     private static Color DeepWaterColor(WorldHexCell cell)
     {
         var depth = Math.Clamp(cell.WaterDepthMeters / 2200f, 0f, 1f);
@@ -386,6 +426,7 @@ internal sealed partial class TerrainChunkLayer : Control
             HexTerrainType.Sand => new Color(0.49f, 0.45f, 0.29f),
             HexTerrainType.Desert => SurfaceClimateColor(cell),
             HexTerrainType.Grassland => SurfaceClimateColor(cell),
+            HexTerrainType.Highland => HighlandColor(cell),
             HexTerrainType.Rocky => new Color(0.335f, 0.365f, 0.315f),
             HexTerrainType.Mountain => new Color(0.285f, 0.315f, 0.300f),
             _ => new Color(0.23f, 0.38f, 0.22f)

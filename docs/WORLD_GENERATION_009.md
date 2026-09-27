@@ -153,3 +153,48 @@ New generation metadata is optional in JSON and therefore old 0.0.8 saves remain
 0.0.9 does not add life, biological biomes, AI, pathfinding, reproduction, speciation, food webs, a spherical planet, 3D terrain, GPU generation or runtime tectonics.
 
 The next version must not start automatically after this work.
+
+
+## Second refinement pass
+
+The second 0.0.9 refinement pass keeps the existing pseudo-plate / priority-flood architecture and targets the remaining visual audit findings rather than replacing the generator.
+
+### River geometry
+
+Priority flood still supplies the safe hydraulic escape surface. A deterministic drainage refinement now evaluates only strictly lower hydraulic neighbours and keeps hydraulic drop as the dominant score. When multiple physically reasonable alternatives exist, a small downstream-direction preference discourages long ruler-straight hex runs without forcing alternating zig-zags. A tiny seed-derived tie-breaker is used only inside that physically valid candidate set.
+
+Generation now records Strahler-style stream order, upstream branch count and downstream hex direction. Visible channels require meaningful accumulation/length, while width combines catchment flow and stream order. High-order coastal mouths receive a small width increase as a generation-only delta foundation.
+
+### Coast anti-grid shaping
+
+Near sea level, an anisotropic continuous-space field is sampled in a province-specific rotated coordinate frame before land/water compression. It changes broad shoreline curvature, bays and peninsulas at angles independent of the six hex axes. A deterministic topology pass then removes isolated one-cell water holes and selected one-cell land bridges while leaving larger bays, straits and islands intact.
+
+### Macro variety
+
+Pseudo-plate layouts now vary across 10–15 total plates and 3–6 continental plates with stronger deterministic position/crust variation. A seed-derived fragmentation style modifies continental-boundary rifting instead of requesting a continent count directly. Candidate scoring prefers useful 3–4-landmass compositions while keeping 2-continent and rarer layouts valid.
+
+### Terrain readability
+
+Bare rock and basalt generation thresholds are stricter. Gentle terrain above the lowlands is presented as a derived Highland terrain instead of being classified as Rocky solely from elevation. Existing terrain enum numeric values are preserved by appending Highland, so older saved terrain values remain stable.
+
+### Quality diagnostics
+
+World-generation quality now additionally reports:
+
+- longest / mean straight river run and fraction in long runs;
+- longest / mean same-axis coast run and fraction in long runs;
+- plain-like / rocky / mountain land ratios;
+- inland-sea count and largest inland sea;
+- deterministic candidate attempt and whether the preferred threshold was accepted.
+
+`worldgen-quality [count]` supports larger fixed samples such as 50 seeds and reports a continent histogram plus candidate-search statistics. `worldgen-gallery [directory] [count]` defaults to 15 deterministic Medium worlds.
+
+### Candidate memory
+
+Rejected generation candidates no longer retain a fully materialized EnvironmentStore, and the generator no longer keeps a complete best world alive while generating another candidate. Candidate selection retains only best seed/score metadata; the selected candidate is materialized into the canonical EnvironmentStore only once. The pre-carving and post-carving hydrology passes also reuse the same dense result buffers instead of retaining two complete hydrology result sets. The final generation timing includes the full candidate search plus final environment materialization.
+
+### Compatibility
+
+Save-map diagnostics now include stream order, branch count and river direction. Missing fields in older schema-1 / 0.0.8 JSON use safe defaults, and Highland was appended to the terrain enum rather than inserted into existing numeric values.
+
+The refinement does not change world radii, runtime environment scheduling, the batched terrain renderer architecture, biological scope, or the flat-hex world model.
