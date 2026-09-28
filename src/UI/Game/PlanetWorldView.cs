@@ -246,6 +246,12 @@ public sealed partial class PlanetWorldView : Control
     public void ZoomIn() => SetTargetDistance(_targetDistance * 0.86f);
     public void ZoomOut() => SetTargetDistance(_targetDistance / 0.86f);
 
+    public void ApplyOrbitYawOffsetDegrees(int degrees)
+    {
+        _orbit.Y += Mathf.DegToRad(degrees);
+        UpdateCamera(true);
+    }
+
     public void CenterCamera()
     {
         if (_selectedCell is null)
@@ -547,12 +553,11 @@ public sealed partial class PlanetWorldView : Control
                 var a = center;
                 var b = ToGodot(polygon[corner]) * VisualRadiusFromMeters(polygonElevation[corner]);
                 var d = ToGodot(polygon[nextCorner]) * VisualRadiusFromMeters(polygonElevation[nextCorner]);
-                var cross = (b - a).Cross(d - a);
-                if (cross.Dot(centerDirection) < 0f)
+                if (NeedsClockwiseFrontFaceSwap(a, b, d, centerDirection))
                     (b, d) = (d, b);
 
                 ValidateTriangle(ref a, ref b, ref d, centerDirection, cell.Index, "terrain");
-                var faceNormal = (b - a).Cross(d - a).Normalized();
+                var faceNormal = (d - a).Cross(b - a).Normalized();
                 var centerNormal = (centerDirection * 0.90f + faceNormal * 0.10f).Normalized();
                 var bNormal = (b.Normalized() * 0.92f + faceNormal * 0.08f).Normalized();
                 var dNormal = (d.Normalized() * 0.92f + faceNormal * 0.08f).Normalized();
@@ -996,7 +1001,7 @@ public sealed partial class PlanetWorldView : Control
         Color[] colors,
         ref int cursor)
     {
-        if ((b - a).Cross(d - a).Dot(outward) < 0f)
+        if (NeedsClockwiseFrontFaceSwap(a, b, d, outward))
             (b, d) = (d, b);
 
         vertices[cursor] = a;
@@ -1359,7 +1364,7 @@ public sealed partial class PlanetWorldView : Control
         if (!float.IsFinite(area2) || area2 <= 0.0000005f)
             throw new InvalidOperationException($"{layer} cell {cellIndex} contains a degenerate triangle.");
 
-        if (cross.Dot(outward) < 0f)
+        if (NeedsClockwiseFrontFaceSwap(a, b, c, outward))
         {
             (b, c) = (c, b);
             cross = (b - a).Cross(c - a);
@@ -1373,9 +1378,17 @@ public sealed partial class PlanetWorldView : Control
                 $"{layer} cell {cellIndex} contains an implausible edge of {maxEdge:0.000}.");
 
         var radial = (a + b + c).Normalized();
-        if (cross.Dot(radial) <= 0f)
-            throw new InvalidOperationException($"{layer} cell {cellIndex} has inward winding.");
+        if (cross.Dot(radial) >= 0f)
+            throw new InvalidOperationException($"{layer} cell {cellIndex} is not clockwise-facing outward for Godot.");
     }
+
+    private static bool NeedsClockwiseFrontFaceSwap(
+        Vector3 a,
+        Vector3 b,
+        Vector3 c,
+        Vector3 outward) =>
+        TriangleWinding.RequiresSwapToClockwise(
+            ToCore(a), ToCore(b), ToCore(c), ToCore(outward));
 
     private static bool IsFinite(Vector3 value) =>
         float.IsFinite(value.X) &&

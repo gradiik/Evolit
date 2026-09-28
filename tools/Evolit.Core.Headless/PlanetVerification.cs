@@ -7,6 +7,7 @@ internal static class PlanetVerification
 {
     public static void Run()
     {
+        AssertGodotPlanetMeshWinding();
         AssertTopologyAtFrequency(PlanetGenerationScale.SmallFrequency);
         AssertTopologyAtFrequency(PlanetGenerationScale.MediumFrequency);
         AssertTopologyAtFrequency(PlanetGenerationScale.LargeFrequency);
@@ -15,6 +16,21 @@ internal static class PlanetVerification
         AssertHydrologyAndPhysical();
         AssertSnapshotRoundTrip();
         Console.WriteLine("PLANET VERIFY PASS");
+    }
+
+    private static void AssertGodotPlanetMeshWinding()
+    {
+        var outward = CoreVector3.UnitZ;
+        var a = new CoreVector3(0f, 1f, 1f);
+        var b = new CoreVector3(1f, 0f, 1f);
+        var c = new CoreVector3(-1f, 0f, 1f);
+        if (TriangleWinding.RequiresSwapToClockwise(a, b, c, outward))
+            throw new InvalidOperationException("Godot clockwise outward triangle was marked for reversal.");
+
+        if (!TriangleWinding.RequiresSwapToClockwise(a, c, b, outward))
+            throw new InvalidOperationException("Counter-clockwise outward triangle was not marked for reversal.");
+
+        Console.WriteLine("PLANET_MESH_WINDING PASS godot_front_face=clockwise outward=visible");
     }
 
     public static void RunSeedSweep(int seedCount)

@@ -180,6 +180,9 @@ public sealed partial class GameScreen : Control
             _planetWorldView.ZoomIn();
     }
 
+    public void ApplyPlanetOrbitYawOffsetDegrees(int degrees) =>
+        _planetWorldView?.ApplyOrbitYawOffsetDegrees(degrees);
+
     private void ZoomOut()
     {
         _planetWorldView?.ZoomOut();

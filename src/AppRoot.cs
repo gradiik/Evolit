@@ -72,6 +72,7 @@ public sealed partial class AppRoot : Control
         var captureSeed = "evolit-render-check";
         var captureShape = Evolit.Core.WorldShape.Flat;
         var captureZoomSteps = 0;
+        var captureOrbitYawDegrees = 0;
         var previewPlanet = false;
         foreach (var argument in OS.GetCmdlineUserArgs())
         {
@@ -87,11 +88,14 @@ public sealed partial class AppRoot : Control
             else if (argument.StartsWith("--zoom-steps=", StringComparison.Ordinal) &&
                      int.TryParse(argument[13..], out var requestedZoomSteps))
                 captureZoomSteps = Math.Clamp(requestedZoomSteps, 0, 6);
+            else if (argument.StartsWith("--orbit-yaw-degrees=", StringComparison.Ordinal) &&
+                     int.TryParse(argument[20..], out var requestedOrbitYawDegrees))
+                captureOrbitYawDegrees = requestedOrbitYawDegrees;
             else if (string.Equals(argument, "--preview-planet", StringComparison.Ordinal))
                 previewPlanet = true;
         }
         if (!string.IsNullOrWhiteSpace(capturePath))
-            CaptureWorld(capturePath, captureSeed, captureShape, captureZoomSteps);
+            CaptureWorld(capturePath, captureSeed, captureShape, captureZoomSteps, captureOrbitYawDegrees);
         else if (previewPlanet)
             PreviewPlanetWorld(captureSeed);
     }
@@ -118,7 +122,12 @@ public sealed partial class AppRoot : Control
         }
     }
 
-    private async void CaptureWorld(string path, string seed, Evolit.Core.WorldShape shape, int zoomSteps)
+    private async void CaptureWorld(
+        string path,
+        string seed,
+        Evolit.Core.WorldShape shape,
+        int zoomSteps,
+        int orbitYawDegrees)
     {
         var isolatedSaves = Path.Combine(Path.GetTempPath(), $"Evolit-verify-{Guid.NewGuid():N}");
         try
@@ -147,11 +156,14 @@ public sealed partial class AppRoot : Control
             }
             VerifyIsolatedSaveRoundTrip(isolatedSaves);
             ShowGame();
+            _activeGameScreen?.ApplyPlanetOrbitYawOffsetDegrees(orbitYawDegrees);
             _activeGameScreen?.ApplyPlanetZoomSteps(zoomSteps);
             for (var frame = 0; frame < 12; frame++)
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             var result = GetViewport().GetTexture().GetImage().SavePng(path);
-            GD.Print($"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed} SHAPE={shape} ZOOM_STEPS={zoomSteps}");
+            GD.Print(
+                $"EVOLIT_CAPTURE_RESULT={result} PATH={path} SEED={seed} SHAPE={shape} " +
+                $"ZOOM_STEPS={zoomSteps} ORBIT_YAW_DEGREES={orbitYawDegrees}");
         }
         catch (Exception ex)
         {

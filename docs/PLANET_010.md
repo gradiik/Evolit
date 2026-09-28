@@ -102,7 +102,7 @@ The headless executable exposes:
 - `planet-verify` — topology, deterministic generation, physical/hydrology validation, Large topology construction and Core snapshot round trip.
 - `planet-seeds [count]` — deterministic Medium-planet seed sweep, default 20.
 - `planet-benchmark` — Small/Medium/Large generation timings, allocations and memory deltas.
-- Exported-app render capture: `--capture-planet=<png> --seed=<seed> [--zoom-steps=0..6]`; captures use temporary isolated saves and never write to the user's save slots.
+- Exported-app render capture: `--capture-planet=<png> --seed=<seed> [--zoom-steps=0..6] [--orbit-yaw-degrees=<degrees>]`; captures use temporary isolated saves and never write to the user's save slots.
 - Existing `worldgen-verify`, `worldgen-quality`, `environment-verify` and benchmark commands remain available for Flat regression checks.
 
 GitHub Actions are not part of the ordinary development verification path. Final release CI remains gated by explicit release approval.
@@ -161,6 +161,8 @@ The planet scene uses ambient environment light in addition to the directional l
 Terrain receives a bounded vertex-color light gradient with a high ambient floor, so the night-side geography remains visible while the globe retains directional shape. Planet HUD metric captions and values use larger sizes at the standard 1280×720 window.
 
 Terrain and water triangle construction validates finite vertices, non-zero area, outward winding and bounded edge length before a mesh is accepted. Headless topology verification additionally rejects invalid or giant polygon edges.
+
+Planet surface, water and marker triangles follow Godot's clockwise front-face winding, so back-face culling keeps the camera-facing shell opaque and occludes the far hemisphere.
 
 ### Added local tools
 
