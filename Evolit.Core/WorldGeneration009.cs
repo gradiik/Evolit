@@ -7,6 +7,7 @@ namespace Evolit.Core;
 internal static class WorldGeneration009Pipeline
 {
     private const float PriorityFloodEpsilon = 0.025f;
+    private const float HexYScale = 0.8660254f;
 
     private static readonly (int Q, int R)[] Directions =
     [
@@ -215,6 +216,8 @@ internal static class WorldGeneration009Pipeline
                 plateBoundaryStrength[i]);
         }
 
+        presentation = FilterPresentationToFinalTerrain(presentation, settings.Radius, topology, cells);
+
         var summary = Summarize(topology, cells);
         var quality = AnalyzeQuality(topology, cells, hydro);
 
@@ -237,6 +240,91 @@ internal static class WorldGeneration009Pipeline
                 environmentMs,
                 Stopwatch.GetElapsedTime(totalStart).TotalMilliseconds)
         };
+    }
+
+    private static WorldGenerationPresentation FilterPresentationToFinalTerrain(
+        WorldGenerationPresentation presentation,
+        int radius,
+        WorldTopology topology,
+        GeneratedWorldCell[] cells)
+    {
+        var coast = new List<WorldGeometrySegment>(presentation.CoastSegments.Length);
+        foreach (var segment in presentation.CoastSegments)
+        {
+            var x = (segment.X1 + segment.X2) * 0.5f;
+            var y = (segment.Y1 + segment.Y2) * 0.5f;
+            if (!TryGetCellAtNormalizedPosition(x, y, radius, topology, out var index))
+                continue;
+
+            var hasLand = cells[index].ElevationMeters >= 0f;
+            var hasOcean = !hasLand;
+            var neighbors = topology.GetNeighborIndices(index);
+            for (var neighbor = 0; neighbor < neighbors.Length; neighbor++)
+            {
+                if (cells[neighbors[neighbor]].ElevationMeters >= 0f)
+                    hasLand = true;
+                else
+                    hasOcean = true;
+            }
+
+            if (hasLand && hasOcean)
+                coast.Add(segment);
+        }
+
+        var ridges = new List<WorldGeometrySegment>(presentation.RidgeSegments.Length);
+        foreach (var segment in presentation.RidgeSegments)
+        {
+            var allSamplesOnLand = true;
+            for (var sample = 0; sample <= 4; sample++)
+            {
+                var t = sample * 0.25f;
+                var x = segment.X1 + (segment.X2 - segment.X1) * t;
+                var y = segment.Y1 + (segment.Y2 - segment.Y1) * t;
+                if (!TryGetCellAtNormalizedPosition(x, y, radius, topology, out var index) ||
+                    cells[index].ElevationMeters <= 0f)
+                {
+                    allSamplesOnLand = false;
+                    break;
+                }
+            }
+
+            if (allSamplesOnLand)
+                ridges.Add(segment);
+        }
+
+        return new WorldGenerationPresentation
+        {
+            Style = presentation.Style,
+            GeologicalRegionCount = presentation.GeologicalRegionCount,
+            MacroplateCount = presentation.MacroplateCount,
+            FieldResolution = presentation.FieldResolution,
+            CoastSegments = coast.ToArray(),
+            RidgeSegments = ridges.ToArray()
+        };
+    }
+
+    private static bool TryGetCellAtNormalizedPosition(
+        float x,
+        float y,
+        int radius,
+        WorldTopology topology,
+        out int index)
+    {
+        var axialR = y / HexYScale * radius;
+        var axialQ = x * radius - axialR * 0.5f;
+        var cubeS = -axialQ - axialR;
+        var q = MathF.Round(axialQ);
+        var r = MathF.Round(axialR);
+        var s = MathF.Round(cubeS);
+        var qDiff = MathF.Abs(q - axialQ);
+        var rDiff = MathF.Abs(r - axialR);
+        var sDiff = MathF.Abs(s - cubeS);
+        if (qDiff > rDiff && qDiff > sDiff)
+            q = -r - s;
+        else if (rDiff > sDiff)
+            r = -q - s;
+
+        return topology.TryGetIndex(CellId.FromAxial((int)q, (int)r), out index);
     }
 
     internal static void MaterializeEnvironment(GeneratedWorld world)
@@ -1896,7 +1984,7 @@ internal static class WorldGeneration009Pipeline
     private static (float X, float Y) NormalizedWorldPosition(CellId id, int radius)
     {
         var x = (id.Q + id.R * 0.5f) / radius;
-        var y = id.R * 0.8660254f / radius;
+        var y = id.R * HexYScale / radius;
         return (x, y);
     }
 

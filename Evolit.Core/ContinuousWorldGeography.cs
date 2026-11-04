@@ -246,9 +246,9 @@ internal sealed class ContinuousWorldGeography
                     if (_macroplateId[index] != _macroplateId[right])
                     {
                         var strength = Math.Max(_convergence[index], _convergence[right]);
-                        var localElevation = Math.Max(_elevation[index], _elevation[right]);
+                        var localElevation = Math.Min(_elevation[index], _elevation[right]);
                         if (strength >= minimumConvergence &&
-                            localElevation >= seaLevel - 120f)
+                            localElevation >= seaLevel + 80f)
                         {
                             var bx = cx + cellStep * 0.5f;
                             if (ContinuousHexRadius(bx, cy) <= 0.965f)
@@ -261,6 +261,7 @@ internal sealed class ContinuousWorldGeography
                                     cellStep,
                                     strength,
                                     width,
+                                    seaLevel,
                                     segments);
                             }
                         }
@@ -273,9 +274,9 @@ internal sealed class ContinuousWorldGeography
                     if (_macroplateId[index] != _macroplateId[down])
                     {
                         var strength = Math.Max(_convergence[index], _convergence[down]);
-                        var localElevation = Math.Max(_elevation[index], _elevation[down]);
+                        var localElevation = Math.Min(_elevation[index], _elevation[down]);
                         if (strength >= minimumConvergence &&
-                            localElevation >= seaLevel - 120f)
+                            localElevation >= seaLevel + 80f)
                         {
                             var by = cy + cellStep * 0.5f;
                             if (ContinuousHexRadius(cx, by) <= 0.965f)
@@ -288,6 +289,7 @@ internal sealed class ContinuousWorldGeography
                                     cellStep,
                                     strength,
                                     width,
+                                    seaLevel,
                                     segments);
                             }
                         }
@@ -307,6 +309,7 @@ internal sealed class ContinuousWorldGeography
         float cellStep,
         float strength,
         float width,
+        float seaLevel,
         List<WorldGeometrySegment> target)
     {
         if (firstPlate < 0 || secondPlate < 0 ||
@@ -330,12 +333,22 @@ internal sealed class ContinuousWorldGeography
         var tx = -ny / length;
         var ty = nx / length;
         var halfLength = cellStep * 0.78f;
+        var x1 = centerX - tx * halfLength;
+        var y1 = centerY - ty * halfLength;
+        var x2 = centerX + tx * halfLength;
+        var y2 = centerY + ty * halfLength;
+
+        // Boundary strength alone can be high just offshore. Presentation
+        // ridges must stay on elevated land even when the plate edge curves.
+        if (Sample(x1, y1).ElevationMeters < seaLevel + 80f ||
+            Sample(x2, y2).ElevationMeters < seaLevel + 80f)
+            return;
 
         target.Add(new WorldGeometrySegment(
-            centerX - tx * halfLength,
-            centerY - ty * halfLength,
-            centerX + tx * halfLength,
-            centerY + ty * halfLength,
+            x1,
+            y1,
+            x2,
+            y2,
             Math.Clamp(strength, 0f, 1f),
             width));
     }

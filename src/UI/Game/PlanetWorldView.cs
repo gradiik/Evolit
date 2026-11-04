@@ -46,6 +46,8 @@ public sealed partial class PlanetWorldView : Control
     private float _minimumDistance = 3.55f;
     private float _overviewDistance = 8.8f;
     private float _maximumSurfaceRadius = PlanetVisualScale.PlanetRadius;
+    private Vector3[] _pickBoundCenters = Array.Empty<Vector3>();
+    private float[] _pickBoundRadii = Array.Empty<float>();
     private bool _dragging;
     private MouseButton _dragButton;
     private bool _dragMoved;
@@ -74,6 +76,8 @@ public sealed partial class PlanetWorldView : Control
         _cameraSpeed = (float)Math.Clamp(cameraSpeed, 1, 10);
         _smoothZoom = smoothZoom;
         _quality = quality;
+        _pickBoundCenters = Array.Empty<Vector3>();
+        _pickBoundRadii = Array.Empty<float>();
     }
 
     public override void _Ready()
@@ -91,6 +95,8 @@ public sealed partial class PlanetWorldView : Control
         RebuildGridMesh();
         RebuildEntityMarkers();
         UpdateSurfaceBounds();
+        if (_world?.PlanetMap is { } map)
+            RebuildPickBounds(map);
         _orbit = FindOverviewOrbit();
         _distance = _overviewDistance;
         _targetDistance = _overviewDistance;
@@ -591,6 +597,8 @@ public sealed partial class PlanetWorldView : Control
         var material = new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
+            Transparency = BaseMaterial3D.TransparencyEnum.Disabled,
+            DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.OpaqueOnly,
             Roughness = 0.88f,
             Metallic = 0.02f,
             ShadingMode = _renderDebugMode is PlanetRenderDebugMode.UnshadedTerrain or
@@ -617,7 +625,7 @@ public sealed partial class PlanetWorldView : Control
         var triangleCount = 0;
         foreach (var cell in map.Cells)
         {
-            if (cell.WaterKind == HexWaterKind.None)
+            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
                 continue;
             triangleCount += map.GetPolygon(cell).Length;
         }
@@ -635,7 +643,7 @@ public sealed partial class PlanetWorldView : Control
 
         foreach (var cell in map.Cells)
         {
-            if (cell.WaterKind == HexWaterKind.None)
+            if (cell.WaterKind is not (HexWaterKind.Ocean or HexWaterKind.Lake))
                 continue;
 
             var polygon = map.GetPolygon(cell);
@@ -647,8 +655,7 @@ public sealed partial class PlanetWorldView : Control
             {
                 HexWaterKind.Ocean => OceanDepthColor(cell.WaterDepthMeters),
                 HexWaterKind.Lake => new Color(0.045f, 0.34f, 0.38f),
-                // A river is a complete traversable water cell. Rendering the
-                // whole polygon keeps its banks aligned with the world grid.
+                // River cells are rendered by the connected ribbon meshes.
                 HexWaterKind.River => new Color(0.055f, 0.40f, 0.45f),
                 _ => new Color(0.035f, 0.25f, 0.32f)
             };
@@ -684,6 +691,9 @@ public sealed partial class PlanetWorldView : Control
         mesh.SurfaceSetMaterial(0, new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
+            Transparency = BaseMaterial3D.TransparencyEnum.Disabled,
+            DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.OpaqueOnly,
+            CullMode = BaseMaterial3D.CullModeEnum.Back,
             Roughness = 0.72f,
             Metallic = 0.0f,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
@@ -703,12 +713,12 @@ public sealed partial class PlanetWorldView : Control
             if (IsDrawableRiver(map, cell))
                 _riverSegmentCount++;
 
-        // Rivers are represented by their complete water cells in the water
-        // mesh. The former ribbons crossed unrelated terrain and made rivers
-        // cosmetic rather than part of the playable topology.
-        if (_riverMajor is not null) _riverMajor.Mesh = null;
-        if (_riverTributaries is not null) _riverTributaries.Mesh = null;
-        if (_riverFine is not null) _riverFine.Mesh = null;
+        if (_riverMajor is not null)
+            _riverMajor.Mesh = BuildRiverMesh(map, static cell => cell.StreamOrder >= 4);
+        if (_riverTributaries is not null)
+            _riverTributaries.Mesh = BuildRiverMesh(map, static cell => cell.StreamOrder == 3);
+        if (_riverFine is not null)
+            _riverFine.Mesh = BuildRiverMesh(map, static cell => cell.StreamOrder <= 2);
         ApplyLayerVisibility(true);
     }
 
@@ -740,6 +750,8 @@ public sealed partial class PlanetWorldView : Control
         var averageCellSpan =
             PlanetVisualScale.PlanetRadius *
             MathF.Sqrt(4f * MathF.PI / Math.Max(1, map.Cells.Count));
+        Span<Vector3> centers = stackalloc Vector3[segments + 1];
+        Span<Vector3> radials = stackalloc Vector3[segments + 1];
 
         foreach (var cell in map.Cells)
         {
@@ -755,16 +767,15 @@ public sealed partial class PlanetWorldView : Control
                 continue;
             greatCircleNormal = greatCircleNormal.Normalized();
 
-            var scale = Mathf.Clamp(cell.RiverWidth / 5.2f, 0.08f, 1f);
-            var halfWidth = averageCellSpan * (0.03f + scale * 0.11f);
+            var flowScale = Mathf.Clamp((cell.RiverWidth - 0.55f) / (5.2f - 0.55f), 0f, 1f);
+            var widthFraction = Mathf.Lerp(0.26f, 0.60f, flowScale);
+            var halfWidth = averageCellSpan * widthFraction * 0.5f;
             var meanderSign = RiverCurveSign(cell.Id);
             var meanderAngle =
                 MathF.Sqrt(4f * MathF.PI / Math.Max(1, map.Cells.Count)) *
-                (0.025f + (1f - scale) * 0.055f) *
+                (0.025f + (1f - flowScale) * 0.055f) *
                 meanderSign;
             var baseVertex = vertexCursor;
-            Span<Vector3> centers = stackalloc Vector3[segments + 1];
-            Span<Vector3> radials = stackalloc Vector3[segments + 1];
 
             for (var sample = 0; sample <= segments; sample++)
             {
@@ -834,6 +845,9 @@ public sealed partial class PlanetWorldView : Control
         mesh.SurfaceSetMaterial(0, new StandardMaterial3D
         {
             VertexColorUseAsAlbedo = true,
+            Transparency = BaseMaterial3D.TransparencyEnum.Disabled,
+            DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.OpaqueOnly,
+            CullMode = BaseMaterial3D.CullModeEnum.Back,
             Roughness = 0.48f,
             Metallic = 0.0f,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
@@ -1153,27 +1167,128 @@ public sealed partial class PlanetWorldView : Control
 
         var origin = _camera.ProjectRayOrigin(mouse);
         var direction = _camera.ProjectRayNormal(mouse).Normalized();
-        if (!TryRaySphere(origin, direction, _maximumSurfaceRadius + 0.008f, out var t))
+        if (!TryRaySphere(origin, direction, _maximumSurfaceRadius + 0.008f, out _))
             return null;
 
-        var hitDirection = (origin + direction * t).Normalized();
-        var candidate = map.FindNearestCell(ToCore(hitDirection));
-        var candidateRadius = VisualRadius(candidate) + 0.012f;
-
-        if (!TryRaySphere(origin, direction, candidateRadius, out var refinedT))
+        PlanetWorldCell? nearestCell = null;
+        var nearestDistance = float.PositiveInfinity;
+        var terrainVisible = _terrain?.Visible == true;
+        var waterVisible = _water?.Visible == true;
+        if (!terrainVisible && !waterVisible)
             return null;
 
-        var refinedDirection = (origin + direction * refinedT).Normalized();
-        candidate = map.FindNearestCell(ToCore(refinedDirection));
+        if (_pickBoundCenters.Length != map.Cells.Count)
+            RebuildPickBounds(map);
 
-        // The selected centre must be on the camera-facing hemisphere. This
-        // prevents a near-silhouette ray from resolving to the back side.
-        var cameraDirection = origin.Normalized();
-        var horizonDot = PlanetVisualScale.PlanetRadius / Math.Max(_distance, PlanetVisualScale.PlanetRadius + 0.001f);
-        if (ToGodot(candidate.Direction).Dot(cameraDirection) < horizonDot - 0.08f)
-            return null;
+        for (var cellIndex = 0; cellIndex < map.Cells.Count; cellIndex++)
+        {
+            var toBoundCenter = _pickBoundCenters[cellIndex] - origin;
+            var alongRay = toBoundCenter.Dot(direction);
+            var boundRadius = _pickBoundRadii[cellIndex] + 0.0001f;
+            if (alongRay < -boundRadius ||
+                toBoundCenter.LengthSquared() - alongRay * alongRay > boundRadius * boundRadius)
+                continue;
 
-        return candidate;
+            var cell = map.Cells[cellIndex];
+            var polygon = map.GetPolygon(cell);
+            var terrainElevations = map.GetPolygonTerrainElevationMeters(cell);
+            var centerDirection = ToGodot(cell.Direction);
+            var waterDirection = centerDirection.Normalized();
+            var hasWaterSurface = waterVisible &&
+                cell.WaterKind is (HexWaterKind.Ocean or HexWaterKind.Lake);
+            var surfaceCount = (terrainVisible ? 1 : 0) + (hasWaterSurface ? 1 : 0);
+
+            for (var surface = 0; surface < surfaceCount; surface++)
+            {
+                var isWater = !terrainVisible || surface == 1;
+                var centerRadius = isWater
+                    ? VisualRadiusFromMeters(PlanetWorldMap.VisibleSurfaceElevationMeters(cell)) + 0.006f
+                    : VisualRadiusFromMeters(cell.ElevationMeters);
+                var outward = isWater ? waterDirection : centerDirection;
+                var a = outward * centerRadius;
+
+                for (var corner = 0; corner < polygon.Length; corner++)
+                {
+                    var nextCorner = (corner + 1) % polygon.Length;
+                    var bRadius = isWater
+                        ? centerRadius
+                        : VisualRadiusFromMeters(terrainElevations[corner]);
+                    var cRadius = isWater
+                        ? centerRadius
+                        : VisualRadiusFromMeters(terrainElevations[nextCorner]);
+                    var b = ToGodot(polygon[corner]) * bRadius;
+                    var c = ToGodot(polygon[nextCorner]) * cRadius;
+
+                    if (NeedsClockwiseFrontFaceSwap(a, b, c, outward))
+                        (b, c) = (c, b);
+
+                    // Moller–Trumbore against the same front-facing triangles
+                    // emitted by the terrain and water mesh builders.
+                    var edge1 = b - a;
+                    var edge2 = c - a;
+                    var p = direction.Cross(edge2);
+                    var determinant = edge1.Dot(p);
+                    if (determinant >= -0.0000001f)
+                        continue;
+
+                    var inverseDeterminant = 1f / determinant;
+                    var fromA = origin - a;
+                    var u = fromA.Dot(p) * inverseDeterminant;
+                    if (u < -0.000001f || u > 1f + 0.000001f)
+                        continue;
+
+                    var q = fromA.Cross(edge1);
+                    var v = direction.Dot(q) * inverseDeterminant;
+                    if (v < -0.000001f || u + v > 1f + 0.000001f)
+                        continue;
+
+                    var distance = edge2.Dot(q) * inverseDeterminant;
+                    if (distance <= 0f || distance >= nearestDistance)
+                        continue;
+
+                    nearestDistance = distance;
+                    nearestCell = cell;
+                }
+            }
+        }
+
+        return nearestCell;
+    }
+
+    private void RebuildPickBounds(PlanetWorldMap map)
+    {
+        var centers = new Vector3[map.Cells.Count];
+        var radii = new float[map.Cells.Count];
+        for (var i = 0; i < map.Cells.Count; i++)
+        {
+            var cell = map.Cells[i];
+            var center = ToGodot(cell.Direction).Normalized() * PlanetVisualScale.PlanetRadius;
+            var terrainCenter = ToGodot(cell.Direction) * VisualRadiusFromMeters(cell.ElevationMeters);
+            var radius = center.DistanceTo(terrainCenter);
+            var polygon = map.GetPolygon(cell);
+            var terrainElevations = map.GetPolygonTerrainElevationMeters(cell);
+            for (var corner = 0; corner < polygon.Length; corner++)
+            {
+                var terrainCorner = ToGodot(polygon[corner]) *
+                    VisualRadiusFromMeters(terrainElevations[corner]);
+                radius = Math.Max(radius, center.DistanceTo(terrainCorner));
+            }
+
+            if (cell.WaterKind is HexWaterKind.Ocean or HexWaterKind.Lake)
+            {
+                var waterRadius =
+                    VisualRadiusFromMeters(PlanetWorldMap.VisibleSurfaceElevationMeters(cell)) + 0.006f;
+                radius = Math.Max(radius, center.DistanceTo(ToGodot(cell.Direction).Normalized() * waterRadius));
+                for (var corner = 0; corner < polygon.Length; corner++)
+                    radius = Math.Max(radius, center.DistanceTo(ToGodot(polygon[corner]) * waterRadius));
+            }
+
+            centers[i] = center;
+            radii[i] = radius;
+        }
+
+        _pickBoundCenters = centers;
+        _pickBoundRadii = radii;
     }
 
     private static bool TryRaySphere(
@@ -1417,6 +1532,12 @@ public sealed partial class PlanetWorldView : Control
     {
         if (mode != GenerationDebugMode.None)
             return DebugColor(cell, mode);
+
+        // River cells stay land beneath the narrow water ribbon. The map keeps
+        // the physical river marker in Terrain, so use a neutral land fill
+        // until the underlying land biome is exposed by the map contract.
+        if (cell.WaterKind == HexWaterKind.River)
+            return new Color(0.23f, 0.48f, 0.27f);
 
         if (cell.WaterKind == HexWaterKind.Ocean)
             return OceanDepthColor(cell.WaterDepthMeters);

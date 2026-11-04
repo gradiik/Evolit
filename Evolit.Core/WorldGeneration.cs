@@ -175,7 +175,7 @@ public static class ProceduralWorldGenerator
         var bestAttempt = 1;
         var hasBest = false;
 
-        const int maxAttempts = 12;
+        const int maxAttempts = 17;
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             var attemptSeed = attempt == 0
@@ -260,16 +260,34 @@ public static class ProceduralWorldGenerator
                 !float.IsFinite(cell.TemperatureCelsius) ||
                 !float.IsFinite(cell.Humidity) || cell.Humidity is < 0f or > 1f ||
                 !float.IsFinite(cell.PressureKPa) || cell.PressureKPa <= 0f ||
+                !float.IsFinite(cell.FlowAccumulation) || cell.FlowAccumulation < 0f ||
+                !float.IsFinite(cell.RiverWidth) || cell.RiverWidth < 0f ||
                 cell.MineralPotential is < 0f or > 1f ||
                 cell.NutrientPotential is < 0f or > 1f ||
                 cell.GeothermalPotential is < 0f or > 1f ||
                 cell.Substrate == SubstrateKind.Unknown)
                 throw new InvalidOperationException($"Generated cell {cell.Id} violates physical bounds.");
 
+            if (cell.DrainageTarget < -1)
+                throw new InvalidOperationException($"Generated cell {cell.Id} has an invalid drainage target.");
+
             if (cell.DrainageTarget >= 0)
             {
                 if (cell.DrainageTarget >= world.Cells.Length)
                     throw new InvalidOperationException($"Generated cell {cell.Id} has an invalid drainage target.");
+
+                var isDirectNeighbor = false;
+                var neighbors = world.Topology.GetNeighborIndices(i);
+                for (var neighborIndex = 0; neighborIndex < neighbors.Length; neighborIndex++)
+                {
+                    if (neighbors[neighborIndex] != cell.DrainageTarget)
+                        continue;
+
+                    isDirectNeighbor = true;
+                    break;
+                }
+                if (!isDirectNeighbor)
+                    throw new InvalidOperationException($"Generated drainage from {cell.Id} skips topology neighbors.");
 
                 var target = world.Cells[cell.DrainageTarget];
                 var sourceSurface = cell.ElevationMeters + (cell.IsLake ? cell.WaterDepthMeters : 0f);
@@ -291,6 +309,26 @@ public static class ProceduralWorldGenerator
                     $"Generated flow accumulation decreases downstream from {cell.Id}.");
             }
 
+            if (cell.IsRiver)
+            {
+                if (cell.ElevationMeters < 0f || cell.IsLake || cell.WaterDepthMeters <= 0f ||
+                    cell.DrainageTarget < 0 || cell.FlowAccumulation <= 0f || cell.RiverWidth <= 0f ||
+                    cell.RiverLength <= 0 || cell.StreamOrder <= 0 || cell.RiverDirection is < 0 or > 5)
+                {
+                    throw new InvalidOperationException($"Generated river metadata is invalid in {cell.Id}.");
+                }
+
+                var target = world.Cells[cell.DrainageTarget];
+                if (cell.RiverDirection != DirectionIndex(cell.Id, target.Id))
+                    throw new InvalidOperationException($"Generated river direction does not match its downstream cell at {cell.Id}.");
+
+                if (target.IsRiver &&
+                    (target.RiverWidth + 0.001f < cell.RiverWidth || target.StreamOrder < cell.StreamOrder))
+                {
+                    throw new InvalidOperationException($"Generated river narrows or loses stream order downstream from {cell.Id}.");
+                }
+            }
+
             if (cell.StreamOrder < 0 ||
                 cell.UpstreamBranches < 0 ||
                 cell.RiverDirection is < -1 or > 5)
@@ -300,6 +338,22 @@ public static class ProceduralWorldGenerator
         }
 
         ValidateDrainageAcyclic(world);
+    }
+
+    private static int DirectionIndex(CellId from, CellId to)
+    {
+        var dq = to.Q - from.Q;
+        var dr = to.R - from.R;
+        return (dq, dr) switch
+        {
+            (1, 0) => 0,
+            (1, -1) => 1,
+            (0, -1) => 2,
+            (-1, 0) => 3,
+            (-1, 1) => 4,
+            (0, 1) => 5,
+            _ => -1
+        };
     }
 
     private static void ValidateDrainageAcyclic(GeneratedWorld world)
