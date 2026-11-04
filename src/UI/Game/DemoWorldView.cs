@@ -45,7 +45,7 @@ public sealed partial class DemoWorldView : Control
 
     public override void _Process(double delta)
     {
-        var direction = Input.GetVector("camera_left", "camera_right", "camera_up", "camera_down");
+        var direction = Godot.Input.GetVector("camera_left", "camera_right", "camera_up", "camera_down");
         if (direction.LengthSquared() > 0.001f)
         {
             var worldUnitsPerSecond = 90f + _cameraSpeed * 42f;

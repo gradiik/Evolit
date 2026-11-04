@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "current": "0.0.4",
+  "development_branch": "main",
+  "versions": [
+    {
+      "version": "0.0.4",
+      "status": "development",
+      "date": "2026-09-21",
+      "description": "Evolution UI, game time, tree, events, statistics, encyclopedia, and version workflow.",
+      "commit": "8cba05b3099dd0437e040e5465e5a8c40f79b7e3",
+      "tag": null,
+      "is_current": true
+    },
+    {
+      "version": "0.0.3",
+      "status": "checkpoint",
+      "date": null,
+      "description": "Evolution UI, game time, tree, events, and statistics baseline.",
+      "commit": "04e1cfa88de983dca6ed2ad582c9af7a4a010dcc",
+      "tag": null,
+      "is_current": false
+    }
+  ]
+}
